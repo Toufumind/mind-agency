@@ -6,9 +6,21 @@ import { randomUUID } from 'crypto';
 
 const AGENTS_DIR = path.join(process.cwd(), 'Agents');
 
+// ── types ──
+
+export interface ChatEvent {
+  type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'error';
+  content: string;          // thinking/text content or tool result summary
+  toolName?: string;        // for tool_use
+  toolInput?: string;       // JSON string of tool input
+  toolOutput?: string;      // truncated tool result
+  timestamp: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  events?: ChatEvent[];
   timestamp: string;
 }
 
@@ -16,6 +28,8 @@ export interface ChatHistory {
   sessionId: string | null;
   messages: ChatMessage[];
 }
+
+// ── persistence ──
 
 export function getChatHistory(agentName: string): ChatHistory {
   const file = sessionFile(agentName);
@@ -39,10 +53,12 @@ function sessionFile(agentName: string) {
   return path.join(AGENTS_DIR, agentName, 'chat', 'session.json');
 }
 
+// ── CLI chat ──
+
 export async function chatWithAgent(
   agentName: string,
   userMessage: string
-): Promise<{ reply: string; sessionId: string }> {
+): Promise<{ reply: string; events: ChatEvent[]; sessionId: string }> {
   const agentDir = path.join(AGENTS_DIR, agentName);
   if (!fs.existsSync(agentDir)) {
     throw new Error(`Agent "${agentName}" not found`);
@@ -50,18 +66,17 @@ export async function chatWithAgent(
 
   const history = getChatHistory(agentName);
   const now = new Date().toISOString();
-  history.messages.push({ role: 'user', content: userMessage, timestamp: now });
 
   const isNew = !history.sessionId;
   const sessionId = history.sessionId || randomUUID();
 
-  // 写临时文件避免 shell 编码问题
+  // system prompt file
   const sysFile = path.join(os.tmpdir(), `mind-sys-${sessionId}.txt`);
-  const msgFile = path.join(os.tmpdir(), `mind-msg-${sessionId}.json`);
-
-  const identity = `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。你的 email 在 Agents/${agentName}/email/。你不能在自己的 email 文件夹添加/修改文件。给其他人发邮件时在对方 email/ 下创建 .md 文件。`;
+  const identity = `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。你不能在自己的 email/ 下添加/修改文件。给其他人发邮件时在对方 email/ 下创建 .md 文件（frontmatter + markdown）。你始终用中文回复。`;
   fs.writeFileSync(sysFile, identity, 'utf-8');
 
+  // message file
+  const msgFile = path.join(os.tmpdir(), `mind-msg-${sessionId}.json`);
   const msgJson = JSON.stringify({
     type: 'user',
     message: {
@@ -72,19 +87,15 @@ export async function chatWithAgent(
   fs.writeFileSync(msgFile, msgJson, 'utf-8');
 
   const isWin = process.platform === 'win32';
-
-  // Windows: 用 PowerShell 管道（原生 UTF-8）
-  // Unix: cat 管道
-  const baseFlags = `-p --output-format stream-json --input-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions ${isNew ? '--session-id' : '--resume'} ${sessionId} --append-system-prompt-file "${sysFile}"`;
+  const flags = `-p --output-format stream-json --input-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions ${isNew ? '--session-id' : '--resume'} ${sessionId} --append-system-prompt-file "${sysFile}"`;
   const cmdStr = isWin
-    ? `powershell -NoProfile -Command "Get-Content -Encoding UTF8 '${msgFile}' | claude.cmd ${baseFlags}"`
-    : `cat "${msgFile}" | claude ${baseFlags}`;
+    ? `powershell -NoProfile -Command "Get-Content -Encoding UTF8 '${msgFile}' | claude.cmd ${flags}"`
+    : `cat "${msgFile}" | claude ${flags}`;
 
-  const reply = await new Promise<string>((resolve, reject) => {
+  const { reply, events } = await new Promise<{ reply: string; events: ChatEvent[] }>((resolve, reject) => {
     const child = spawn(cmdStr, [], {
       cwd: agentDir,
-      env: {
-        ...process.env,
+      env: { ...process.env,
         ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || '',
         ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL || '',
         ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || 'DeepSeek-V4-Pro',
@@ -96,18 +107,61 @@ export async function chatWithAgent(
       shell: true,
     });
 
-    let result = '';
+    let replyText = '';
+    const events: ChatEvent[] = [];
     let stderrOut = '';
+    const ts = () => new Date().toISOString();
 
     child.stdout.on('data', (chunk: Buffer) => {
       const lines = chunk.toString().split('\n').filter(l => l.trim());
       for (const line of lines) {
         try {
-          const msg = JSON.parse(line);
-          if (msg.type === 'result' && msg.subtype === 'success' && msg.result) {
-            result = msg.result;
+          const obj = JSON.parse(line);
+
+          if (obj.type === 'assistant' && obj.message?.content) {
+            for (const block of obj.message.content) {
+              if (block.type === 'thinking' && block.thinking) {
+                events.push({ type: 'thinking', content: block.thinking, timestamp: ts() });
+              } else if (block.type === 'tool_use') {
+                events.push({
+                  type: 'tool_use',
+                  content: block.name || '',
+                  toolName: block.name,
+                  toolInput: JSON.stringify(block.input || {}, null, 2),
+                  timestamp: ts(),
+                });
+              } else if (block.type === 'text' && block.text) {
+                replyText += block.text;
+                events.push({ type: 'text', content: block.text, timestamp: ts() });
+              }
+            }
           }
-        } catch { /* skip */ }
+
+          if (obj.type === 'user' && obj.message?.content) {
+            for (const block of obj.message.content) {
+              if (block.type === 'tool_result') {
+                const output = typeof block.content === 'string'
+                  ? block.content
+                  : JSON.stringify(block.content || '');
+                const truncated = output.length > 600 ? output.slice(0, 600) + '...' : output;
+                events.push({
+                  type: 'tool_result',
+                  content: truncated,
+                  toolOutput: truncated,
+                  timestamp: ts(),
+                });
+              }
+            }
+          }
+
+          if (obj.type === 'result') {
+            if (obj.subtype === 'success' && obj.result) {
+              replyText = obj.result;
+            } else if (obj.is_error && obj.result) {
+              events.push({ type: 'error', content: obj.result, timestamp: ts() });
+            }
+          }
+        } catch { /* skip partial */ }
       }
     });
 
@@ -116,23 +170,31 @@ export async function chatWithAgent(
     child.on('close', code => {
       try { fs.unlinkSync(sysFile); } catch {}
       try { fs.unlinkSync(msgFile); } catch {}
+
       if (code !== 0) {
         reject(new Error(stderrOut || `CLI exit ${code}`));
         return;
       }
-      resolve(result || '');
+      resolve({ reply: replyText, events });
     });
 
     child.on('error', reject);
   });
 
+  // 保存到历史
+  history.messages.push({
+    role: 'user',
+    content: userMessage,
+    timestamp: now,
+  });
   history.messages.push({
     role: 'assistant',
     content: reply,
+    events,
     timestamp: new Date().toISOString(),
   });
   history.sessionId = sessionId;
   saveChatHistory(agentName, history);
 
-  return { reply, sessionId };
+  return { reply, sessionId, events };
 }

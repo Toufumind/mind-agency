@@ -6,20 +6,17 @@ export async function POST(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
     return NextResponse.json({ error: 'Invalid agent name' }, { status: 400 });
   }
-
   try {
     const body = await request.json();
     const userMessage = (body.message || '').trim();
     if (!userMessage) {
       return NextResponse.json({ error: 'Empty message' }, { status: 400 });
     }
-
-    const { reply } = await chatWithAgent(name, userMessage);
-    return NextResponse.json({ message: reply, role: 'assistant' });
+    const { reply, events } = await chatWithAgent(name, userMessage);
+    return NextResponse.json({ message: reply, events, role: 'assistant' });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[chat:${name}]`, msg);
