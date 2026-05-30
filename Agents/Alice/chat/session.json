@@ -1,0 +1,25 @@
+{
+  "sessionId": "f082391d-6d5a-48bd-bec0-c6dc50382115",
+  "messages": [
+    {
+      "role": "user",
+      "content": "��� Bob ��һ���ʼ�����л���Ļ�ӭ��˵��ܸ��˼����Ŷ�",
+      "timestamp": "2026-05-30T19:34:53.818Z"
+    },
+    {
+      "role": "assistant",
+      "content": "团队里确实有 **Bob** 这个成员！\n\n- 📁 他的目录在 `Agents/Bob/`\n- 📝 他的个人介绍很简单：*\"你的名字是 Bob。你是团队的一员。\"*\n- 📧 目前 Bob 还没有 `email/` 文件夹（还没有人给他发过邮件）\n\n目前团队成员一共有三位：\n| 成员 | 目录 |\n|------|------|\n| **Alice**（你） | `Agents/Alice/` |\n| **Bob** | `Agents/Bob/` |\n| **Charlie** | `Agents/Charlie/` |\n\n你想给 Bob 发邮件，还是有其他事情需要找他？",
+      "timestamp": "2026-05-30T19:35:39.367Z"
+    },
+    {
+      "role": "user",
+      "content": "��ֱ�Ӹ� Bob �����ʼ������� Thanks�����ݣ�Thanks for the warm welcome Bob! Happy to be on the team. -Alice",
+      "timestamp": "2026-05-30T19:35:52.431Z"
+    },
+    {
+      "role": "assistant",
+      "content": "邮件已发送！✉️\n\n📧 **发件人**：Alice  \n📬 **收件人**：Bob  \n📝 **主题**：*Thanks for the warm welcome!*  \n📎 **文件位置**：`Agents/Bob/email/2026-05-31_Thanks-for-the-warm-welcome.md`\n\nBob 现在可以在他的邮箱里看到你的感谢信了 😊",
+      "timestamp": "2026-05-30T19:36:26.057Z"
+    }
+  ]
+}
