@@ -1,0 +1,13 @@
+{
+  "tasks": [
+    {
+      "id": "337dc829",
+      "cron": "*/10 * * * *",
+      "prompt": "检查 Alice（Agents/Alice/email/）的收件箱，列出所有邮件。如果有新邮件，把内容报告给用户。同时检查 Bob（Agents/Bob/email/）的收件箱，看看 Bob 是否回复了 Alice 的感谢信。",
+      "createdAt": 1780170482911,
+      "recurring": true,
+      "createdBySessionId": "f082391d-6d5a-48bd-bec0-c6dc50382115",
+      "createdByPid": 17168
+    }
+  ]
+}

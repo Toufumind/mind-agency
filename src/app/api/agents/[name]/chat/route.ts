@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { chatWithAgent, getChatHistory, clearChat } from '@/lib/chat';
+import { NextRequest } from 'next/server';
+import { createChatStream, getChatHistory, clearChat } from '@/lib/chat';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
@@ -7,21 +9,51 @@ export async function POST(
 ) {
   const { name } = await params;
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    return NextResponse.json({ error: 'Invalid agent name' }, { status: 400 });
+    return new Response(JSON.stringify({ error: 'Invalid agent name' }), { status: 400 });
   }
+
+  let message = '';
   try {
     const body = await request.json();
-    const userMessage = (body.message || '').trim();
-    if (!userMessage) {
-      return NextResponse.json({ error: 'Empty message' }, { status: 400 });
-    }
-    const { reply, events } = await chatWithAgent(name, userMessage);
-    return NextResponse.json({ message: reply, events, role: 'assistant' });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[chat:${name}]`, msg);
-    return NextResponse.json({ error: msg }, { status: 502 });
+    message = (body.message || '').trim();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
   }
+
+  if (!message) {
+    return new Response(JSON.stringify({ error: 'Empty message' }), { status: 400 });
+  }
+
+  // SSE stream
+  const stream = createChatStream(name, message);
+
+  const sseStream = new ReadableStream({
+    async start(controller) {
+      const reader = stream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const line = `data: ${JSON.stringify(value)}\n\n`;
+          controller.enqueue(new TextEncoder().encode(line));
+        }
+      } catch (err) {
+        const errEvt = JSON.stringify({ type: 'error', content: String(err), timestamp: new Date().toISOString() });
+        controller.enqueue(new TextEncoder().encode(`data: ${errEvt}\n\n`));
+      }
+      controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
+      controller.close();
+    }
+  });
+
+  return new Response(sseStream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 }
 
 export async function GET(
@@ -29,7 +61,7 @@ export async function GET(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  return NextResponse.json(getChatHistory(name));
+  return Response.json(getChatHistory(name));
 }
 
 export async function DELETE(
@@ -38,5 +70,5 @@ export async function DELETE(
 ) {
   const { name } = await params;
   clearChat(name);
-  return NextResponse.json({ success: true });
+  return Response.json({ success: true });
 }

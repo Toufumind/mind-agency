@@ -1,21 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Send, Terminal, Trash2, Loader2, ChevronDown, ChevronRight, Wrench, Brain, FileText, Check, X as XIcon } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Send, Trash2, Loader2, ChevronDown, ChevronRight, Wrench, Brain, FileText, X as XIcon, Terminal } from 'lucide-react';
 
 interface ChatEvent {
-  type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'error';
-  content: string;
+  type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error';
+  content?: string;
   toolName?: string;
   toolInput?: string;
   toolOutput?: string;
   timestamp: string;
 }
 
-interface ChatMessage {
+interface MessageItem {
   role: 'user' | 'assistant';
   content: string;
-  events?: ChatEvent[];
+  events: ChatEvent[];
   timestamp: string;
 }
 
@@ -25,17 +25,28 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ agentName, onLaunchTerminal }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Load history on mount
   useEffect(() => {
     fetch(`/api/agents/${agentName}/chat`)
       .then(r => r.json())
-      .then(data => { if (data.messages) setMessages(data.messages); })
+      .then(data => {
+        if (data.messages) {
+          // Normalize old format (string-only) to new format (with events)
+          const msgs = data.messages.map((m: any) => ({
+            role: m.role,
+            content: m.content || '',
+            events: m.events || [],
+            timestamp: m.timestamp,
+          }));
+          setMessages(msgs);
+        }
+      })
       .catch(() => {});
   }, [agentName]);
 
@@ -45,11 +56,24 @@ export default function ChatPanel({ agentName, onLaunchTerminal }: ChatPanelProp
     const text = input.trim();
     if (!text || loading) return;
     setInput('');
-    setError('');
     setLoading(true);
 
-    const userMsg: ChatMessage = { role: 'user', content: text, timestamp: new Date().toISOString() };
+    const userMsg: MessageItem = {
+      role: 'user',
+      content: text,
+      events: [],
+      timestamp: new Date().toISOString(),
+    };
     setMessages(prev => [...prev, userMsg]);
+
+    // Placeholder for the streaming assistant message
+    const assistantMsg: MessageItem = {
+      role: 'assistant',
+      content: '',
+      events: [],
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, assistantMsg]);
 
     try {
       const res = await fetch(`/api/agents/${agentName}/chat`, {
@@ -57,23 +81,72 @@ export default function ChatPanel({ agentName, onLaunchTerminal }: ChatPanelProp
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text }),
       });
-      const data = await res.json();
-      if (data.message || data.events) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: data.message || '',
-          events: data.events || [],
-          timestamp: new Date().toISOString(),
-        }]);
-      } else {
-        setError(data.error || 'No response');
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No reader');
+
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+
+        // Parse SSE frames
+        const parts = buf.split('\n\n');
+        buf = parts.pop() || '';
+
+        for (const part of parts) {
+          const lines = part.split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6);
+
+            if (payload === '[DONE]') continue;
+
+            try {
+              const evt: ChatEvent = JSON.parse(payload);
+
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.role === 'assistant') {
+                  const next = { ...last, events: [...last.events, evt] };
+                  if (evt.type === 'text') {
+                    next.content += evt.content || '';
+                  }
+                  updated[updated.length - 1] = next;
+                }
+                return updated;
+              });
+
+              if (evt.type === 'done') {
+                setLoading(false);
+              }
+            } catch { /* skip parse errors */ }
+          }
+        }
       }
-    } catch {
-      setError('Network error');
-    } finally {
+    } catch (err) {
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last && last.role === 'assistant') {
+          updated[updated.length - 1] = {
+            ...last,
+            events: [...last.events, { type: 'error', content: String(err), timestamp: new Date().toISOString() }],
+          };
+        }
+        return updated;
+      });
       setLoading(false);
-      inputRef.current?.focus();
     }
+
+    inputRef.current?.focus();
   };
 
   const handleClear = async () => {
@@ -120,7 +193,7 @@ export default function ChatPanel({ agentName, onLaunchTerminal }: ChatPanelProp
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <p className="text-sm text-gray-400">Start a conversation with {agentName}</p>
-              <p className="text-xs text-gray-300 mt-1">
+              <p className="text-xs text-gray-300 mt-1 font-sans">
                 Ask anything — read email, send messages, run commands
               </p>
             </div>
@@ -129,7 +202,6 @@ export default function ChatPanel({ agentName, onLaunchTerminal }: ChatPanelProp
 
         {messages.map((msg, i) => (
           <div key={i}>
-            {/* User message */}
             {msg.role === 'user' && (
               <div className="flex justify-end mb-4">
                 <div className="max-w-[80%] bg-gray-900 text-white rounded-lg px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap">
@@ -138,67 +210,33 @@ export default function ChatPanel({ agentName, onLaunchTerminal }: ChatPanelProp
               </div>
             )}
 
-            {/* Assistant events — Claude Code style */}
-            {msg.role === 'assistant' && msg.events && msg.events.length > 0 && (
+            {msg.role === 'assistant' && (
               <div className="space-y-1.5 mb-4">
                 {msg.events.map((evt, j) => {
-                  if (evt.type === 'thinking') {
-                    return <ThinkingBlock key={j} content={evt.content} />;
-                  }
-                  if (evt.type === 'tool_use') {
-                    return <ToolUseBlock key={j} toolName={evt.toolName || ''} input={evt.toolInput || ''} />;
-                  }
-                  if (evt.type === 'tool_result') {
-                    return <ToolResultBlock key={j} output={evt.toolOutput || ''} />;
-                  }
-                  if (evt.type === 'text') {
-                    return <div key={j} className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-wrap">{evt.content}</div>;
-                  }
-                  if (evt.type === 'error') {
-                    return <ErrorBlock key={j} content={evt.content} />;
-                  }
+                  const key = `${i}-${j}`;
+                  if (evt.type === 'thinking') return <ThinkingBlock key={key} content={evt.content || ''} />;
+                  if (evt.type === 'tool_use') return <ToolUseBlock key={key} toolName={evt.toolName || ''} input={evt.toolInput || ''} />;
+                  if (evt.type === 'tool_result') return <ToolResultBlock key={key} output={evt.toolOutput || ''} />;
+                  if (evt.type === 'text') return <TextBlock key={key} content={evt.content || ''} />;
+                  if (evt.type === 'error') return <ErrorBlock key={key} content={evt.content || ''} />;
                   return null;
                 })}
-                {/* Final text response — only if there are no text events (which already displayed) */}
-                {msg.content && !msg.events.some(e => e.type === 'text') && (
-                  <div className="text-[13px] text-gray-800 leading-relaxed whitespace-pre-wrap mt-2">
-                    {msg.content}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Fallback: assistant without events */}
-            {msg.role === 'assistant' && (!msg.events || msg.events.length === 0) && msg.content && (
-              <div className="flex justify-start mb-4">
-                <div className="max-w-[80%] bg-gray-100 rounded-lg px-4 py-2.5 text-[13px] text-gray-800 leading-relaxed whitespace-pre-wrap">
-                  {msg.content}
-                </div>
               </div>
             )}
           </div>
         ))}
 
-        {/* Loading indicator */}
         {loading && (
-          <div className="flex justify-start">
-            <div className="flex items-center gap-2 text-[12px] text-gray-400 py-1">
-              <Loader2 size={13} className="animate-spin" />
-              Thinking...
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div className="flex justify-start">
-            <div className="text-[12px] text-red-500 bg-red-50 px-3 py-1.5 rounded">{error}</div>
+          <div className="flex items-center gap-2 text-[12px] text-gray-400 py-1">
+            <Loader2 size={13} className="animate-spin" />
+            Waiting...
           </div>
         )}
 
         <div ref={endRef} />
       </div>
 
-      {/* Input — terminal style */}
+      {/* Input */}
       <div className="px-4 py-3 border-t border-gray-200 shrink-0">
         <div className="flex items-end gap-2">
           <span className="text-[13px] text-gray-400 font-mono shrink-0 select-none">▸</span>
@@ -231,22 +269,20 @@ export default function ChatPanel({ agentName, onLaunchTerminal }: ChatPanelProp
   );
 }
 
-// ── inline blocks ──
+// ── Inline event blocks ──
 
 function ThinkingBlock({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="text-[12px]">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-gray-400 hover:text-gray-600 transition-colors"
-      >
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-gray-400 hover:text-gray-600 transition-colors text-left group">
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Brain size={12} />
+        <Brain size={12} className="text-purple-400 group-hover:text-purple-500" />
         <span>Thinking</span>
       </button>
       {open && (
-        <div className="mt-1 ml-5 pl-3 border-l-2 border-gray-200 text-gray-500 leading-relaxed">
+        <div className="mt-1 ml-5 pl-3 border-l-2 border-purple-200 text-gray-500 leading-relaxed whitespace-pre-wrap">
           {content}
         </div>
       )}
@@ -258,16 +294,14 @@ function ToolUseBlock({ toolName, input }: { toolName: string; input: string }) 
   const [open, setOpen] = useState(false);
   return (
     <div className="text-[12px]">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors"
-      >
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors text-left group">
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Wrench size={12} className="text-blue-500" />
+        <Wrench size={12} className="text-blue-400 group-hover:text-blue-500" />
         <span className="font-medium">{toolName}</span>
       </button>
       {open && (
-        <pre className="mt-1 ml-5 pl-3 border-l-2 border-blue-200 text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-[200px] overflow-y-auto">
+        <pre className="mt-1 ml-5 pl-3 border-l-2 border-blue-200 text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-[300px] overflow-y-auto">
           {input}
         </pre>
       )}
@@ -279,19 +313,25 @@ function ToolResultBlock({ output }: { output: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="text-[12px]">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors"
-      >
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-gray-500 hover:text-gray-700 transition-colors text-left group">
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <FileText size={12} className="text-green-500" />
+        <FileText size={12} className="text-green-400 group-hover:text-green-500" />
         <span>Result</span>
       </button>
       {open && (
-        <pre className="mt-1 ml-5 pl-3 border-l-2 border-green-200 text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-[200px] overflow-y-auto">
+        <pre className="mt-1 ml-5 pl-3 border-l-2 border-green-200 text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed max-h-[300px] overflow-y-auto">
           {output}
         </pre>
       )}
+    </div>
+  );
+}
+
+function TextBlock({ content }: { content: string }) {
+  return (
+    <div className="text-[13px] text-gray-800 leading-relaxed whitespace-pre-wrap">
+      {content}
     </div>
   );
 }
