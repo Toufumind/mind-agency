@@ -3,15 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  LayoutDashboard,
-  Users,
-  Mail,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
-  Building2,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Agent {
   name: string;
@@ -30,83 +22,79 @@ export default function Sidebar() {
       .catch(() => {});
   }, []);
 
-  const isActive = (path: string) => pathname === path;
-
   return (
     <aside
-      className={`relative flex flex-col bg-white border-r border-gray-100 h-screen transition-all duration-300 ${
-        collapsed ? 'w-[72px]' : 'w-[260px]'
+      className={`relative flex flex-col bg-white border-r border-gray-200 h-screen transition-all duration-200 ${
+        collapsed ? 'w-[56px]' : 'w-[210px]'
       }`}
     >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 h-16 border-b border-gray-50">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-600 text-white shrink-0">
-          <Building2 size={18} />
-        </div>
+      <div className="flex items-center gap-2 px-3.5 h-11 border-b border-gray-100">
         {!collapsed && (
-          <span className="text-base font-bold text-gray-900 whitespace-nowrap">
+          <span className="text-[13px] font-medium text-gray-900">
             Mind Agency
           </span>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto">
         <Link
           href="/"
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-            isActive('/')
-              ? 'bg-indigo-50 text-indigo-700'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[6px] text-[13px] transition-colors ${
+            pathname === '/'
+              ? 'bg-gray-100 text-gray-900 font-medium'
+              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
           }`}
         >
-          <LayoutDashboard size={18} />
-          {!collapsed && '仪表盘'}
+          <span className="text-[11px] opacity-40">⌂</span>
+          {!collapsed && 'Home'}
         </Link>
 
-        {/* Agent 列表 */}
-        <div className="pt-4">
+        {/* Agents */}
+        <div className="pt-3">
           {!collapsed && (
-            <p className="px-3 pb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              团队成员
+            <p className="px-2.5 pb-1.5 text-[10px] font-medium text-gray-400 uppercase tracking-wide">
+              Team
             </p>
           )}
-          <div className="space-y-1">
-            {agents.map(agent => (
+          {agents.map(agent => {
+            const active = pathname === `/agents/${agent.name}`;
+            return (
               <Link
                 key={agent.name}
                 href={`/agents/${agent.name}`}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  isActive(`/agents/${agent.name}`)
-                    ? 'bg-indigo-50 text-indigo-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[6px] text-[13px] transition-colors ${
+                  active
+                    ? 'bg-gray-100 text-gray-900 font-medium'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
                 }`}
               >
-                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-400 to-purple-500 text-white text-xs font-bold shrink-0">
+                <span
+                  className={`w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-medium shrink-0 ${
+                    active
+                      ? 'bg-gray-300 text-gray-700'
+                      : 'bg-gray-150 text-gray-400'
+                  }`}
+                  style={{ backgroundColor: active ? '#d1d5db' : '#e5e7eb' }}
+                >
                   {agent.name[0]}
-                </div>
+                </span>
                 {!collapsed && (
-                  <div className="flex-1 flex items-center justify-between min-w-0">
-                    <span className="truncate">{agent.name}</span>
-                    {agent.emailCount > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-indigo-100 text-indigo-600 shrink-0">
-                        {agent.emailCount}
-                      </span>
-                    )}
-                  </div>
+                  <span className="truncate">{agent.name}</span>
                 )}
               </Link>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </nav>
 
-      {/* 折叠按钮 */}
+      {/* Collapse */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm hover:shadow-md transition-shadow"
+        className="absolute -right-2.5 top-16 w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors"
       >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+        {collapsed ? <ChevronRight size={10} /> : <ChevronLeft size={10} />}
       </button>
     </aside>
   );

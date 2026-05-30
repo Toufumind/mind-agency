@@ -1,6 +1,6 @@
 'use client';
 
-import { Mail, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import type { Email } from '@/types';
 
 interface EmailListProps {
@@ -13,15 +13,11 @@ interface EmailListProps {
 export default function EmailList({ emails, selectedEmail, onSelect, loading }: EmailListProps) {
   if (loading) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-1">
         {[1, 2, 3].map(i => (
-          <div
-            key={i}
-            className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse"
-          >
-            <div className="h-4 bg-gray-100 rounded w-3/4 mb-2" />
-            <div className="h-3 bg-gray-50 rounded w-1/2 mb-2" />
-            <div className="h-3 bg-gray-50 rounded w-full" />
+          <div key={i} className="bg-white border border-gray-200 rounded-lg p-3.5 animate-pulse">
+            <div className="h-3.5 bg-gray-100 rounded w-3/4 mb-2" />
+            <div className="h-3 bg-gray-50 rounded w-1/2" />
           </div>
         ))}
       </div>
@@ -30,53 +26,42 @@ export default function EmailList({ emails, selectedEmail, onSelect, loading }: 
 
   if (emails.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center">
-        <div className="flex justify-center mb-3">
-          <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gray-50">
-            <Mail size={22} className="text-gray-300" />
-          </div>
-        </div>
-        <p className="text-sm font-medium text-gray-500">收件箱为空</p>
-        <p className="text-xs text-gray-400 mt-1">还没有收到任何邮件</p>
+      <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
+        <p className="text-sm text-gray-400">No emails yet</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {emails.map(email => {
         const isSelected = selectedEmail?.filename === email.filename;
         return (
           <button
             key={email.filename}
             onClick={() => onSelect(email)}
-            className={`w-full text-left rounded-2xl p-4 transition-all duration-150 ${
+            className={`w-full text-left rounded-lg p-3.5 border transition-colors ${
               isSelected
-                ? 'bg-indigo-50/80 ring-2 ring-indigo-400 shadow-sm'
-                : 'bg-white border border-gray-100 hover:bg-gray-50/80 hover:border-gray-200 shadow-sm'
+                ? 'bg-gray-50 border-gray-300'
+                : 'bg-white border-gray-200 hover:border-gray-300'
             }`}
           >
-            <div className="flex items-start justify-between gap-2 mb-1.5">
-              <h4 className={`text-sm font-semibold truncate ${
-                isSelected ? 'text-indigo-900' : 'text-gray-900'
-              }`}>
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h4 className="text-[13px] font-medium text-gray-900 truncate">
                 {email.subject}
               </h4>
               {email.date && (
-                <span className="text-[10px] text-gray-400 shrink-0 mt-0.5">
-                  {new Date(email.date).toLocaleDateString('zh-CN', {
-                    month: 'short',
-                    day: 'numeric',
-                  })}
+                <span className="text-[11px] text-gray-400 shrink-0">
+                  {email.date.slice(5)}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1.5 mb-1.5">
+            <div className="flex items-center gap-1 mb-1">
               <User size={11} className="text-gray-300" />
               <span className="text-[11px] text-gray-400">{email.from}</span>
             </div>
             <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed">
-              {email.body.slice(0, 100)}
+              {email.body.slice(0, 80)}
             </p>
           </button>
         );

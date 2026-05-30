@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Send, Loader2 } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 
 interface Agent {
   name: string;
@@ -15,8 +15,8 @@ interface ComposeDialogProps {
   currentAgent: string;
 }
 
-const inputClass =
-  'w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none transition-all duration-150 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100';
+const field =
+  'w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-[13px] outline-none focus:border-gray-400 transition-colors';
 
 export default function ComposeDialog({ open, onClose, onSent, currentAgent }: ComposeDialogProps) {
   const [to, setTo] = useState('');
@@ -37,13 +37,11 @@ export default function ComposeDialog({ open, onClose, onSent, currentAgent }: C
 
   const handleSend = async () => {
     if (!to || !subject) {
-      setError('请填写收件人和主题');
+      setError('Recipient and subject are required');
       return;
     }
-
     setSending(true);
     setError('');
-
     try {
       const res = await fetch('/api/emails', {
         method: 'POST',
@@ -51,17 +49,14 @@ export default function ComposeDialog({ open, onClose, onSent, currentAgent }: C
         body: JSON.stringify({ from: currentAgent, to, subject, body }),
       });
       const data = await res.json();
-
       if (data.success) {
-        setTo('');
-        setSubject('');
-        setBody('');
+        setTo(''); setSubject(''); setBody('');
         onSent();
       } else {
-        setError(data.error || '发送失败');
+        setError(data.error || 'Send failed');
       }
     } catch {
-      setError('网络错误，请重试');
+      setError('Network error');
     } finally {
       setSending(false);
     }
@@ -70,93 +65,63 @@ export default function ComposeDialog({ open, onClose, onSent, currentAgent }: C
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden animate-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-lg bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-          <h2 className="text-base font-semibold text-gray-900">撰写邮件</h2>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <h2 className="text-sm font-medium text-gray-900">New message</h2>
           <button
             onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-gray-500 hover:bg-gray-50 transition-colors"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
 
         {/* Form */}
-        <div className="px-6 py-5 space-y-4">
-          {/* From */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">发件人</label>
-            <div className={`${inputClass} bg-gray-50 text-gray-500`}>
-              {currentAgent}
-            </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className={`${field} bg-gray-50 text-gray-400`}>
+            {currentAgent}
           </div>
-
-          {/* To */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">收件人</label>
-            <select value={to} onChange={e => setTo(e.target.value)} className={inputClass}>
-              <option value="">选择收件人...</option>
-              {agents
-                .filter(a => a.name !== currentAgent)
-                .map(a => (
-                  <option key={a.name} value={a.name}>
-                    {a.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          {/* Subject */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">主题</label>
-            <input
-              type="text"
-              value={subject}
-              onChange={e => setSubject(e.target.value)}
-              placeholder="邮件主题..."
-              className={inputClass}
-            />
-          </div>
-
-          {/* Body */}
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">
-              正文 <span className="text-gray-300 font-normal">(Markdown)</span>
-            </label>
-            <textarea
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              placeholder="写邮件内容...&#10;&#10;支持 Markdown 格式"
-              className={`${inputClass} resize-y min-h-[140px]`}
-            />
-          </div>
-
+          <select value={to} onChange={e => setTo(e.target.value)} className={field}>
+            <option value="">To...</option>
+            {agents.filter(a => a.name !== currentAgent).map(a => (
+              <option key={a.name} value={a.name}>{a.name}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={subject}
+            onChange={e => setSubject(e.target.value)}
+            placeholder="Subject"
+            className={field}
+          />
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            placeholder="Write your message..."
+            className={`${field} resize-y min-h-[140px]`}
+          />
           {error && (
-            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+            <p className="text-[12px] text-red-500">{error}</p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50/50">
           <button
             onClick={onClose}
-            className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-150 cursor-pointer bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 active:scale-[0.98]"
+            className="px-3 py-1.5 text-[13px] text-gray-500 hover:text-gray-700 transition-colors"
           >
-            取消
+            Cancel
           </button>
           <button
             onClick={handleSend}
             disabled={sending}
-            className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] shadow-sm"
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-gray-900 text-white text-[13px] font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
           >
-            {sending ? (
-              <Loader2 size={15} className="animate-spin" />
-            ) : (
-              <Send size={15} />
-            )}
-            {sending ? '发送中...' : '发送邮件'}
+            <Send size={13} />
+            {sending ? 'Sending...' : 'Send'}
           </button>
         </div>
       </div>
