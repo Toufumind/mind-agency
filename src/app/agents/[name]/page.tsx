@@ -2,11 +2,13 @@
 
 import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import Sidebar from '@/components/sidebar';
-import Terminal from '@/components/terminal';
 import { Mail, X } from 'lucide-react';
 import type { Email } from '@/types';
+
+const Terminal = dynamic(() => import('@/components/terminal'), { ssr: false });
 
 export default function AgentPage() {
   const params = useParams();
