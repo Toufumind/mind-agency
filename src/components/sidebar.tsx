@@ -11,6 +11,10 @@ import {
 interface AgentInfo { name: string; emailCount: number; config?: { roles?: string[]; permissions?: Record<string, boolean>; autoRespondToEmail?: boolean; autoProcessGroupInvites?: boolean; }; }
 interface GroupInfo { name: string; }
 
+// Simple cache — avoid refetching on every navigation
+let lastLoad = 0;
+const CACHE_TTL = 5000;
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -19,6 +23,8 @@ export default function Sidebar() {
   const [confirmDel, setConfirmDel] = useState('');
 
   const load = useCallback(() => {
+    if (Date.now() - lastLoad < CACHE_TTL) return;
+    lastLoad = Date.now();
     fetch('/api/agents').then(r => r.json()).then(d => setAgents(d.agents || [])).catch(() => {});
     fetch('/api/groups/scan').then(r => r.json())
       .then(d => { if (d.groups) setGroups(d.groups.map((g: string) => ({ name: g }))); })

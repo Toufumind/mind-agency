@@ -28,41 +28,27 @@ export default function HomePage() {
     fetch('/api/agents').then(r => r.json()).then(d => {
       setAgents(d.agents || []);
       let t = 0; for (const a of d.agents || []) t += a.emailCount; setTotalEmails(t);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoading(false));
 
-    // Groups with details
+    // Groups: fire-and-forget, results stream in as they resolve
     fetch('/api/groups/scan').then(r => r.json()).then(async d => {
       const groupNames = d.groups || [];
-      const detailed: GroupInfo[] = [];
+      // Show names immediately
+      setGroups(groupNames.map((g: string) => ({ name: g, messageCount: 0, memberCount: 0 })));
+      // Then enrich with details as they come
       for (const g of groupNames) {
-        try {
-          const gr = await fetch(`/api/groups/${g}`);
-          const gd = await gr.json();
-          detailed.push({
-            name: g,
-            messageCount: gd.messageCount || 0,
+        fetch(`/api/groups/${g}`).then(r => r.json()).then(gd => {
+          setGroups(prev => prev.map(p => p.name === g ? {
+            name: g, messageCount: gd.messageCount || 0,
             memberCount: (gd.members || []).length,
             lastActivity: gd.messages?.length > 0 ? gd.messages[gd.messages.length - 1]?.from : undefined,
-          });
-        } catch { detailed.push({ name: g, messageCount: 0, memberCount: 0 }); }
+          } : p));
+        }).catch(() => {});
       }
-      setGroups(detailed);
     }).catch(() => {});
 
-    // Audit
-    fetch('/api/audit?limit=10').then(r => r.json()).then(d => {
-      setAuditLogs(d.logs || []);
-    }).catch(() => {});
-
-    // WebSocket status
-    try {
-      const ws = new WebSocket(`ws://localhost:3001`);
-      ws.onopen = () => { setWsStatus({ connected: true }); ws.close(); };
-      ws.onerror = () => setWsStatus({ connected: false });
-      setTimeout(() => { if (ws.readyState !== WebSocket.OPEN) { ws.close(); setWsStatus({ connected: false }); } }, 2000);
-    } catch { setWsStatus({ connected: false }); }
-
-    setLoading(false);
+    // Audit: lazy
+    fetch('/api/audit?limit=10').then(r => r.json()).then(d => setAuditLogs(d.logs || [])).catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);

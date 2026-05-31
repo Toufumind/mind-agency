@@ -33,7 +33,6 @@ export default function AgentPage() {
   const [saving, setSaving] = useState(false);
   const [polling, setPolling] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
-  const [wsConnected, setWsConnected] = useState(false);
 
   const loadContext = useCallback(() => {
     Promise.all([
@@ -63,16 +62,10 @@ export default function AgentPage() {
       .then(d => setAuditLogs(d.logs || [])).catch(() => {});
   }, [name]);
 
-  useEffect(() => { loadContext(); loadConfig(); loadAudit(); }, [loadContext, loadConfig, loadAudit]);
+  useEffect(() => { loadContext(); loadConfig(); }, [loadContext, loadConfig]);
 
-  // WS connect for status dot
-  useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:3001`);
-    ws.onopen = () => setWsConnected(true);
-    ws.onclose = () => setWsConnected(false);
-    setTimeout(() => { if (ws.readyState !== WebSocket.OPEN) { ws.close(); setWsConnected(false); } }, 2000);
-    return () => ws.close();
-  }, [name]);
+  // Lazy load audit only when panel opens
+  useEffect(() => { if (showAudit) loadAudit(); }, [showAudit, loadAudit]);
 
   // Background auto-poll
   useEffect(() => {
@@ -144,9 +137,6 @@ export default function AgentPage() {
             </span>
 
             <div className="ml-auto flex items-center gap-2">
-              {/* WS status */}
-              <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-emerald-400' : 'bg-gray-200'}`} title={wsConnected ? 'WS connected' : 'WS offline'} />
-
               <button onClick={handlePoll} disabled={polling}
                 className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${polling ? 'text-gray-300' : 'text-green-500 hover:text-green-700 hover:bg-green-50'}`}>
                 <Zap size={11} className={polling ? 'animate-spin inline mr-0.5' : 'inline mr-0.5'} />Poll

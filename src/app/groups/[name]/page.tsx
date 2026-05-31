@@ -53,7 +53,7 @@ export default function GroupPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: `用 group_send 向 ${name} 群发送消息: ${t}`, group: name }),
       });
-      setTimeout(fetchGroup, 2000);
+      fetchGroup(); // Refresh in background, don't block
     } catch {}
     setSending(false);
   };
