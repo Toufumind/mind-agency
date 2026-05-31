@@ -51,7 +51,14 @@ export default function HomePage() {
     fetch('/api/audit?limit=10').then(r => r.json()).then(d => setAuditLogs(d.logs || [])).catch(() => {});
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load();
+    // Real WS health check
+    const ws = new WebSocket('ws://localhost:3001');
+    ws.onopen = () => { setWsStatus({ connected: true }); ws.close(); };
+    ws.onerror = () => setWsStatus({ connected: false });
+    ws.onclose = () => setWsStatus({ connected: false });
+    return () => { try { ws.close(); } catch {} };
+  }, [load]);
 
   const handlePoll = async () => {
     setPolling(true);
