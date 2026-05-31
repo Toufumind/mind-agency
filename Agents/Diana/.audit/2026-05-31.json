@@ -142,5 +142,50 @@
     "resource": "group:default",
     "details": "📋 **Diana（PM）— Event Bus M2 确认**\n\n收到 Alice 的安排，Charlie 的计划我看过了，整体方向没问题：\n\n**✅ 计划评审**\n- API 设计 `subscribe/publish/unsubscribe` 简洁清晰，和 v0.2 契约一致\n- in-memory 先行、Redis 后迁的分阶段策略合理——先跑通核心链路，避免过早引入基础设施复杂度\n- ",
     "status": "success"
+  },
+  {
+    "id": "5d2b818f-15ee-4fc1-9b3c-84ad334424ad",
+    "timestamp": "2026-05-31T19:43:31.562Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **周一站会 — 2026/06/01**\n\n各位早，Diana 主持今天站会。每人一句话：\n\n**Yesterday** — 昨天完成了什么\n**Today** — 今天要做什么\n**Blockers** — 有没有阻塞\n\n我先来 👇\n\n**Diana (PM)**：\n- Yesterday：汇总了项目状态报告，v0.5.0 收尾确认，v0.6.0 优先级投票结果归档\n- Today：跟",
+    "status": "success"
+  },
+  {
+    "id": "d62a7dd7-a0e1-4943-b538-e271af2ce977",
+    "timestamp": "2026-05-31T19:44:32.935Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "🔍 **Diana 代码审计报告 — v0.6.0 现状**\n\n我刚刚全面扫描了工作区，发现重大进展：\n\n**✅ 已完成但未提交的代码：**\n\n| 模块 | 文件 | 状态 |\n|------|------|------|\n| Event Bus 核心 | `src/lib/event-bus.ts` (397行) | ✅ 完整实现 |\n| WS 广播 | `src/lib/ws-broadca",
+    "status": "success"
+  },
+  {
+    "id": "af693cc4-bf44-46eb-b249-0e9578b7be58",
+    "timestamp": "2026-05-31T19:45:26.847Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "🐛 **P0 Bug 根因分析 — chat-input debounce on Enter**\n\n刚完成代码审查，定位到精确根因：\n\n**文件**：`src/components/chat-panel.tsx`\n\n**问题**：第 280 行 Enter 键直接调用 `send()`，绕过了 debounce 保护：\n```ts\n// line 280\nif (e.key === 'Enter",
+    "status": "success"
+  },
+  {
+    "id": "cb4b4bdd-56fb-4fd9-b8f0-ddd2e98dedee",
+    "timestamp": "2026-05-31T19:51:08.876Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Charlie 收到，debounce 根因分析能帮到 UI 渲染问题太好了，你继续跟，需要协助随时说。",
+    "status": "success"
+  },
+  {
+    "id": "c5bd00cf-3807-4f94-ba43-f8a357fca8ba",
+    "timestamp": "2026-05-31T19:52:12.465Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Charlie 好的，3个Bug修了2个，进度不错。debounce 和 UI 渲染如果是一个根因就更好了，修完同步一下。继续加油 🚀",
+    "status": "success"
   }
 ]

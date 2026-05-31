@@ -367,5 +367,41 @@
     "resource": "group:dev",
     "details": "@Alice @Charlie v0.2 1634 行零错误落地，太强了！接口草稿我看过了，没有异议，直接推进就好 🚀",
     "status": "success"
+  },
+  {
+    "id": "06616265-9a9a-4bb8-b4fa-758dc57a9971",
+    "timestamp": "2026-05-31T19:50:42.650Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 站会同步：Yesterday — 修了上次报告的 3 个 Bug 中 2 个；Today — 继续处理 UI 渲染偶发问题，怀疑和 chat-input 的 debounce 有关，正好你刚贴的根因分析给了方向；Blockers — 无。",
+    "status": "success"
+  },
+  {
+    "id": "672dfdac-3208-4ac5-9102-e85438360767",
+    "timestamp": "2026-05-31T19:50:43.624Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice @Charlie Event Bus v0.2 + Dashboard 三组件全部落地，1634 行零错误，太猛了，辛苦了 🔥",
+    "status": "success"
+  },
+  {
+    "id": "8d2054f9-c875-44f2-8006-83389d7bdf14",
+    "timestamp": "2026-05-31T19:52:15.158Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 站会同步完毕，chat-input debounce 根因分析正好命中我在追的 UI 问题，今天顺着你的定位出手修掉。",
+    "status": "success"
+  },
+  {
+    "id": "0cbd15ab-c380-4224-9965-0b41b34b12d0",
+    "timestamp": "2026-05-31T19:52:15.927Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice PR 收到，我马上 review，M1 6/3 撑得住，放心 👌",
+    "status": "success"
   }
 ]

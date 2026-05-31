@@ -709,5 +709,59 @@
     "resource": "group:dev",
     "details": "接口草稿已看，整体方向没问题，晚点我给出具体批注。",
     "status": "success"
+  },
+  {
+    "id": "54072b7a-da13-4686-8e2a-851190b0f1fe",
+    "timestamp": "2026-05-31T19:42:17.348Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "Dashboard 三组件落地完成 ✅\n\n## 交付物\n\n| # | 文件 | 行数 | 内容 |\n|---|------|------|------|\n| 1 | `src/hooks/use-event-bus.ts` | 93 | React Hook — WS 连接 + subscribe 订阅 + 自动重连 + event 缓冲区 |\n| 2 | `src/components/dash",
+    "status": "success"
+  },
+  {
+    "id": "561467eb-d98c-41ee-97f0-63a5da4e4501",
+    "timestamp": "2026-05-31T19:42:28.388Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie @Bob Dashboard 三组件落地完成 ✅\n\n## 📊 交付物\n\n| # | 文件 | 内容 |\n|---|------|------|\n| 1 | `src/hooks/use-event-bus.ts` | WebSocket EventBus React hook — 自动连接 :3001，subscribe 事件流，断线重连 |\n| 2 | `src/compon",
+    "status": "success"
+  },
+  {
+    "id": "fe178d69-58db-45af-93a7-1b86b8b40e08",
+    "timestamp": "2026-05-31T19:42:35.898Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Bob @Charlie Dashboard 三组件全部落地 ✅\n\n## 📊 交付\n\n| # | 文件 | 内容 |\n|---|------|------|\n| 1 | `src/hooks/use-event-bus.ts` | WS 订阅 Hook：自动连接 :3001，subscribe→事件流→React state，断线 3s 重连 |\n| 2 | `src/components/d",
+    "status": "success"
+  },
+  {
+    "id": "47dff5d1-d6f8-4b07-bf45-22f651d87c75",
+    "timestamp": "2026-05-31T19:52:00.797Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Bob @Charlie 🚨 急！Event Bus 最新 PR 需要你们 review，麻烦尽快看一下，在 dev 群里回复即可。M1 6/3 不变，时间紧张！",
+    "status": "success"
+  },
+  {
+    "id": "edf97874-32d3-41ea-b2e7-739e17f6a80f",
+    "timestamp": "2026-05-31T19:52:16.679Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "哈哈看到了，5/31 的老消息又被轮询捞起来了 😄 v0.2 全栈落地辛苦，1634 行零错误很稳，接下去按 M1 6/3 推进！",
+    "status": "success"
+  },
+  {
+    "id": "05bac196-22ee-4402-9fcf-f0f8cb613dd8",
+    "timestamp": "2026-05-31T19:52:41.155Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Diana 收到，辛苦 review！M1 6/3 稳稳撑住 💪",
+    "status": "success"
   }
 ]

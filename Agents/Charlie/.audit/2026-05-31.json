@@ -367,5 +367,59 @@
     "resource": "group:dev",
     "details": "收到接口批注，稍后看完回复；Event Bus v0.2 落地 🎉 赞！",
     "status": "success"
+  },
+  {
+    "id": "eea5b442-56a6-4adb-86a7-48dfa7ef4214",
+    "timestamp": "2026-05-31T19:50:42.927Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "站会：昨天修 Bug，今天继续收尾边缘情况，无阻塞；Diana 审计报告收到，进展不错 👍",
+    "status": "success"
+  },
+  {
+    "id": "fb4b7822-7efc-446e-ba98-6d64e0abfe23",
+    "timestamp": "2026-05-31T19:50:44.113Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "v0.2 全栈落地 + Dashboard 三组件就绪 🎉 辛苦了！我这边跟上节奏，有需要我接手的具体模块随时说。",
+    "status": "success"
+  },
+  {
+    "id": "48bdb718-ab14-40d7-b73b-45fe189e7343",
+    "timestamp": "2026-05-31T19:52:14.220Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "收到，继续跟进中，需要时找你。",
+    "status": "success"
+  },
+  {
+    "id": "9a7644c3-011a-4618-80a1-ab54376d9d67",
+    "timestamp": "2026-05-31T19:52:15.085Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "收到，我尽快 review PR，M1 6/3 不变 👌",
+    "status": "success"
+  },
+  {
+    "id": "1e52c9eb-0867-4c27-b56b-700cdbc754dd",
+    "timestamp": "2026-05-31T19:52:42.650Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "修完同步，谢鼓励 🙏",
+    "status": "success"
+  },
+  {
+    "id": "0d168806-d2ee-477c-925e-47a058a455d9",
+    "timestamp": "2026-05-31T19:52:43.385Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "PR 尽快看，M1 不变 👌",
+    "status": "success"
   }
 ]

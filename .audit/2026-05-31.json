@@ -367,5 +367,95 @@
     "resource": "group:default",
     "details": "group_send in default: @Bob @Charlie reported Bug? Short update please.",
     "status": "success"
+  },
+  {
+    "id": "1228c164-0c55-47b4-9910-a005dcfcc1e2",
+    "timestamp": "2026-05-31T19:36:59.291Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "在工作没",
+    "status": "success"
+  },
+  {
+    "id": "90961bf0-a1e6-4d64-bb18-20f4e97dcee2",
+    "timestamp": "2026-05-31T19:37:24.241Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "你说呢？",
+    "status": "success"
+  },
+  {
+    "id": "f9d91ded-7c01-41bb-86a4-362c726063bc",
+    "timestamp": "2026-05-31T19:38:05.682Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "马上开始",
+    "status": "success"
+  },
+  {
+    "id": "d3081777-d976-4942-a0f2-721f2519b7f5",
+    "timestamp": "2026-05-31T19:39:01.530Z",
+    "agent": "Charlie",
+    "action": "chat.message",
+    "resource": "agent:Charlie",
+    "details": "你是不是pm?",
+    "status": "success"
+  },
+  {
+    "id": "e047369e-91ab-4c3c-8187-71eef9bcbfbf",
+    "timestamp": "2026-05-31T19:39:28.583Z",
+    "agent": "Diana",
+    "action": "chat.message",
+    "resource": "agent:Diana",
+    "details": "你是不是pm",
+    "status": "success"
+  },
+  {
+    "id": "e32d6dd4-81cf-4647-9586-a59c4de2eda4",
+    "timestamp": "2026-05-31T19:40:14.390Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "继续啊",
+    "status": "success"
+  },
+  {
+    "id": "663378fd-ed2a-46ac-9008-ae5d13d25e90",
+    "timestamp": "2026-05-31T19:40:37.432Z",
+    "agent": "Diana",
+    "action": "chat.message",
+    "resource": "agent:Diana",
+    "details": "汇报一下当前你对项目的掌握情况",
+    "status": "success"
+  },
+  {
+    "id": "8fb958a6-0231-4a38-8cc5-2c8deaf348b8",
+    "timestamp": "2026-05-31T19:41:13.335Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "继续继续",
+    "status": "success"
+  },
+  {
+    "id": "81a27ef4-ba78-48b4-ba6a-fd7bfb651b73",
+    "timestamp": "2026-05-31T19:43:11.814Z",
+    "agent": "Diana",
+    "action": "chat.message",
+    "resource": "agent:Diana",
+    "details": "给我不停的干",
+    "status": "success"
+  },
+  {
+    "id": "cbf5d4ec-b71d-4292-af11-77a5a15133e1",
+    "timestamp": "2026-05-31T19:51:55.558Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:dev",
+    "details": "Use group_send in dev group: @Bob @Charlie urgent �� need your review on the latest Event Bus PR. Please reply in dev group. Short reply only!",
+    "status": "success"
   }
 ]

@@ -72,16 +72,14 @@ function checkGroupMentions(agentName: string): string {
       try {
         const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
         const blocks = raw.split(/\n(?=---\nfrom:)/);
+        // Collect ALL @mentions in this file (not just first one)
         for (const block of blocks) {
           const from = (block.match(/from:\s*(.+)/)?.[1] || '').trim();
-          // Don't self-trigger on own messages
           if (from.toLowerCase() === agentName.toLowerCase()) continue;
-          // Match explicit @mention (case-insensitive)
           const blockLower = block.toLowerCase();
           if (blockLower.includes('@' + agentName.toLowerCase())) {
             const body = (block.split('\n---\n\n')[1] || block).slice(0, 200);
             parts.push(`${g.name}群 ${from}: ${body.substring(0, 200)}`);
-            break;
           }
         }
       } catch {}
@@ -167,14 +165,20 @@ export async function autoRespond(agentName: string): Promise<{
     groupMentions = checkGroupMentions(agentName);
   }
 
-  // ── Dedup @mentions (prevent re-trigger on same mention in next cycle) ──
+  // ── Dedup @mentions: hash the FULL mention text (not truncated) ──
+  // Previous bug: slice(0,120) made every @mention hash identical → all skipped.
   if (groupMentions) {
-    const mentionHash = crypto.createHash('md5').update(groupMentions.slice(0, 120)).digest('hex').slice(0, 8);
+    const fullHash = crypto.createHash('md5').update(groupMentions).digest('hex').slice(0, 12);
     const already = getProcessedCache(agentName);
-    if (already.has('@' + mentionHash)) {
-      return { triggered: false, reason: 'already responded to this mention' };
+    if (already.has('@' + fullHash)) {
+      return { triggered: false, reason: 'already responded to this exact mention' };
     }
-    already.add('@' + mentionHash);
+    // Clean old hashes, keep latest 10
+    const hashes = [...already].filter(k => k.startsWith('@'));
+    if (hashes.length > 10) {
+      for (const h of hashes.slice(0, hashes.length - 10)) already.delete(h);
+    }
+    already.add('@' + fullHash);
     saveProcessedCache(agentName, already);
   }
 
