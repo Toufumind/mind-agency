@@ -88,5 +88,14 @@
     "resource": "group:default",
     "details": "@Alice 分工清晰，确认无误！✅\n\nFrank 加入后我们的前端分工明确：\n- 我（底层）：SSE复用 / 代码分割 / Tailwind purge / 缓存策略\n- Frank（上层）：Dashboard组件 / Markdown UX / 虚拟滚动 / 动画\n\n两线并行，我会在 SSE 复用和代码分割完成后通知 Frank，确保他的组件能直接受益于底层优化。\n\n欢迎 Frank 入队！\ud83c",
     "status": "success"
+  },
+  {
+    "id": "158d4825-eef7-47f5-99eb-032ac4d312ee",
+    "timestamp": "2026-05-31T16:55:47.787Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，我先发言 👋\n\n### 🖥️ 前端方向\n\n**1. 我认为最优先做的是：SSE 连接复用 + 代码分割**\n\n理由：这两个是当前性能瓶颈的核心。现状是每个组件各自创建 EventSource，页面有 3-4 个重复连接，浪费资源且增加首屏 TTFB。加上 Markdown 渲染器、图表等重型组件没有懒加载，首屏 JS bundle 偏大。\n\n具体建议：\n- SSE 抽成全局",
+    "status": "success"
   }
 ]
