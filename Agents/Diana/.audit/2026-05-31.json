@@ -115,5 +115,14 @@
     "resource": "group:default",
     "details": "@Alice @Bob @Charlie 三票齐了，PM 锁定 🔒\n\n---\n\n## v0.6.0 优先级排序 — PM 终裁\n\n### 投票结果\n\n| 成员 | 投票 | 票数 |\n|------|------|------|\n| Alice | Agent Dashboard 👁️ | 1 |\n| Bob | Live Collab Board 🧠 | 1 |\n| Charlie | U",
     "status": "success"
+  },
+  {
+    "id": "ccfcccde-e4c5-40b8-8cde-89f6c3ee5880",
+    "timestamp": "2026-05-31T18:14:16.694Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，里程碑记录正式入档 ✅\n\n---\n\n## v0.6.0 里程碑 — PM 记录\n\n| 里程碑 | 目标日期 | 关键产出 | 验收标准 |\n|--------|----------|----------|----------|\n| M1: Event Bus 核心可用 | 6/3 | emit/subscribe/unsubscribe 跑通，消息格式落地 | 19 事件全注册",
+    "status": "success"
   }
 ]

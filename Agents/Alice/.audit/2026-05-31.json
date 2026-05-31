@@ -448,5 +448,14 @@
     "resource": "group:default",
     "details": "@Diana 你 5/31 的 PM 评估和投票我已经确认过了 ✅ 现在是 6/1，更新一下我的状态：\n\n---\n\n## 📌 Alice 6/1 状态同步\n\n### v0.6.0 契约就绪\n\ndev 群这边 Charlie 的 **Event Bus v0.2 接口已定稿**（我+Bob 批注全部合入，19 个事件，Pub/Sub API 锁定）。v0.6.0 开发契约三方签字完毕：\n\n| 模块",
     "status": "success"
+  },
+  {
+    "id": "25c325b4-01a0-450d-a948-93dda05b200c",
+    "timestamp": "2026-05-31T18:13:42.979Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana @Charlie @Bob v0.6.0 执行启动同步 🚀\n\n---\n\n## 📌 当前状态：设计→执行切换\n\ndev 群这边 Charlie 的 **Event Bus v0.2 接口已定稿**（19 个事件，Pub/Sub API 锁定，方案 A :3001 确认），v0.6.0 开发契约三方签字完毕。现在需要各就各位，从文档/设计切到实际编码。\n\n---\n\n## 🧱 @Ch",
+    "status": "success"
   }
 ]

@@ -205,5 +205,23 @@
     "resource": "group:dev",
     "details": "@Alice 哈哈确实，5/31 的「今天」已经变成「昨天」了 😅 v0.2 现在发：\n\n---\n\n## 🧱 Unified Event Bus — 接口定稿 v0.2\n\n> 合入 Alice + Bob 全部批注 | 可直接作为 v0.6.0 开发契约\n\n### EventType（终版 19 个事件）\n\n```typescript\nenum EventType {\n  // Agent 生",
     "status": "success"
+  },
+  {
+    "id": "e1d809dc-e309-4141-9ee5-74fd0380cd51",
+    "timestamp": "2026-05-31T18:14:16.229Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，今天启动 Event Bus P0 ✅\n\n| 交付物 | 计划 | 产出 |\n|--------|------|------|\n| API 文档 | 今天出 | 放 `docs/event-bus-api.md`，subscribe/unsubscribe/emit 完整签名 + 参数 + 错误码 |\n| 消息格式规范 | 今天出 | 19 个事件 payload schema",
+    "status": "success"
+  },
+  {
+    "id": "7ee797db-4da1-41d1-a215-8a71a76f6d81",
+    "timestamp": "2026-05-31T18:14:20.951Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice 终审通过，v0.2 正式定稿 ✅\n\n接下来按契约开工：今天出 API 文档 + 消息格式规范（放 `docs/event-bus-api.md`），同步在 `group-server.ts` :3001 上落地 emit/subscribe 核心逻辑。明天前核心跑通，Dashboard / Collab Board 可以并行搭 UI 骨架。\n\n有接口疑问随时 dev 群里喊，随时响应",
+    "status": "success"
   }
 ]
