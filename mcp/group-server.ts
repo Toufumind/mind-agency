@@ -13,6 +13,26 @@
 import { createInterface } from 'readline';
 import fs from 'fs';
 import path from 'path';
+import http from 'http';
+import { writeAudit, checkPermission } from '../src/lib/audit.js';
+
+const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || 'http://localhost:3001/broadcast';
+
+/** Fire-and-forget broadcast to WebSocket clients */
+function broadcast(msg: Record<string, unknown>) {
+  try {
+    const body = JSON.stringify({ ...msg, timestamp: new Date().toISOString() });
+    const u = new URL(WS_BROADCAST_URL);
+    const req = http.request({
+      hostname: u.hostname, port: u.port, path: u.pathname,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, (res) => { res.resume(); });
+    req.on('error', () => { /* WS server may not be running */ });
+    req.write(body);
+    req.end();
+  } catch { /* ignore */ }
+}
 
 const PROJECT_ROOT = process.env.MIND_PROJECT_ROOT || process.cwd();
 
@@ -106,6 +126,8 @@ rl.on('line', (line: string) => {
         const { group, message } = a;
         if (!group || !message) { respond(id, { content: [{ type: 'text', text: 'group and message required' }], isError: true }); return; }
         appendToChat(group, agentName, message);
+        broadcast({ type: 'group_message', group, from: agentName, message });
+        writeAudit({ agent: agentName, action: 'group.send', resource: `group:${group}`, details: message.slice(0, 200) });
         respond(id, { content: [{ type: 'text', text: `sent to ${group}` }] });
         return;
       }
@@ -127,6 +149,7 @@ rl.on('line', (line: string) => {
         if (exists(agDir)) { respond(id, { content: [{ type: 'text', text: `already in ${group}` }] }); return; }
         fs.mkdirSync(path.join(agDir, 'email'), { recursive: true });
         appendToChat(group, 'system', `${agentName} joined the group`);
+        writeAudit({ agent: agentName, action: 'group.join', resource: `group:${group}` });
         const others = exists(path.join(gDir, 'Agents')) ? readDir(path.join(gDir, 'Agents')).filter(e => e.isDirectory() && e.name !== agentName).map(e => e.name) : [];
         respond(id, { content: [{ type: 'text', text: `joined ${group}. members: ${others.join(', ') || 'none'}` }] });
         return;
@@ -139,6 +162,7 @@ rl.on('line', (line: string) => {
         if (!exists(agDir)) { respond(id, { content: [{ type: 'text', text: `not in ${group}` }] }); return; }
         appendToChat(group, 'system', `${agentName} left the group`);
         fs.rmSync(agDir, { recursive: true, force: true });
+        writeAudit({ agent: agentName, action: 'group.leave', resource: `group:${group}` });
         respond(id, { content: [{ type: 'text', text: `left ${group}` }] });
         return;
       }
@@ -146,6 +170,11 @@ rl.on('line', (line: string) => {
       if (name === 'group_create') {
         const { group } = a;
         if (!group) { respond(id, { content: [{ type: 'text', text: 'group name required' }], isError: true }); return; }
+        if (!checkPermission(agentName, 'canCreateGroup')) {
+          respond(id, { content: [{ type: 'text', text: `permission denied: ${agentName} does not have canCreateGroup permission` }], isError: true });
+          writeAudit({ agent: agentName, action: 'group.create', resource: `group:${group}`, details: 'permission denied', status: 'error' });
+          return;
+        }
         const gDir = path.join(groupsDir(), group);
         if (exists(gDir)) { respond(id, { content: [{ type: 'text', text: `group "${group}" already exists` }], isError: true }); return; }
         // Create group structure
@@ -158,6 +187,7 @@ rl.on('line', (line: string) => {
         const today = new Date().toISOString().split('T')[0];
         const chatFile = path.join(gDir, 'chat', `${today}.md`);
         fs.appendFileSync(chatFile, `\n---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n${group} 群组已创建。${agentName} 是创建者。\n`, 'utf-8');
+        writeAudit({ agent: agentName, action: 'group.create', resource: `group:${group}` });
         respond(id, { content: [{ type: 'text', text: `created group "${group}". You are now a member.` }] });
         return;
       }

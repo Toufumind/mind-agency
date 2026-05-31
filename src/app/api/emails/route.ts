@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAgentEmails, getEmail } from '@/lib/agents';
 import { sendEmail, deleteEmail } from '@/lib/emails';
+import { writeAudit } from '@/lib/audit';
+import { broadcastToClients } from '@/lib/ws-broadcast';
 
 /** GET: 获取邮件列表或单封邮件 */
 export async function GET(request: NextRequest) {
@@ -41,9 +43,26 @@ export async function POST(request: NextRequest) {
 
     const result = sendEmail({ from, to, subject, body: emailBody || '' });
 
+    writeAudit({
+      agent: from,
+      action: 'email.send',
+      resource: `agent:${to}`,
+      details: `subject: ${subject}`,
+      status: result.success ? 'success' : 'error',
+    });
+
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+
+    // Notify WebSocket clients about the new email (fire-and-forget)
+    broadcastToClients({
+      type: 'new_email',
+      from,
+      to,
+      subject,
+      message: emailBody || '',
+    });
 
     return NextResponse.json({
       success: true,
@@ -69,6 +88,14 @@ export async function DELETE(request: NextRequest) {
   }
 
   const result = deleteEmail(agent, file);
+
+  writeAudit({
+    agent,
+    action: 'email.delete',
+    resource: `agent:${agent}`,
+    details: `file: ${file}`,
+    status: result.success ? 'success' : 'error',
+  });
 
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: 400 });

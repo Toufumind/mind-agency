@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail, Users as UsersIcon } from 'lucide-react';
+import { useToast } from '@/components/toast';
 
 interface ChatEvent { type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error'; content?: string; toolName?: string; toolInput?: string; toolOutput?: string; timestamp: string; }
 interface Msg { role: 'user' | 'assistant' | 'system'; content: string; events: ChatEvent[]; timestamp: string; }
@@ -154,6 +155,9 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
   const [myGroups, setMyGroups] = useState<string[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [sendReady, setSendReady] = useState(true);
+  const { toast } = useToast();
 
   const filteredCmds = COMMANDS.filter(c => c.cmd.startsWith(cmdFilter));
 
@@ -192,8 +196,59 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
+  // ── WebSocket connection for real-time notifications ──────────────
+  useEffect(() => {
+    const wsUrl = `ws://${window.location.hostname}:3001`;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+
+    function connect() {
+      if (stopped) return;
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('[ws] connected to notification server');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'group_message' && data.from && data.message) {
+            toast(`[${data.group}] ${data.from}: ${data.message.slice(0, 80)}`);
+          } else if (data.type === 'new_email' && data.from && data.subject) {
+            toast(`New email from ${data.from}: ${data.subject}`);
+          }
+        } catch { /* ignore malformed messages */ }
+      };
+
+      ws.onclose = () => {
+        if (!stopped) {
+          // Reconnect after 3 seconds
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      };
+
+      ws.onerror = () => {
+        ws?.close();
+      };
+    }
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+    };
+  }, [toast]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value; setInput(v);
+    // Debounce: prevent send within 300ms of last keystroke
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSendReady(false);
+    debounceRef.current = setTimeout(() => setSendReady(true), 300);
     if (v.startsWith('/') && !v.includes(' ')) { setCmdFilter(v); setShowCmds(true); setCmdIdx(0); }
     else setShowCmds(false);
   };
@@ -210,7 +265,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
 
   const send = async () => {
     const t = input.trim();
-    if (!t || busy) return;
+    if (!t || busy || !sendReady) return;
     setInput(''); setShowCmds(false);
 
     // ── Intercept slash commands ──
@@ -371,7 +426,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
             placeholder={`Message ${agentName}...`}
             className="flex-1 bg-transparent border-0 outline-none text-[14px] text-gray-800 placeholder:text-gray-300"
             autoFocus />
-          <button onClick={send} disabled={!input.trim() || busy}
+          <button onClick={send} disabled={!input.trim() || busy || !sendReady}
             className="w-8 h-8 flex items-center justify-center rounded-xl bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-20 transition-colors shrink-0">
             <ArrowUp size={14} />
           </button>
