@@ -56,14 +56,17 @@ function writeIfChanged(filePath: string, content: string): boolean {
   return true; // 内容变了
 }
 
+// Cache files go in .mind/ (not in Agents/ — avoid data pollution)
+const MIND_DIR = path.join(process.cwd(), '.mind');
+
 /** Agent 的稳定系统提示词文件路径（不随 session 变化） */
 function agentSysFile(agentName: string): string {
-  return path.join(AGENTS_DIR, agentName, 'chat', 'sys-prompt.md');
+  return path.join(MIND_DIR, 'agents', agentName, 'sys-prompt.md');
 }
 
-/** Agent 的稳定 MCP 配置文件路径 */
-function agentMcpFile(agentName: string): string {
-  return path.join(AGENTS_DIR, agentName, 'chat', 'mcp-config.json');
+/** 项目级共享 MCP 配置 —— 所有 Agent 用同一个 */
+function sharedMcpFile(): string {
+  return path.join(MIND_DIR, 'mcp-config.json');
 }
 
 // ── Build system prompt components ──
@@ -110,19 +113,30 @@ function buildGroupMembership(agentName: string): string {
   return lines.join('\n') + '\n';
 }
 
-/** 群聊上下文 — 每轮可能变化，放在单独文件里，变化时只更新这个文件 */
+/** 群聊上下文 — 从 Groups/<name>/chat/ 下日期 .md 文件读取 */
 function buildGroupChatContext(agentName: string, groupName?: string): string {
   if (!groupName) return '';
-  const GroupsDir = path.join(process.cwd(), 'Groups');
-  const chatFile = path.join(GroupsDir, groupName, 'chat', 'chat.md');
-  if (!fs.existsSync(chatFile)) {
+  const chatDir = path.join(process.cwd(), 'Groups', groupName, 'chat');
+  if (!fs.existsSync(chatDir)) {
     return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。用 group_send 发言。`;
   }
   try {
-    const raw = fs.readFileSync(chatFile, 'utf-8');
-    // 取最后 6000 字符
-    const snippet = raw.length > 6000 ? '...(较早消息已省略)\n\n' + raw.slice(-6000) : raw;
-    return `\n\n## 你正在 ${groupName} 群聊中。以下是最近的群聊记录：\n\n${snippet}\n\n你可以使用 group_send 工具向群聊发送消息。`;
+    // Read last 3 days of chat files
+    const files = fs.readdirSync(chatDir)
+      .filter(f => f.endsWith('.md'))
+      .sort()
+      .slice(-3);
+    if (files.length === 0) {
+      return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。用 group_send 发言。`;
+    }
+    const parts: string[] = [];
+    for (const f of files) {
+      const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
+      parts.push(`### ${f.replace('.md', '')}\n${raw}`);
+    }
+    const text = parts.join('\n\n');
+    const ctx = text.length > 6000 ? '...(earlier omitted)\n\n' + text.slice(-6000) : text;
+    return `\n\n## 你正在 ${groupName} 群聊中。最近消息：\n\n${ctx}\n\n用 group_send 工具发言。`;
   } catch {
     return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。`;
   }
@@ -150,8 +164,8 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   // ──────────────────────────────────────────────────────
 
   const sysFile = agentSysFile(agentName);
-  const chatCtxFile = path.join(AGENTS_DIR, agentName, 'chat', 'chat-context.md');
-  const mcpCfgFile = agentMcpFile(agentName);
+  const chatCtxFile = path.join(MIND_DIR, 'agents', agentName, 'chat-context.md');
+  const mcpCfgFile = sharedMcpFile();
 
   // 1. 身份 + Group 成员 — 只在 join/leave group 时变化
   const identity = buildIdentity(agentName);

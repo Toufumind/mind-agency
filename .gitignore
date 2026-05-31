@@ -40,6 +40,9 @@ MEMORY.md
 # personal agent configs
 *.local.md
 
+# mind cache files (runtime-generated)
+/.mind/
+
 # agent startup scripts (contain API keys)
 **/start.cmd
 **/start.sh
