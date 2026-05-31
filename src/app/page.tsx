@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/sidebar';
 import Link from 'next/link';
-import { Hash, Users, Mail, Zap, RefreshCw, GitBranch, Clock, CheckCircle, XCircle, ArrowRight, UserCheck } from 'lucide-react';
+import { Hash, Users, Mail, Zap, RefreshCw, GitBranch, Clock, CheckCircle, XCircle, ArrowRight, UserCheck, Radio } from 'lucide-react';
+import { useEventStream } from '@/hooks/use-event-stream';
 
 interface AgentInfo { name: string; emailCount: number; config?: { roles?: string[]; permissions?: Record<string, boolean>; autoRespondToEmail?: boolean; }; }
 interface GroupInfo { name: string; messageCount: number; memberCount: number; lastActivity?: string; }
@@ -50,13 +51,30 @@ export default function HomePage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // ── WebSocket live events ──
+  const { connected, lastEvent } = useEventStream({
+    eventTypes: ['task.created', 'task.in_progress', 'task.completed', 'task.blocked', 'task.review_requested'],
+    scope: 'all',
+  });
+  useEffect(() => {
+    if (lastEvent && ['task.created', 'task.completed', 'task.blocked', 'task.review_requested'].includes(lastEvent.event)) {
+      loadPipeline();
+    }
+  }, [lastEvent, loadPipeline]);
+
   return (
     <div className="flex h-screen bg-white overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-8 py-10">
           <div className="flex items-center justify-between mb-10">
-            <div><h1 className="text-[24px] font-semibold text-gray-900">Mind Agency</h1><p className="text-[13px] text-gray-400 mt-1.5">Multi-agent collaboration dashboard</p></div>
+            <div>
+              <h1 className="text-[24px] font-semibold text-gray-900">Mind Agency</h1>
+              <div className="flex items-center gap-2 mt-1.5">
+                <p className="text-[13px] text-gray-400">Multi-agent collaboration dashboard</p>
+                {connected && <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full"><Radio size={8} className="animate-pulse" /> Live</span>}
+              </div>
+            </div>
             <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-[12px] text-gray-600 hover:bg-gray-50"><RefreshCw size={13} /> Refresh</button>
           </div>
 
