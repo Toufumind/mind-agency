@@ -69,6 +69,7 @@ const tools = [
   { name: 'group_send', description: '向群组发送消息。写入 Groups/<group>/chat/YYYY-MM-DD.md。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, message: { type: 'string' } }, required: ['group', 'message'] } },
   { name: 'group_read', description: '读取群组最近的聊天记录。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, limit: { type: 'number' } }, required: ['group'] } },
   { name: 'group_join', description: '加入群组。创建 Groups/<group>/Agents/<you>/email/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
+  { name: 'group_create', description: '创建一个新的群组。会在 Groups/<name>/ 下创建完整的目录结构（Agents/<you>/email/ + chat/ + TASK_SPEC.md）。创建者自动加入该群组。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
   { name: 'group_leave', description: '退出群组。删除 Groups/<group>/Agents/<you>/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
 ];
 
@@ -139,6 +140,25 @@ rl.on('line', (line: string) => {
         appendToChat(group, 'system', `${agentName} left the group`);
         fs.rmSync(agDir, { recursive: true, force: true });
         respond(id, { content: [{ type: 'text', text: `left ${group}` }] });
+        return;
+      }
+
+      if (name === 'group_create') {
+        const { group } = a;
+        if (!group) { respond(id, { content: [{ type: 'text', text: 'group name required' }], isError: true }); return; }
+        const gDir = path.join(groupsDir(), group);
+        if (exists(gDir)) { respond(id, { content: [{ type: 'text', text: `group "${group}" already exists` }], isError: true }); return; }
+        // Create group structure
+        fs.mkdirSync(path.join(gDir, 'Agents', agentName, 'email'), { recursive: true });
+        fs.mkdirSync(path.join(gDir, 'chat'), { recursive: true });
+        // Write default TASK_SPEC
+        const spec = `# 任务流转规范\n\n任务在 work/<group>/ 下按目录流转，**文件位置即状态**。\n\n## 目录结构\n\n\`\`\`\nwork/<group>/\n├── inbox/                  # 待分配\n├── assigned/<agent>/       # 各 Agent 的工作队列\n└── done/                   # 已完成\n\`\`\`\n\n## 状态流转\n\n\`\`\`\ninbox/ → assigned/<agent>/ → done/\n  ↓           ↓                  ↓\n new      in_progress          done\n\`\`\``;
+        fs.writeFileSync(path.join(gDir, 'TASK_SPEC.md'), spec, 'utf-8');
+        // Welcome message in chat
+        const today = new Date().toISOString().split('T')[0];
+        const chatFile = path.join(gDir, 'chat', `${today}.md`);
+        fs.appendFileSync(chatFile, `\n---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n${group} 群组已创建。${agentName} 是创建者。\n`, 'utf-8');
+        respond(id, { content: [{ type: 'text', text: `created group "${group}". You are now a member.` }] });
         return;
       }
 
