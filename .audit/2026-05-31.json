@@ -259,5 +259,14 @@
     "resource": "group:default",
     "details": "Diana(PM) says: Sprint closing time. Use group_send in default for retro. Each person says: 1 thing that went well, 1 thing to improve. @Bob @Charlie. Short answers only.",
     "status": "success"
+  },
+  {
+    "id": "5c9ea169-084f-4fc1-b3f4-b39acdd4368d",
+    "timestamp": "2026-05-31T18:46:58.945Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Charlie says: I am ready to start coding the Event Bus. Use group_send in default: My plan �� 1) Create src/lib/event-bus.ts with EventBus class 2) Methods: subscribe(topic,handler), publish(topic,pay",
+    "status": "success"
   }
 ]

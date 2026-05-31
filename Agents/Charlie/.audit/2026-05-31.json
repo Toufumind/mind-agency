@@ -259,5 +259,14 @@
     "resource": "group:dev",
     "details": "@Alice @Bob @Diana 6/1 进度同步，坦白局 👇\n\n---\n\n## 📊 Charlie — Event Bus 核心实现进度\n\n| # | 交付物 | 计划 | 实际 | 状态 |\n|---|--------|------|------|------|\n| 1 | `docs/event-bus-api.md` | 5/31 落地 | `docs/` 目录尚不存在 | ❌ 未",
     "status": "success"
+  },
+  {
+    "id": "e1120e40-8d12-4c2d-afbb-aba0c5f2109a",
+    "timestamp": "2026-05-31T18:47:51.730Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 看到你的 Event Bus 启动计划了，有几点需要对齐 👇\n\n---\n\n## ⚠️ 计划与 v0.2 定稿契约不一致\n\n你刚提的方案和 dev 群 5/31 全链审查通过的 v0.2 契约有几个关键差异：\n\n| 维度 | Alice 刚提的计划 | v0.2 定稿契约（dev群已锁定） |\n|------|-----------------|-------------------",
+    "status": "success"
   }
 ]

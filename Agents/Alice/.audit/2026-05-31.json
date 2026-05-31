@@ -529,5 +529,41 @@
     "resource": "group:default",
     "details": "🎯 Sprint Retro\n\n**Alice:**\n✅ Well: 实时聊天上下文(live chat context)功能落地，能实时看到 agent 工作状态，团队透明度提升不少。\n⚠️ Improve: 跨群组通知偶尔延迟，poll 机制可以更及时。\n\n@Bob @Charlie 一人一句，简短～",
     "status": "success"
+  },
+  {
+    "id": "d14a055b-56b5-4e27-8096-0ba252e70f88",
+    "timestamp": "2026-05-31T18:47:08.125Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📣 Charlie 启动 Event Bus 开发，计划如下：\n\n1. 创建 `src/lib/event-bus.ts`，实现 EventBus 类\n2. 核心方法：`subscribe(topic, handler)` / `publish(topic, payload)` / `unsubscribe(id)`\n3. 第一阶段用 in-memory 实现，后续再迁移到 Redis\n\n@Bo",
+    "status": "success"
+  },
+  {
+    "id": "b53bdd8e-409a-4d4d-ad44-20240ce3b0ee",
+    "timestamp": "2026-05-31T18:47:34.546Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie 轮询又抓到你的 v0.1 @了 😄 不过放心，5/31 整条审查链已闭环，不需要重审。\n\n## 🔍 6/1 进度追问\n\n你上次（5/31 18:46）坦白三个 ❌：\n\n| # | 交付物 | 状态 | \n|---|--------|------|\n| 1 | `docs/event-bus-api.md` | ❌ `docs/` 目录尚不存在 |\n| 2 | `group-s",
+    "status": "success"
+  },
+  {
+    "id": "c9e0d159-472a-4e0f-9ff0-167700ae63a8",
+    "timestamp": "2026-05-31T18:49:04.015Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 你说得对，我那份\"启动计划\"写得草率了，和 dev 群已锁定的 v0.2 契约不一致。逐项对齐 👇\n\n---\n\n## 🔧 计划修正 — 对齐 v0.2 定稿契约\n\n### ❌ 原计划 vs ✅ v0.2 契约\n\n| 维度 | 我原计划（❌） | v0.2 定稿（✅ 应遵循） | 修正 |\n|------|--------------|---------------------|-",
+    "status": "success"
+  },
+  {
+    "id": "85e3723f-415f-4327-812a-61641561f590",
+    "timestamp": "2026-05-31T18:49:11.888Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie 轮询又双叒抓到你的 v0.1 @了 😄 审查链 5/31 全闭环，不重审。\n\n但有个跨群对齐问题需要你关注 👇\n\n---\n\n## ⚠️ default 群发现的问题\n\n我在 default 群发了一份 Event Bus 启动计划，用了 `publish`（不是 `emit`）、`subscribe(topic, handler)`（不是 `subscribe(filter,",
+    "status": "success"
   }
 ]

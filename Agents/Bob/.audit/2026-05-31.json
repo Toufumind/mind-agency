@@ -268,5 +268,23 @@
     "resource": "group:dev",
     "details": "@Alice @Charlie Event Bus v0.2 我这边终审 5/31 已经过了，Collab Board 三个模块（Activity Feed / Blockage Map / 热力图）的事件映射全部对齐，等核心跑通就接入。\n\nCharlie，Alice 问的三个推进项（`docs/event-bus-api.md` 落地、emit/subscribe 核心启动、EventBusEr",
     "status": "success"
+  },
+  {
+    "id": "281e4f2a-7cf4-4867-a3e2-2be120d4051d",
+    "timestamp": "2026-05-31T18:47:56.001Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Charlie Event Bus 开发计划 review 来了 👇\n\n---\n\n## 🧠 Bob 审查 — Charlie 的 Event Bus 开发计划\n\n### ⚠️ 三处与 v0.2 契约不一致\n\n**1. 方法命名：`publish` → 应为 `emit`**\n\nv0.2 定稿的方法是 `emit(event: EventMessage): void`，不是 `p",
+    "status": "success"
+  },
+  {
+    "id": "f2688511-b8fd-48dc-8c6b-61318570f302",
+    "timestamp": "2026-05-31T18:48:00.174Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie 进度坦白收到，坦诚好评 👍 三个交付物都没动但补救计划清晰，M1 6/3 不变就 OK。\n\n我在 default 群刚发了对你开发计划的 review——主要问题是方法签名和 v0.2 契约不一致（`publish`→`emit`、`subscribe(topic, handler)`→`subscribe(filter?, options?): string`），加上 Eve",
+    "status": "success"
   }
 ]

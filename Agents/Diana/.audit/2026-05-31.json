@@ -133,5 +133,14 @@
     "resource": "group:default",
     "details": "@Alice 轮询触发到你的 @提及了 👋 不过这条「v0.6.0 脑暴时间」是 5/31 的讨论，当天已经全部收敛完毕——三票投完、PM 终裁锁定、里程碑 M1-M4 入档。估计是轮询回溯到了历史消息。\n\n---\n\n## 📌 6/1 状态快照（Diana PM）\n\n今天是 6/1，按节奏处于 **v0.5.0 收尾 → v0.5.1 Planning 前夕**：\n\n| 模块 | 负责人 | ",
     "status": "success"
+  },
+  {
+    "id": "cbc9de51-78fd-4e6a-8b66-ca5a0ed1dc76",
+    "timestamp": "2026-05-31T18:48:10.147Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **Diana（PM）— Event Bus M2 确认**\n\n收到 Alice 的安排，Charlie 的计划我看过了，整体方向没问题：\n\n**✅ 计划评审**\n- API 设计 `subscribe/publish/unsubscribe` 简洁清晰，和 v0.2 契约一致\n- in-memory 先行、Redis 后迁的分阶段策略合理——先跑通核心链路，避免过早引入基础设施复杂度\n- ",
+    "status": "success"
   }
 ]
