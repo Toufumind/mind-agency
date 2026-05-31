@@ -1,0 +1,75 @@
+﻿name: v0.3-integration-test
+description: >
+  Full v0.3 feature test — condition branching (APPROVED vs REJECTED paths),
+  human approval, ChatDev review, retry + backoff, compensation on failure,
+  priority scheduling, phase metadata verification.
+steps:
+  # ── Step 1: ChatDev-style code review (high priority, 2 retries) ──
+  - id: code_review
+    agent: Alice
+    action: review
+    priority: high
+    retry: 2
+    retry_backoff: exponential
+    on_failure: compensation_review_failed
+    notify: Bob
+    prompt: |
+      [ChatDev审查] 审查代码。格式：ISSUE|file:line|desc|fix
+      如果无问题回复 NO_ISSUES 并包含 APPROVED。
+
+  # ── Step 2: Human approval gate (pauses until approved) ──
+  - id: human_gate
+    agent: Bob
+    action: human_approval
+    dependsOn: [code_review]
+    condition: "$.code_review.output contains APPROVED"
+    priority: high
+    notify: Charlie
+    prompt: |
+      人工审批：代码审查通过，请决定是否批准部署。
+
+  # ── Step 3a: Approved deploy path (critical priority, 3 retries) ──
+  - id: deploy
+    agent: Charlie
+    action: deploy
+    dependsOn: [human_gate]
+    condition: "$.human_gate.output contains APPROVED"
+    priority: critical
+    retry: 3
+    retry_backoff: exponential
+    on_failure: compensation_deploy_failed
+    notify: Alice
+    prompt: 人工已批准。执行部署并回复 DEPLOYED+PASSED。
+
+  # ── Step 3b: Rejected path (skipped when approved) ──
+  - id: rejected_path
+    agent: Diana
+    action: notify
+    dependsOn: [human_gate]
+    condition: "$.human_gate.output contains REJECTED"
+    priority: normal
+    prompt: 部署被拒绝，通知团队。
+
+  # ── Step 4: Verify deployment ──
+  - id: verify
+    agent: Alice
+    action: verify
+    dependsOn: [deploy]
+    condition: "$.deploy.output contains PASSED"
+    priority: normal
+    retry: 2
+    notify: Diana
+    prompt: 验证部署，回复 VERIFIED 或 ISSUES_FOUND。
+
+  # ── Compensation steps ──
+  - id: compensation_review_failed
+    agent: Diana
+    action: notify_review_failure
+    priority: high
+    prompt: 代码审查重试耗尽，通知团队。
+
+  - id: compensation_deploy_failed
+    agent: Diana
+    action: notify_deploy_failure
+    priority: critical
+    prompt: 部署重试耗尽，通知全体团队。
