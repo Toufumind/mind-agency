@@ -2,29 +2,39 @@
  * Background agent scheduler — v0.3
  *
  * Dual-loop: poll (agent triggers every N seconds) + DAG tick (workflow progress).
- * Backward-compatible: startScheduler(30000) works; startScheduler({ engine, ... }) for DAG.
+ * v0.3 auto-trigger: DAG loop scans Groups subdirs for workflow.yaml files
+ * and auto-executes any workflow that does not have an active run.
+ *
+ * Backward-compatible: accepts number (poll ms) or options object with engine.
  */
 
 import { pollAllAgents } from './auto-respond';
 import { emitEvent } from './ws-broadcast';
 import { randomUUID } from 'crypto';
-import type { WorkflowEngine } from './event-bus';
+import fs from 'fs';
+import path from 'path';
+import type { WorkflowEngine, WorkflowDefinition } from './event-bus';
+import { parseWorkflowYaml } from './event-bus';
 
 let pollTid: ReturnType<typeof setInterval> | null = null;
 let dagTid: ReturnType<typeof setInterval> | null = null;
 let pollRunning = false; let dagRunning = false;
 let pollMs = 30000; let dagMs = 10000;
+let engine: WorkflowEngine | undefined;
+/** Cooldown: prevent re-triggering a workflow within this window (ms) */
+const COOLDOWN_MS = parseInt(process.env.WORKFLOW_COOLDOWN || '60000', 10);
+const lastTrigger = new Map<string, number>();
 
 export function startScheduler(
   opts?: number | { pollIntervalMs?: number; dagIntervalMs?: number; engine?: WorkflowEngine }
 ): void {
   if (pollTid) return;
   if (typeof opts === 'number') { pollMs = opts; }
-  else if (opts) { pollMs = opts.pollIntervalMs || 30000; dagMs = opts.dagIntervalMs || 10000; }
+  else if (opts) { pollMs = opts.pollIntervalMs ?? 30000; dagMs = opts.dagIntervalMs ?? 10000; }
   console.log(`[scheduler] v0.3 — poll ${pollMs / 1000}s, dag ${dagMs / 1000}s`);
   tickPoll(); pollTid = setInterval(tickPoll, pollMs);
-  const eng = (typeof opts === 'object' ? opts?.engine : undefined);
-  if (eng) { tickDag(eng); dagTid = setInterval(() => tickDag(eng), dagMs); }
+  engine = (typeof opts === 'object' ? opts?.engine : undefined);
+  if (engine) { tickDag(); dagTid = setInterval(tickDag, dagMs); }
 }
 
 export function stopScheduler(): void {
@@ -47,18 +57,41 @@ async function tickPoll(): Promise<void> {
   finally { pollRunning = false; }
 }
 
-async function tickDag(engine: WorkflowEngine): Promise<void> {
-  if (dagRunning) return; dagRunning = true;
-  try { engine.tick(); } catch (e: unknown) { console.error(`[scheduler] dag error: ${e instanceof Error ? e.message : String(e)}`); }
-  finally { dagRunning = false; }
-}
+/** v0.3: Auto-trigger workflows from Groups subdir workflow.yaml files */
+async function tickDag(): Promise<void> {
+  if (dagRunning || !engine) return; dagRunning = true;
+  try {
+    // Progress existing runs (retries, timeouts)
+    engine.tick();
 
-export function getSchedulerStats() {
-  return {
-    pollIntervalMs, dagIntervalMs,
-    pollMode: pollTid !== null,
-    dagMode: dagTid !== null,
-  };
+    // Scan and auto-trigger new workflows
+    const gd = path.join(process.cwd(), 'Groups');
+    if (!fs.existsSync(gd)) return;
+    for (const e of fs.readdirSync(gd, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name.startsWith('.')) continue;
+      const yp = path.join(gd, e.name, 'workflow.yaml');
+      if (!fs.existsSync(yp)) continue;
+      try {
+        const raw = fs.readFileSync(yp, 'utf-8');
+        const def = parseWorkflowYaml(raw);
+        if (!def?.name || !def.steps?.length) continue;
+
+        // Check cooldown + active run before auto-triggering
+        const now = Date.now();
+        const last = lastTrigger.get(def.name) || 0;
+        if (now - last < COOLDOWN_MS) continue;
+        const active = engine.listRuns().some(
+          r => r.workflowName === def.name && r.status === 'running'
+        );
+        if (!active) {
+          console.log(`[scheduler] auto-trigger workflow: "${def.name}" (${def.steps.length} steps)`);
+          lastTrigger.set(def.name, now);
+          engine.execute(def);
+        }
+      } catch (er: unknown) { /* parse failure, skip */ }
+    }
+  } catch (e: unknown) { console.error(`[scheduler] dag error: ${e instanceof Error ? e.message : String(e)}`); }
+  finally { dagRunning = false; }
 }
 
 export { pollAllAgents } from './auto-respond';
