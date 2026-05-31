@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
-import type { Agent, Email, AgentStats } from '@/types';
+import type { Agent, Email, AgentStats, AgentConfig } from '@/types';
 
 const AGENTS_DIR = path.join(process.cwd(), 'Agents');
 
@@ -39,11 +39,21 @@ export function getAgents(): Agent[] {
       rulesContent = fs.readFileSync(claudeMdAlt, 'utf-8');
     }
 
+    // 读取 config.json
+    let config: AgentConfig | undefined;
+    const configPath = path.join(agentPath, 'config.json');
+    if (fs.existsSync(configPath)) {
+      try {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      } catch { /* ignore parse errors */ }
+    }
+
     agents.push({
       name: entry.name,
       emailPath,
       emailCount,
       rulesContent,
+      config,
     });
   }
 

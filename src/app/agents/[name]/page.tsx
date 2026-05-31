@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import ChatPanel from '@/components/chat-panel';
 import Sidebar from '@/components/sidebar';
-import { Mail, FileText, Hash, Settings, X, RefreshCw, Zap } from 'lucide-react';
+import { Mail, FileText, Hash, Settings, X, RefreshCw, Zap, Shield } from 'lucide-react';
 
 interface Context { agent: string; emails: number; messages: number; groups: string[]; }
 interface AgentConfig {
@@ -26,6 +26,9 @@ export default function AgentPage() {
   const [ctx, setCtx] = useState<Context | null>(null);
   const [showCtx, setShowCtx] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
   const [config, setConfig] = useState<AgentConfig>(defaultConfig);
   const [saving, setSaving] = useState(false);
   const [polling, setPolling] = useState(false);
@@ -56,6 +59,15 @@ export default function AgentPage() {
       .then(r => r.json())
       .then(d => { if (!d.error) setConfig({ ...defaultConfig, ...d }); })
       .catch(() => {});
+  }, [name]);
+
+  const loadAuditLogs = useCallback(() => {
+    setLoadingAudit(true);
+    fetch(`/api/audit?agent=${name}&limit=50`)
+      .then(r => r.json())
+      .then(d => { setAuditLogs(d.logs || []); })
+      .catch(() => {})
+      .finally(() => setLoadingAudit(false));
   }, [name]);
 
   useEffect(() => { loadContext(); loadConfig(); }, [loadContext, loadConfig]);
@@ -131,6 +143,11 @@ export default function AgentPage() {
                 <Zap size={11} className={polling ? 'animate-spin' : ''} /> Poll
               </button>
               <button onClick={loadContext} className="text-gray-300 hover:text-gray-500" title="Refresh"><RefreshCw size={11} /></button>
+              <button onClick={() => { setShowAudit(!showAudit); if (!showAudit) loadAuditLogs(); }}
+                className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${showAudit ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+              >
+                <Shield size={12} className="inline mr-1" />Audit Log
+              </button>
               <button onClick={() => setShowConfig(!showConfig)}
                 className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${showConfig ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}
               >
@@ -157,6 +174,36 @@ export default function AgentPage() {
             <p className="text-[10px] text-gray-300 mt-3 font-mono">
               Config stored at: Agents/{name}/config.json
             </p>
+          </div>
+        )}
+
+        {/* Audit Log panel */}
+        {showAudit && (
+          <div className="px-5 py-4 border-b border-gray-100 bg-white shrink-0 max-h-64 overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[13px] font-medium text-gray-800">Audit Log</h3>
+              <button onClick={() => { loadAuditLogs(); }} disabled={loadingAudit}
+                className={`text-[10px] px-2 py-0.5 rounded ${loadingAudit ? 'text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
+                <RefreshCw size={11} className={`inline mr-1 ${loadingAudit ? 'animate-spin' : ''}`} />Refresh
+              </button>
+            </div>
+            {auditLogs.length === 0 ? (
+              <p className="text-[11px] text-gray-400">No audit logs found for {name}.</p>
+            ) : (
+              <div className="space-y-1">
+                {auditLogs.slice(0, 30).map((entry: any) => (
+                  <div key={entry.id} className="text-[11px] font-mono flex gap-2 py-1 border-b border-gray-50 last:border-0">
+                    <span className="text-gray-400 shrink-0">{entry.timestamp?.replace('T', ' ').slice(0, 19)}</span>
+                    <span className={`shrink-0 w-16 px-1 text-center rounded text-[10px] ${entry.status === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}`}>{entry.action}</span>
+                    <span className="text-gray-600 truncate">{entry.resource}</span>
+                    {entry.details && <span className="text-gray-400 truncate hidden lg:inline">- {entry.details.slice(0, 60)}</span>}
+                  </div>
+                ))}
+                {auditLogs.length > 30 && (
+                  <p className="text-[10px] text-gray-300 pt-1">Showing 30 of {auditLogs.length} entries (latest first)</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 

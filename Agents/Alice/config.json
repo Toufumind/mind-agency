@@ -1,3 +1,9 @@
 {
-  "autoRespondToEmail": true
+  "autoRespondToEmail": true,
+  "roles": ["admin"],
+  "permissions": {
+    "canCreateGroup": true,
+    "canDeleteGroup": true,
+    "canDeploy": true
+  }
 }

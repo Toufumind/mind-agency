@@ -1,4 +1,10 @@
 {
   "autoRespondToEmail": true,
-  "autoProcessGroupInvites": true
+  "autoProcessGroupInvites": true,
+  "roles": ["member"],
+  "permissions": {
+    "canCreateGroup": true,
+    "canDeleteGroup": false,
+    "canDeploy": false
+  }
 }

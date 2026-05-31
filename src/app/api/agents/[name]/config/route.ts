@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { writeAudit } from '@/lib/audit';
 
 export async function GET(
   _request: NextRequest,
@@ -42,6 +43,14 @@ export async function PUT(
     const existing = fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf-8')) : {};
     const merged = { ...existing, ...body };
     fs.writeFileSync(cfgFile, JSON.stringify(merged, null, 2), 'utf-8');
+
+    writeAudit({
+      agent: name,
+      action: 'config.update',
+      resource: `agent:${name}`,
+      details: JSON.stringify(body),
+    });
+
     return NextResponse.json(merged);
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
