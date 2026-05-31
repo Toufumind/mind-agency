@@ -164,20 +164,18 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   // ──────────────────────────────────────────────────────
 
   const sysFile = agentSysFile(agentName);
-  const chatCtxFile = path.join(MIND_DIR, 'agents', agentName, 'chat-context.md');
   const mcpCfgFile = sharedMcpFile();
 
   // 1. 身份 + Group 成员 — 只在 join/leave group 时变化
   const identity = buildIdentity(agentName);
   const membership = buildGroupMembership(agentName);
-  const stableContent = identity + '\n' + membership;
-  writeIfChanged(sysFile, stableContent);
+  const groupChat = buildGroupChatContext(agentName, groupName);
+  // Stable part (identity + membership): cached, rarely changes
+  // Group chat context: always appended, changes per message
+  const content = identity + '\n' + membership + groupChat;
+  writeIfChanged(sysFile, content);
 
-  // 2. 群聊上下文 — 只在群聊有新消息时变化
-  const chatCtx = buildGroupChatContext(agentName, groupName);
-  writeIfChanged(chatCtxFile, chatCtx);
-
-  // 3. MCP 配置 — 完全不变
+  // 2. MCP 配置 — 完全不变
   const mcpConfig = {
     mcpServers: {
       'group-chat': {
@@ -196,10 +194,6 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
     ? path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
     : 'claude';
 
-  // 三个稳定文件 + 可选群聊上下文
-  const systemPromptFiles = [sysFile];
-  if (chatCtx) systemPromptFiles.push(chatCtxFile);
-
   const args = [
     '-p',
     '--output-format', 'stream-json',
@@ -210,7 +204,7 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
     isNew ? '--session-id' : '--resume', sessionId,
     // 稳定文件用 = 形式避免被当作位置参数
     `--mcp-config=${mcpCfgFile}`,
-    ...systemPromptFiles.flatMap(f => ['--append-system-prompt-file', f]),
+    '--append-system-prompt-file', sysFile,
     userMessage, // 必须是最后一个 — 位置参数
   ];
 
