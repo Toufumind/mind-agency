@@ -194,7 +194,17 @@ export default function Terminal({ agentName }: { agentName: string }) {
       </div>
 
       {/* Terminal container */}
-      <div ref={containerRef} style={{ flex: 1, minHeight: 300, width: '100%', overflow: 'hidden' }} />
+      <div style={{ flex: 1, minHeight: 300, width: '100%', overflow: 'hidden', position: 'relative' }}>
+        {!connected && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: '#0d1117', color: '#8b949e', fontFamily: 'monospace', fontSize: 13, zIndex: 10,
+          }}>
+            {error ? `⚠ ${error} — Retrying...` : 'Connecting to agent...'}
+          </div>
+        )}
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      </div>
 
       {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-t border-[#21262d] shrink-0 select-none">
