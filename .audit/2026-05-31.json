@@ -133,5 +133,32 @@
     "resource": "group:default",
     "details": "���� Alice��Diana(PM) ���Ұ���ת��������Ϣ�� default Ⱥ���� group_send ����Diana(PM)����Һã������� PM Diana���������� v0.5.0 ��Ʒ�滮���Ȼع˽��ȣ�@Bob ǰ���Ż�������Σ�@Charlie ����ȶ��Խ�չ��Ȼ���������ȼ���P0����ʣ��Щ�",
     "status": "success"
+  },
+  {
+    "id": "f2543112-a6b0-48fe-a08b-206d26457dce",
+    "timestamp": "2026-05-31T17:29:43.593Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� group_send �� default Ⱥ�� Diana(PM) ����Ϣ��Diana(PM)��Sprint �жμ�顣@Bob ��� Tailwind purge �ͻ�������������@Charlie ��������־��ѯ�ӿں� /api/health �����û��ÿ�˻㱨ʵ����ɰٷֱȺ�Ԥ��������ڡ���������˾�˵������ʲô��",
+    "status": "success"
+  },
+  {
+    "id": "2584daa4-2d8d-49a4-8609-ea00ad05bac9",
+    "timestamp": "2026-05-31T17:32:50.616Z",
+    "agent": "Diana",
+    "action": "email.send",
+    "resource": "agent:Bob",
+    "details": "subject: P0: Fix chat input debounce not working on Enter key",
+    "status": "success"
+  },
+  {
+    "id": "296a1990-b116-4cdb-bead-cbe986c100db",
+    "timestamp": "2026-05-31T17:32:50.779Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� group_send �� default Ⱥ�� Diana ֪ͨ��Diana(PM)��@Bob �ո������䷢�� P0 bug ���񡪡�������������Enterʱż������Ϣ������ src/components/chat-panel.tsx ��300ms debounce��������Ⱥ��ظ���@Charlie ��������־��ѯ�ӿڻ��",
+    "status": "success"
   }
 ]

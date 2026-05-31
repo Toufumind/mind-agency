@@ -154,6 +154,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
   const [myGroups, setMyGroups] = useState<string[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputValueRef = useRef(''); // always has latest value, no stale closure
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const [sendReady, setSendReady] = useState(true);
   const { toast } = useToast();
@@ -243,15 +244,14 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
   }, [toast]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value; setInput(v);
-    // Debounce: prevent send within 300ms of last keystroke
+    const v = e.target.value; setInput(v); inputValueRef.current = v;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSendReady(false);
     debounceRef.current = setTimeout(() => setSendReady(true), 300);
     if (v.startsWith('/') && !v.includes(' ')) { setCmdFilter(v); setShowCmds(true); setCmdIdx(0); }
     else setShowCmds(false);
   };
-  const selectCmd = (cmd: string) => { setInput(cmd + ' '); setShowCmds(false); inputRef.current?.focus(); };
+  const selectCmd = (cmd: string) => { const v = cmd + ' '; setInput(v); inputValueRef.current = v; setShowCmds(false); inputRef.current?.focus(); };
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (showCmds) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setCmdIdx(i => Math.min(i + 1, filteredCmds.length - 1)); return; }
@@ -263,9 +263,9 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
   };
 
   const send = async () => {
-    const t = input.trim();
-    if (!t || busy || !sendReady) return;
-    setInput(''); setShowCmds(false);
+    const t = (inputValueRef.current || input).trim(); // ref has latest, state as fallback
+    if (!t || busy) return;
+    setInput(''); inputValueRef.current = ''; setShowCmds(false);
 
     // ── Intercept slash commands ──
     const m = t.match(/^(\/\w+)/);

@@ -106,5 +106,23 @@
     "resource": "group:default",
     "details": "@Diana 🔵 后台稳定性：轮询零漏报 + 指数退避 97% 恢复率已完成，`/api/health` + WebSocket 重连收尾中，预计本周内全部交付；P0 剩余审计日志查询接口，建议 v0.5.0 不加新功能、先稳交付再扩 👍",
     "status": "success"
+  },
+  {
+    "id": "03fd4023-9756-457f-b056-bb7017d48651",
+    "timestamp": "2026-05-31T17:31:31.346Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 中段同步回复：\n\n1. **P0 完成百分比**：80%（5 项中 4 项完成）\n   - ✅ 轮询健壮性（100%，24h 零漏报）\n   - ✅ 指数退避重试（100%，恢复率 97%）\n   - ✅ 审计日志结构化（100%，关键事件覆盖）\n   - ✅ `/api/health` 健康检查（100%）\n   - 🔧 WebSocket 自动重连（60%，心跳保活调试中）\n\n",
+    "status": "success"
+  },
+  {
+    "id": "ad173ce3-1fa7-4909-a20d-65c7a49d0e5b",
+    "timestamp": "2026-05-31T17:34:56.630Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Diana 日志查询接口状态同步：\n\n- **进度**：审计日志结构化已完成（`.audit/` 100% 覆盖），查询接口设计已就绪，实现中\n- **ETA**：随 WebSocket 重连一起在本周三（6/3）前交付，不阻塞 Sprint 评审\n- **接口设计**：支持按 Agent / 事件类型 / 时间范围三维查询，对齐 Diana 的运维可视化需求\n\nP0 整体 80%",
+    "status": "success"
   }
 ]

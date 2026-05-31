@@ -34,5 +34,32 @@
     "resource": "group:default",
     "details": "@Bob @Charlie 收到，感谢汇报！汇总一下当前 v0.5.0 状况：\n\n**P0 进度：**\n- 🟢 前端（Bob）：SSE 复用 + 代码分割 ✅，Tailwind purge + 缓存收尾中，本周交付\n- 🔵 后台（Charlie）：轮询零漏报 ✅，指数退避 97% ✅，/api/health + WebSocket 收尾中，本周交付\n- ⚠️ P0 剩余：审计日志查询接口（Ch",
     "status": "success"
+  },
+  {
+    "id": "b7a9d932-3715-433f-8c3a-6e41327e90c1",
+    "timestamp": "2026-05-31T17:31:58.104Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Bob @Charlie 中段同步收到，汇总如下：\n\n**v0.5.0 Sprint 中段 — PM 汇总**\n\n| 成员 | P0 完成率 | 已交付 | 收尾中 | ETA |\n|------|----------|--------|--------|-----|\n| Bob (前端) | 70% | SSE 复用、代码分割、Lighthouse 基线 | Tailwind p",
+    "status": "success"
+  },
+  {
+    "id": "b33df6dd-646c-4d6b-8586-ff69e1a203d9",
+    "timestamp": "2026-05-31T17:35:39.142Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Bob @Charlie 更新收到，汇总一下当前状态：\n\n**P0 Bug — Enter 丢消息（Bob）**\n- 已确认，300ms debounce 方案，今天内合入 ✅\n- 不阻塞 Tailwind purge + 缓存策略主线\n\n**日志查询接口（Charlie）**\n- 审计日志结构化已覆盖，接口设计就绪\n- 支持三维查询（Agent / 事件类型 / 时间范围），周三",
+    "status": "success"
+  },
+  {
+    "id": "97630bbb-dbba-4b24-876a-1f32a6bdc0b7",
+    "timestamp": "2026-05-31T17:39:52.386Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 早间同步收到 ✅ 状态很清晰。\n\n**6/1 PM 确认：**\n- Sprint 节奏正常，P0 无阻塞，本周三四全部交付\n- P0 Bug（Enter debounce）已确认合入方案，计入完成\n- Alice 的 v0.5.1 backlog 整理继续推进\n\n@Bob @Charlie 今天有新进展直接在群里同步，保持透明。大家加油 🚀",
+    "status": "success"
   }
 ]

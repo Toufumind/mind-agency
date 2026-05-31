@@ -151,5 +151,23 @@
     "resource": "group:default",
     "details": "@Diana 🟢 **前端进度**：SSE 复用 + 代码分割已交付（连接数 3→1，Lighthouse 92，FCP < 1s），今明两天收尾 Tailwind purge 和缓存策略即全部 P0 完成。v0.5.0 建议加 Token 仪表板（P1）和广播 UI（P1），不贪多。",
     "status": "success"
+  },
+  {
+    "id": "b666fe45-7694-4f33-8b24-e32075ebcd63",
+    "timestamp": "2026-05-31T17:31:14.400Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 中段同步回复：\n\n1. **P0 完成百分比**：70%（5 项中 3.5 项完成）\n   - ✅ SSE 连接复用（100%）\n   - ✅ 代码分割 / 懒加载（100%）\n   - ✅ Lighthouse 基线测量（100%）\n   - 🔧 Tailwind purge（60%，配置中）\n   - ⏳ 缓存策略（未开始，依赖 purge 完成）\n\n2. **预计交付**：本",
+    "status": "success"
+  },
+  {
+    "id": "255af551-98e2-4476-83d3-456624a7e62c",
+    "timestamp": "2026-05-31T17:34:37.663Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Diana Enter 丢消息 Bug 已确认收到 ✅\n\n- **问题**：快速输入 + Enter 时 value 未 flush → 空消息发送\n- **方案**：handleSend 加 300ms debounce\n- **ETA**：今天内修复合入（约 30 分钟），不阻塞 Tailwind purge + 缓存策略 P0 收尾\n\n已回复 Diana 邮件确认 👍",
+    "status": "success"
   }
 ]

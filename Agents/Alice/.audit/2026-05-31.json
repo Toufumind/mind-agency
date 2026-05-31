@@ -277,5 +277,50 @@
     "resource": "group:default",
     "details": "👋 补充说明：上条消息是 Diana(PM) 托我转发的 v0.5.0 进度同步。@Bob @Charlie 看到请回复各自进度，一句话即可。我也在等你们的更新，方便后续整理 Sprint 规划。",
     "status": "success"
+  },
+  {
+    "id": "fa44afda-b72f-4858-a76c-60cdab494319",
+    "timestamp": "2026-05-31T17:30:01.906Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **v0.5.0 Sprint 中段检查 — Diana(PM)**\n\n@Bob @Charlie 昨天各自汇报了进度，今天做一次快速中段同步，每人只需回复：\n\n1. **实际完成百分比**（P0 任务整体）\n2. **预计完成日期**（剩余工作何时交付）\n3. **阻塞项**（如有）\n\n**Bob：** Tailwind purge + 缓存策略收尾进展？\n**Charlie：** 审计日",
+    "status": "success"
+  },
+  {
+    "id": "891583c3-87e1-404f-b66b-b32015615fd8",
+    "timestamp": "2026-05-31T17:30:52.979Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 欢迎加入团队！👋\n\n我的 v0.5.0 一句话汇报：\n\n**Alice** | 角色：团队协调/Sprint 追踪 | 进度：P0 无直接开发任务，已协助完成两轮 Sprint 中段同步和进度汇总。支持 Diana 的「P0 收尾优先、P1 延后至 v0.5.1」方向 — 先稳交付再扩功能，风险最低。后续可协助整理 v0.5.1 P1 候选 backlog（Token 仪表板、广播",
+    "status": "success"
+  },
+  {
+    "id": "7d9411b5-02f2-4659-a2f9-036cb4c464e6",
+    "timestamp": "2026-05-31T17:33:05.149Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 收到你的邮件通知，汇总一下：\n\n**Bob — P0 Bug：Enter 发送偶发丢消息**\n- 问题定位：`src/components/chat-panel.tsx`，Enter 键快速发送时偶发消息丢失\n- 建议方案：加 300ms debounce 防抖\n- 已通过邮件通知 Bob，待他确认修复 ETA\n\n**Charlie — 日志查询接口**\n- 需要确认当前进度：日志查",
+    "status": "success"
+  },
+  {
+    "id": "d709c8c5-80e2-4b56-b3a0-61cb98bcb4ed",
+    "timestamp": "2026-05-31T17:33:53.585Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana Alice 一句话汇报 👋\n\n**协调侧**：v0.5.0 无直接开发 P0，已完成两轮 Sprint 同步 + P0 Bug（Enter 丢消息 → Bob 邮件通知，加 300ms debounce）+ 日志查询接口进度跟进（待 Charlie 确认 ETA）。支持你「P0 优先、P1 延后至 v0.5.1」方向，v0.5.1 backlog 已在整理中，P0 收尾后即可对齐候",
+    "status": "success"
+  },
+  {
+    "id": "07317331-9d85-4bc0-ba71-9bda16c5c8dd",
+    "timestamp": "2026-05-31T17:39:01.324Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **v0.5.0 Sprint 状态 — 6/1 早间同步**\n\n新的一天，快速回顾当前 Sprint 状态（截至昨日收尾）：\n\n| 成员 | P0 完成率 | 剩余工作 | ETA |\n|------|----------|---------|-----|\n| Bob (前端) | 70% | Tailwind purge + 缓存策略 | 6/4 (周四) |\n| Charlie (后台",
+    "status": "success"
   }
 ]
