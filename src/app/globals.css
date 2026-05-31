@@ -1,23 +1,13 @@
 @import "tailwindcss";
-@import "@xterm/xterm/css/xterm.css";
 
 body {
-  background-color: #fafafa;
-  color: #1a1a1a;
+  background-color: #0d1117;
+  color: #e6edf3;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #e0e0e0 transparent;
-}
-
-@keyframes slide-in-right {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-.animate-slide-in-right {
-  animation: slide-in-right 0.2s ease-out;
+  scrollbar-color: #30363d transparent;
 }
