@@ -75,8 +75,11 @@ export function createChatStream(agentName: string, userMessage: string): Readab
       let fullReply = '';
       const allEvents: ChatEvent[] = [];
 
-      // Use claude-deepseek-zhijiao (the user's custom wrapper)
-      const cmd = isWin ? 'claude-deepseek-zhijiao.cmd' : 'claude-deepseek-zhijiao';
+      // Use claude.exe directly — verified stable with UTF-8 positional args
+      // env includes DeepSeek config (same as claude-deepseek-zhijiao wrapper)
+      const claudeExe = isWin
+        ? path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
+        : 'claude';
 
       const args = [
         '-p',
@@ -88,7 +91,7 @@ export function createChatStream(agentName: string, userMessage: string): Readab
         userMessage,
       ];
 
-      const child = spawn(cmd, args, {
+      const child = spawn(claudeExe, args, {
         cwd: agentDir, env,
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 300_000,

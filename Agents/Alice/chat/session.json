@@ -1,0 +1,27 @@
+{
+  "sessionId": "5f365454-8a5f-4a23-9404-1bc1d27fbdc6",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "timestamp": "2026-05-31T05:02:39.591Z"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！有什么我可以帮你的吗？",
+      "events": [
+        {
+          "type": "thinking",
+          "content": "The user just said \"hi\" — this is a simple greeting. I should respond in Chinese as per my instructions (我始终用中文回复). Let me keep it brief and friendly.",
+          "timestamp": "2026-05-31T05:02:39.484Z"
+        },
+        {
+          "type": "text",
+          "content": "你好！有什么我可以帮你的吗？",
+          "timestamp": "2026-05-31T05:02:39.555Z"
+        }
+      ],
+      "timestamp": "2026-05-31T05:02:39.591Z"
+    }
+  ]
+}
