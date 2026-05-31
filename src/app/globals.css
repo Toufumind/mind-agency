@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 body {
-  background-color: #0d1117;
-  color: #e6edf3;
+  background-color: #fff;
+  color: #1f1f1f;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #30363d transparent;
+  scrollbar-color: #e5e5e5 transparent;
 }
