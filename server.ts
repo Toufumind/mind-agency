@@ -1,8 +1,8 @@
 /**
  * Terminal WebSocket server
- * Connects xterm.js frontend to real claude CLI processes per agent
+ * Passes raw claude CLI TUI to xterm.js
  */
-import { createServer, IncomingMessage } from 'http';
+import { createServer } from 'http';
 import { parse } from 'url';
 import { spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
@@ -16,10 +16,7 @@ const sessions = new Map<string, { child: ChildProcess; ws: WebSocket }>();
 
 function spawnAgentTerminal(ws: WebSocket, agentName: string) {
   const agentDir = path.join(AGENTS_DIR, agentName);
-  if (!fs.existsSync(agentDir)) {
-    ws.close(4001, `Not found`);
-    return;
-  }
+  if (!fs.existsSync(agentDir)) { ws.close(4001, 'Not found'); return; }
 
   const old = sessions.get(agentName);
   if (old) { old.child.kill(); sessions.delete(agentName); }
@@ -36,6 +33,7 @@ function spawnAgentTerminal(ws: WebSocket, agentName: string) {
       ANTHROPIC_SMALL_FAST_MODEL: 'DeepSeek-V4-Flash',
       HOME: process.env.HOME || process.env.USERPROFILE || '',
       FORCE_COLOR: '1',
+      NO_COLOR: '',
       TERM: 'xterm-256color',
     },
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -47,12 +45,17 @@ function spawnAgentTerminal(ws: WebSocket, agentName: string) {
   const send = (data: Buffer) => { if (ws.readyState === WebSocket.OPEN) ws.send(data); };
   child.stdout.on('data', send);
   child.stderr.on('data', send);
+
+  ws.on('message', (raw: Buffer) => {
+    if (child.stdin.writable) child.stdin.write(raw);
+  });
+
+  ws.on('close', () => { child.kill(); sessions.delete(agentName); });
   child.on('exit', () => { sessions.delete(agentName); ws.close(); });
   child.on('error', (err) => { send(Buffer.from(`\r\n\x1b[31m${err.message}\x1b[0m\r\n`)); sessions.delete(agentName); ws.close(); });
 }
 
-// ── Start ──
-const server = createServer((_req, res) => { res.writeHead(200); res.end('Mind Agency Terminal Server'); });
+const server = createServer((_req, res) => { res.writeHead(200); res.end('Mind Agency Terminal'); });
 const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
@@ -62,19 +65,12 @@ server.on('upgrade', (request, socket, head) => {
 
   wss.handleUpgrade(request, socket, head, (ws) => {
     const agentName = match[1];
-
-    ws.on('message', (raw: Buffer) => {
-      const session = sessions.get(agentName);
-      if (session?.child.stdin?.writable) session.child.stdin.write(raw);
-    });
-
     ws.on('close', () => {
-      const session = sessions.get(agentName);
-      if (session) { session.child.kill(); sessions.delete(agentName); }
+      const s = sessions.get(agentName);
+      if (s) { s.child.kill(); sessions.delete(agentName); }
     });
-
     spawnAgentTerminal(ws, agentName);
   });
 });
 
-server.listen(PORT, () => console.log(`  Terminal WS: ws://localhost:${PORT}\n`));
+server.listen(PORT, () => console.log(`  Terminal WS: ws://localhost:${PORT}`));
