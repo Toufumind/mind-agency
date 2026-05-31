@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 const AGENTS_DIR = path.join(process.cwd(), 'Agents');
 
@@ -42,6 +42,94 @@ function sessionFile(agentName: string) {
   return path.join(AGENTS_DIR, agentName, 'chat', 'session.json');
 }
 
+// ── Stable file helpers (KV cache optimization) ──
+
+/** 写入文件，仅在内容变化时才真正写磁盘（保持 mtime 不变 → cache 命中） */
+function writeIfChanged(filePath: string, content: string): boolean {
+  if (fs.existsSync(filePath)) {
+    const existing = fs.readFileSync(filePath, 'utf-8');
+    if (existing === content) return false; // 内容没变，不写
+  }
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(filePath, content, 'utf-8');
+  return true; // 内容变了
+}
+
+/** Agent 的稳定系统提示词文件路径（不随 session 变化） */
+function agentSysFile(agentName: string): string {
+  return path.join(AGENTS_DIR, agentName, 'chat', 'sys-prompt.md');
+}
+
+/** Agent 的稳定 MCP 配置文件路径 */
+function agentMcpFile(agentName: string): string {
+  return path.join(AGENTS_DIR, agentName, 'chat', 'mcp-config.json');
+}
+
+// ── Build system prompt components ──
+
+/** 基础身份 + 邮件规则 — 几乎不变，放在稳定文件里 */
+function buildIdentity(agentName: string): string {
+  return `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。
+
+你不能在自己的 email/ 下添加或修改文件。
+给其他人发邮件时在对方 email/ 下创建 .md 文件（YAML frontmatter + Markdown）。
+邮件文件名格式: YYYY-MM-DD_主题.md
+你始终用中文回复。`;
+}
+
+/** Group 成员信息 — 只在 join/leave group 时变化 */
+function buildGroupMembership(agentName: string): string {
+  const GroupsDir = path.join(process.cwd(), 'Groups');
+  if (!fs.existsSync(GroupsDir)) return '';
+
+  const myGroups: string[] = [];
+  for (const g of fs.readdirSync(GroupsDir, { withFileTypes: true })) {
+    if (!g.isDirectory() || g.name.startsWith('.')) continue;
+    if (fs.existsSync(path.join(GroupsDir, g.name, 'Agents', agentName))) {
+      myGroups.push(g.name);
+    }
+  }
+  if (myGroups.length === 0) return '';
+
+  const lines: string[] = ['\n## 你所属的 Groups'];
+  for (const gn of myGroups) {
+    const agDir = path.join(GroupsDir, gn, 'Agents');
+    const members = fs.existsSync(agDir)
+      ? fs.readdirSync(agDir, { withFileTypes: true }).filter(e => e.isDirectory() && e.name !== agentName).map(e => e.name)
+      : [];
+    const emailDir = path.join(agDir, agentName, 'email');
+    const emailCount = fs.existsSync(emailDir)
+      ? fs.readdirSync(emailDir).filter(f => f.endsWith('.md')).length
+      : 0;
+    lines.push(`- Groups/${gn}/ — 成员: ${members.join(', ') || '只有你'}`);
+    lines.push(`  Group 邮箱: Groups/${gn}/Agents/${agentName}/email/ (${emailCount} 封)`);
+    const spec = path.join(GroupsDir, gn, 'TASK_SPEC.md');
+    if (fs.existsSync(spec)) lines.push(`  任务流转规则: Groups/${gn}/TASK_SPEC.md`);
+  }
+  return lines.join('\n') + '\n';
+}
+
+/** 群聊上下文 — 每轮可能变化，放在单独文件里，变化时只更新这个文件 */
+function buildGroupChatContext(agentName: string, groupName?: string): string {
+  if (!groupName) return '';
+  const GroupsDir = path.join(process.cwd(), 'Groups');
+  const chatFile = path.join(GroupsDir, groupName, 'chat', 'chat.md');
+  if (!fs.existsSync(chatFile)) {
+    return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。用 group_send 发言。`;
+  }
+  try {
+    const raw = fs.readFileSync(chatFile, 'utf-8');
+    // 取最后 6000 字符
+    const snippet = raw.length > 6000 ? '...(较早消息已省略)\n\n' + raw.slice(-6000) : raw;
+    return `\n\n## 你正在 ${groupName} 群聊中。以下是最近的群聊记录：\n\n${snippet}\n\n你可以使用 group_send 工具向群聊发送消息。`;
+  } catch {
+    return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。`;
+  }
+}
+
+// ── Main stream ──
+
 export function createChatStream(agentName: string, userMessage: string, groupName?: string): ReadableStream<ChatEvent> {
   const agentDir = path.join(AGENTS_DIR, agentName);
   if (!fs.existsSync(agentDir)) {
@@ -52,89 +140,66 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   const isNew = !history.sessionId;
   const sessionId = history.sessionId || randomUUID();
 
-  const sysFile = path.join(os.tmpdir(), `mind-sys-${sessionId}.txt`);
-  const mcpConfigFile = path.join(os.tmpdir(), `mind-mcp-${sessionId}.json`);
+  // ── KV Cache Optimization ─────────────────────────────
+  // 原则：文件路径稳定 → content hash 不变不重写 → mtime 不变 → cache hit
+  //
+  // 拆成三个文件，各自独立更新：
+  //   1. sys-prompt.md    — 身份 + Group 成员（几乎不变）
+  //   2. chat-context.md  — 群聊上下文（每轮可能变）
+  //   3. mcp-config.json  — MCP 配置（不变）
+  // ──────────────────────────────────────────────────────
 
-  // 写 MCP 配置文件（每个 agent 独立，用于加载 Group MCP Server）
+  const sysFile = agentSysFile(agentName);
+  const chatCtxFile = path.join(AGENTS_DIR, agentName, 'chat', 'chat-context.md');
+  const mcpCfgFile = agentMcpFile(agentName);
+
+  // 1. 身份 + Group 成员 — 只在 join/leave group 时变化
+  const identity = buildIdentity(agentName);
+  const membership = buildGroupMembership(agentName);
+  const stableContent = identity + '\n' + membership;
+  writeIfChanged(sysFile, stableContent);
+
+  // 2. 群聊上下文 — 只在群聊有新消息时变化
+  const chatCtx = buildGroupChatContext(agentName, groupName);
+  writeIfChanged(chatCtxFile, chatCtx);
+
+  // 3. MCP 配置 — 完全不变
   const mcpConfig = {
     mcpServers: {
       'group-chat': {
         command: 'npx',
         args: ['tsx', path.resolve(process.cwd(), 'mcp/group-server.ts'), agentName],
         cwd: process.cwd(),
-        env: {
-          MIND_PROJECT_ROOT: process.cwd(),
-        },
+        env: { MIND_PROJECT_ROOT: process.cwd() },
       },
     },
   };
-  fs.writeFileSync(mcpConfigFile, JSON.stringify(mcpConfig, null, 2), 'utf-8');
+  writeIfChanged(mcpCfgFile, JSON.stringify(mcpConfig, null, 2));
 
-  // 扫描 Groups/*/Agents/ 发现 agent 的 group 归属
-  let groupContext = '';
-  const GroupsDir = path.join(process.cwd(), 'Groups');
-  if (fs.existsSync(GroupsDir)) {
-    const groupEntries = fs.readdirSync(GroupsDir, { withFileTypes: true }).filter(e => e.isDirectory());
-    const myGroups: string[] = [];
-
-    for (const g of groupEntries) {
-      const agentInGroup = path.join(GroupsDir, g.name, 'Agents', agentName);
-      if (fs.existsSync(agentInGroup)) {
-        myGroups.push(g.name);
-      }
-    }
-
-    if (myGroups.length > 0) {
-      const lines: string[] = [];
-      lines.push(`\n## 你所属的 Groups`);
-      for (const gn of myGroups) {
-        // 该 group 下还有哪些其他成员
-        const groupAgentsDir = path.join(GroupsDir, gn, 'Agents');
-        const members = fs.readdirSync(groupAgentsDir, { withFileTypes: true })
-          .filter(e => e.isDirectory() && e.name !== agentName)
-          .map(e => e.name);
-        lines.push(`- Groups/${gn}/ — 成员: ${members.join(', ') || '只有你'}`);
-        // 检查 group 下的 email
-        const groupEmailDir = path.join(groupAgentsDir, agentName, 'email');
-        if (fs.existsSync(groupEmailDir)) {
-          const count = fs.readdirSync(groupEmailDir).filter(f => f.endsWith('.md')).length;
-          lines.push(`  此 group 邮箱: Groups/${gn}/Agents/${agentName}/email/ (${count} 封)`);
-        }
-        // TASK_SPEC
-        const specFile = path.join(GroupsDir, gn, 'TASK_SPEC.md');
-        if (fs.existsSync(specFile)) {
-          lines.push(`  任务规则: Groups/${gn}/TASK_SPEC.md`);
-        }
-      }
-      groupContext = lines.join('\n') + '\n';
-    }
-  }
-
-  // 如果指定了 group，注入群聊最近消息到上下文
-  let groupChatContext = '';
-  if (groupName) {
-    const chatFile = path.join(GroupsDir, groupName, 'chat', 'chat.md');
-    if (fs.existsSync(chatFile)) {
-      try {
-        const raw = fs.readFileSync(chatFile, 'utf-8');
-        // 取最后 5000 字符（约 10-20 条消息）
-        const snippet = raw.length > 5000 ? '...(较早消息已省略)\n\n' + raw.slice(-5000) : raw;
-        groupChatContext = `\n\n## 你正在 ${groupName} 群聊中。以下是最近的群聊记录：\n\n${snippet}\n\n你可以使用 group_send 工具向群聊发送消息。`;
-      } catch { /* ignore */ }
-    } else {
-      groupChatContext = `\n\n## 你正在 ${groupName} 群聊中。暂无消息记录。你可以使用 group_send 工具发言。`;
-    }
-  }
-
-  const identity = `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。
-
-你不能在自己的 email/ 下添加或修改文件。给其他人发邮件时在对方 email/ 下创建 .md 文件。你始终用中文回复。
-
-${groupContext}${groupChatContext}`;
-  fs.writeFileSync(sysFile, identity, 'utf-8');
-
+  // ── Build claude args ──
   const isWin = process.platform === 'win32';
-  // Write the stream-json input to a file so we can redirect stdin without encoding issues
+  const claudeExe = isWin
+    ? path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
+    : 'claude';
+
+  // 三个稳定文件 + 可选群聊上下文
+  const systemPromptFiles = [sysFile];
+  if (chatCtx) systemPromptFiles.push(chatCtxFile);
+
+  const args = [
+    '-p',
+    '--output-format', 'stream-json',
+    '--verbose', '--include-partial-messages',
+    '--dangerously-skip-permissions',
+    // 把动态信息移到 user message 中（cwd/git status），让 system prompt 更稳定
+    '--exclude-dynamic-system-prompt-sections',
+    isNew ? '--session-id' : '--resume', sessionId,
+    // 稳定文件用 = 形式避免被当作位置参数
+    `--mcp-config=${mcpCfgFile}`,
+    ...systemPromptFiles.flatMap(f => ['--append-system-prompt-file', f]),
+    userMessage, // 必须是最后一个 — 位置参数
+  ];
+
   const env = {
     ...process.env,
     ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || '',
@@ -151,23 +216,6 @@ ${groupContext}${groupChatContext}`;
       let buffer = '';
       let fullReply = '';
       const allEvents: ChatEvent[] = [];
-
-      // Use claude.exe directly — verified stable with UTF-8 positional args
-      // env includes DeepSeek config (same as claude-deepseek-zhijiao wrapper)
-      const claudeExe = isWin
-        ? path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
-        : 'claude';
-
-      const args = [
-        '-p',
-        '--output-format', 'stream-json',
-        '--verbose', '--include-partial-messages',
-        '--dangerously-skip-permissions',
-        isNew ? '--session-id' : '--resume', sessionId,
-        '--append-system-prompt-file', sysFile,
-        `--mcp-config=${mcpConfigFile}`,
-        userMessage,  // must be last — positional arg
-      ];
 
       const child = spawn(claudeExe, args, {
         cwd: agentDir, env,
@@ -214,7 +262,7 @@ ${groupContext}${groupChatContext}`;
             if (obj.type === 'result' && obj.is_error) {
               ctrl.enqueue({ type: 'error', content: obj.result || 'Unknown error', timestamp: ts() });
             }
-          } catch { /* partial */ }
+          } catch { /* partial line */ }
         }
       });
 
@@ -222,8 +270,6 @@ ${groupContext}${groupChatContext}`;
       child.stderr?.on('data', (d: Buffer) => { stderrOut += d.toString(); });
 
       child.on('close', code => {
-        try { fs.unlinkSync(sysFile); } catch {}
-        try { fs.unlinkSync(mcpConfigFile); } catch {}
         if (code !== 0 && !allEvents.length) {
           ctrl.enqueue({ type: 'error', content: stderrOut || `CLI exit ${code}`, timestamp: ts() });
         }
@@ -236,8 +282,6 @@ ${groupContext}${groupChatContext}`;
       });
 
       child.on('error', err => {
-        try { fs.unlinkSync(sysFile); } catch {}
-        try { fs.unlinkSync(mcpConfigFile); } catch {}
         ctrl.enqueue({ type: 'error', content: err.message, timestamp: ts() });
         ctrl.enqueue({ type: 'done', content: '', timestamp: ts() });
         ctrl.close();
