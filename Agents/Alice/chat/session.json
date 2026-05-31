@@ -22,6 +22,28 @@
         }
       ],
       "timestamp": "2026-05-31T05:02:39.591Z"
+    },
+    {
+      "role": "user",
+      "content": "hi",
+      "timestamp": "2026-05-31T05:05:50.526Z"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！有什么需要我帮忙的吗？",
+      "events": [
+        {
+          "type": "thinking",
+          "content": "The user just said \"hi\" - this is a simple greeting. I'll respond in Chinese as instructed.",
+          "timestamp": "2026-05-31T05:05:50.379Z"
+        },
+        {
+          "type": "text",
+          "content": "你好！有什么需要我帮忙的吗？",
+          "timestamp": "2026-05-31T05:05:50.479Z"
+        }
+      ],
+      "timestamp": "2026-05-31T05:05:50.526Z"
     }
   ]
 }
