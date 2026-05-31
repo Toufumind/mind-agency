@@ -18,14 +18,32 @@ function getConfig(agentName: string): AgentConfig {
   catch { return { autoRespondToEmail: false, autoProcessGroupInvites: false, notifyOnEmail: true, notifyOnGroupMention: true }; }
 }
 
+// Persist processed email set per agent to disk (survives restarts)
+function getProcessedCache(agentName: string): Set<string> {
+  const cacheFile = path.join(AGENTS_DIR, agentName, '.auto-respond-cache.json');
+  try {
+    if (fs.existsSync(cacheFile)) {
+      const data = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+      return new Set(data.processed || []);
+    }
+  } catch {}
+  return new Set();
+}
+
+function saveProcessedCache(agentName: string, set: Set<string>) {
+  const cacheFile = path.join(AGENTS_DIR, agentName, '.auto-respond-cache.json');
+  // Keep only last 50 entries
+  const arr = [...set].slice(-50);
+  fs.writeFileSync(cacheFile, JSON.stringify({ processed: arr, updated: new Date().toISOString() }), 'utf-8');
+}
+
 async function getUnprocessedEmails(agentName: string): Promise<{ filename: string; from: string; subject: string; body: string }[]> {
   const emailDir = path.join(AGENTS_DIR, agentName, 'email');
   if (!fs.existsSync(emailDir)) return [];
-
   const files = fs.readdirSync(emailDir).filter(f => f.endsWith('.md')).sort();
   const emails: any[] = [];
 
-  for (const f of files.slice(-3)) {
+  for (const f of files.slice(-5)) {
     try {
       const raw = fs.readFileSync(path.join(emailDir, f), 'utf-8');
       const fm = raw.match(/^---\nfrom:\s*(.+?)\nto:\s*(.+?)\nsubject:\s*(.+?)\ndate:\s*(.+?)\n---\n([\s\S]*)/);
@@ -34,9 +52,6 @@ async function getUnprocessedEmails(agentName: string): Promise<{ filename: stri
   }
   return emails;
 }
-
-// Track which emails have already been processed
-const processedEmails = new Set<string>();
 
 export async function autoRespond(agentName: string): Promise<{
   triggered: boolean;
@@ -47,7 +62,7 @@ export async function autoRespond(agentName: string): Promise<{
 }> {
   const config = getConfig(agentName);
   if (!config.autoRespondToEmail) {
-    return { triggered: false, reason: 'autoRespondToEmail is disabled' };
+    return { triggered: false, reason: 'autoRespondToEmail disabled' };
   }
 
   const emails = await getUnprocessedEmails(agentName);
@@ -55,41 +70,35 @@ export async function autoRespond(agentName: string): Promise<{
     return { triggered: false, reason: 'no emails' };
   }
 
-  // Find first unprocessed email
+  const processedEmails = getProcessedCache(agentName);
+
   let latest = null;
   for (const e of emails) {
-    const key = `${agentName}:${e.filename}`;
+    const key = e.filename;
     if (!processedEmails.has(key)) {
       latest = e;
       processedEmails.add(key);
-      // Keep set bounded
-      if (processedEmails.size > 1000) {
-        const it = processedEmails.values();
-        for (let i = 0; i < 200; i++) { const n = it.next(); if (n.value) processedEmails.delete(n.value); else break; }
-      }
+      saveProcessedCache(agentName, processedEmails);
       break;
     }
   }
 
   if (!latest) {
-    return { triggered: false, reason: 'all emails already processed' };
+    return { triggered: false, reason: 'all emails processed' };
   }
 
   const prompt = `## 新邮件通知（自动处理）
 
-你收到了一封新邮件。请像真实团队成员一样处理它：
+收到新邮件：
+发件人: ${latest.from} | 主题: ${latest.subject}
 
-发件人: ${latest.from}
-主题: ${latest.subject}
-
-邮件正文:
 ${latest.body}
 
 请：
-1. 阅读并理解邮件内容
-2. 执行邮件中要求你做的事情（比如：修复 bug、审查代码、加入群组、回复等）
-3. 如果需要通知其他人，给他们发邮件或群聊消息
-4. 完成后如果邮件要求你转交给下一个人，务必发送邮件给下一个环节的人
+1. 阅读邮件内容
+2. 执行邮件中要求的操作（回复邮件、用 group_send 通知群聊等）
+3. 如需要通知下一个人，务必发邮件或群聊消息
+4. 除非邮件明确要求你改代码，否则用沟通方式（邮件/群聊）处理
 
 用中文回复。`;
 
@@ -101,7 +110,6 @@ ${latest.body}
   }
 }
 
-/** Poll all agents with auto-respond enabled, process any new emails */
 export async function pollAllAgents(): Promise<{ agent: string; triggered: boolean }[]> {
   const results: { agent: string; triggered: boolean }[] = [];
   if (!fs.existsSync(AGENTS_DIR)) return results;
@@ -112,7 +120,6 @@ export async function pollAllAgents(): Promise<{ agent: string; triggered: boole
   for (const a of agents) {
     const config = getConfig(a.name);
     if (!config.autoRespondToEmail) continue;
-
     try {
       const result = await autoRespond(a.name);
       results.push({ agent: a.name, triggered: result.triggered });
@@ -120,6 +127,5 @@ export async function pollAllAgents(): Promise<{ agent: string; triggered: boole
       results.push({ agent: a.name, triggered: false });
     }
   }
-
   return results;
 }

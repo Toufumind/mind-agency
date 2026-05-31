@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import ChatPanel from '@/components/chat-panel';
 import Sidebar from '@/components/sidebar';
-import { Mail, FileText, Hash, Settings, X, RefreshCw } from 'lucide-react';
+import { Mail, FileText, Hash, Settings, X, RefreshCw, Zap } from 'lucide-react';
 
 interface Context { agent: string; emails: number; messages: number; groups: string[]; }
 interface AgentConfig {
@@ -28,6 +28,7 @@ export default function AgentPage() {
   const [showConfig, setShowConfig] = useState(false);
   const [config, setConfig] = useState<AgentConfig>(defaultConfig);
   const [saving, setSaving] = useState(false);
+  const [polling, setPolling] = useState(false);
 
   const loadContext = useCallback(() => {
     Promise.all([
@@ -59,6 +60,35 @@ export default function AgentPage() {
 
   useEffect(() => { loadContext(); loadConfig(); }, [loadContext, loadConfig]);
 
+  // Background auto-poll for auto-respond agents (every 30s)
+  useEffect(() => {
+    if (!config.autoRespondToEmail) return;
+    const t = setInterval(() => {
+      fetch(`/api/agents/${name}/auto-respond`, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => { if (d.triggered) setTimeout(loadContext, 2000); })
+        .catch(() => {});
+    }, 30000);
+    return () => clearInterval(t);
+  }, [config.autoRespondToEmail, name, loadContext]);
+
+  const handlePoll = async () => {
+    setPolling(true);
+    try {
+      const r = await fetch(`/api/agents/${name}/auto-respond`, { method: 'POST' });
+      const d = await r.json();
+      if (d.triggered) {
+        // Reload context after auto-respond
+        setTimeout(loadContext, 2000);
+      }
+    } catch {}
+    setPolling(false);
+  };
+
+  // Estimate tokens from message count (rough: ~200 tokens per message)
+  const tokenEstimate = ctx ? ctx.messages * 200 + ctx.emails * 50 + 20000 : 0;
+  const tokenPct = Math.min(100, Math.round((tokenEstimate / 200000) * 100));
+
   const toggleConfig = async (key: keyof AgentConfig) => {
     const next = { ...config, [key]: !config[key] };
     setConfig(next);
@@ -88,7 +118,18 @@ export default function AgentPage() {
               <span className="text-gray-300">·</span>
               <span className="flex items-center gap-1 text-gray-500"><Hash size={11} />{ctx.groups.join(', ')}</span>
             </>}
+            {/* Token estimate */}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${tokenPct > 80 ? 'bg-red-50 text-red-500' : tokenPct > 50 ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-100 text-gray-400'}`}
+              title={`~${(tokenEstimate/1000).toFixed(0)}k tokens used (out of 200k)`}>
+              ~{(tokenEstimate/1000).toFixed(0)}k
+            </span>
             <div className="ml-auto flex items-center gap-2">
+              {/* Poll button */}
+              <button onClick={handlePoll} disabled={polling}
+                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${polling ? 'text-gray-300' : 'text-green-500 hover:text-green-700 hover:bg-green-50'}`}
+                title="Trigger auto-respond for this agent">
+                <Zap size={11} className={polling ? 'animate-spin' : ''} /> Poll
+              </button>
               <button onClick={loadContext} className="text-gray-300 hover:text-gray-500" title="Refresh"><RefreshCw size={11} /></button>
               <button onClick={() => setShowConfig(!showConfig)}
                 className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${showConfig ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}
