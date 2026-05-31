@@ -32,35 +32,29 @@ function getAgentGroups(agentName: string): string[] {
 }
 
 // ── Read group chat ──
-interface ChatMsg { from: string; date: string; body: string; filename: string; }
+interface ChatMsg { from: string; date: string; body: string; }
 function readGroupChat(groupName: string, limit = 20): ChatMsg[] {
-  const chatDir = path.join(groupsDir(), groupName, 'chat');
-  if (!exists(chatDir)) return [];
-  const files = readDir(chatDir)
-    .filter(f => f.endsWith('.md'))
-    .map(f => f.name)
-    .sort()
-    .slice(-limit);
-
-  const msgs: ChatMsg[] = [];
-  for (const f of files) {
-    try {
-      const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-      const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+  const chatFile = path.join(groupsDir(), groupName, 'chat', 'chat.md');
+  if (!exists(chatFile)) return [];
+  try {
+    const raw = fs.readFileSync(chatFile, 'utf-8');
+    // Split by frontmatter blocks: each starts with "---\nfrom:"
+    const blocks = raw.split(/\n(?=---\nfrom:)/);
+    const msgs: ChatMsg[] = [];
+    for (const block of blocks) {
+      const trimmed = block.trim();
+      if (!trimmed) continue;
+      const fmMatch = trimmed.match(/^---\nfrom:\s*(.+?)\ndate:\s*(.+?)\n---\n\n([\s\S]*)/);
       if (fmMatch) {
-        const fm = fmMatch[1];
         msgs.push({
-          from: (fm.match(/from:\s*(.+)/)?.[1] || '').trim(),
-          date: (fm.match(/date:\s*(.+)/)?.[1] || '').trim(),
-          body: raw.slice(fmMatch[0].length).trim(),
-          filename: f,
+          from: fmMatch[1].trim(),
+          date: fmMatch[2].trim(),
+          body: fmMatch[3].trim(),
         });
-      } else {
-        msgs.push({ from: '', date: '', body: raw, filename: f });
       }
-    } catch { /* skip */ }
-  }
-  return msgs;
+    }
+    return msgs.slice(-limit);
+  } catch { return []; }
 }
 
 // ── MCP JSON-RPC ──
@@ -171,19 +165,12 @@ rl.on('line', (line: string) => {
         }
         const chatDir = path.join(groupsDir(), group, 'chat');
         if (!exists(chatDir)) fs.mkdirSync(chatDir, { recursive: true });
-        const date = new Date().toISOString().split('T')[0];
-        const safeTitle = 'msg_' + Date.now();
-        const filename = `${date}_${safeTitle}.md`;
-        const content = `---
-from: ${agentName}
-date: ${new Date().toISOString()}
----
-
-${message}
-`;
-        fs.writeFileSync(path.join(chatDir, filename), content, 'utf-8');
+        // Append to chat.md (single file, not individual files)
+        const chatFile = path.join(chatDir, 'chat.md');
+        const entry = `\n---\nfrom: ${agentName}\ndate: ${new Date().toISOString()}\n---\n\n${message}\n`;
+        fs.appendFileSync(chatFile, entry, 'utf-8');
         respond(id, {
-          content: [{ type: 'text', text: 'Message sent to ' + group }],
+          content: [{ type: 'text', text: `消息已发送到 ${group} 群聊` }],
         });
         return;
       }

@@ -13,9 +13,11 @@ export async function POST(
   }
 
   let message = '';
+  let group = '';
   try {
     const body = await request.json();
     message = (body.message || '').trim();
+    group = (body.group || '').trim();
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
   }
@@ -24,8 +26,8 @@ export async function POST(
     return new Response(JSON.stringify({ error: 'Empty message' }), { status: 400 });
   }
 
-  // SSE stream
-  const stream = createChatStream(name, message);
+  // SSE stream — pass group for context injection
+  const stream = createChatStream(name, message, group || undefined);
 
   const sseStream = new ReadableStream({
     async start(controller) {

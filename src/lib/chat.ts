@@ -42,7 +42,7 @@ function sessionFile(agentName: string) {
   return path.join(AGENTS_DIR, agentName, 'chat', 'session.json');
 }
 
-export function createChatStream(agentName: string, userMessage: string): ReadableStream<ChatEvent> {
+export function createChatStream(agentName: string, userMessage: string, groupName?: string): ReadableStream<ChatEvent> {
   const agentDir = path.join(AGENTS_DIR, agentName);
   if (!fs.existsSync(agentDir)) {
     return quickError(`Agent "${agentName}" not found`);
@@ -110,11 +110,27 @@ export function createChatStream(agentName: string, userMessage: string): Readab
     }
   }
 
+  // 如果指定了 group，注入群聊最近消息到上下文
+  let groupChatContext = '';
+  if (groupName) {
+    const chatFile = path.join(GroupsDir, groupName, 'chat', 'chat.md');
+    if (fs.existsSync(chatFile)) {
+      try {
+        const raw = fs.readFileSync(chatFile, 'utf-8');
+        // 取最后 5000 字符（约 10-20 条消息）
+        const snippet = raw.length > 5000 ? '...(较早消息已省略)\n\n' + raw.slice(-5000) : raw;
+        groupChatContext = `\n\n## 你正在 ${groupName} 群聊中。以下是最近的群聊记录：\n\n${snippet}\n\n你可以使用 group_send 工具向群聊发送消息。`;
+      } catch { /* ignore */ }
+    } else {
+      groupChatContext = `\n\n## 你正在 ${groupName} 群聊中。暂无消息记录。你可以使用 group_send 工具发言。`;
+    }
+  }
+
   const identity = `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。
 
 你不能在自己的 email/ 下添加或修改文件。给其他人发邮件时在对方 email/ 下创建 .md 文件。你始终用中文回复。
 
-${groupContext}`;
+${groupContext}${groupChatContext}`;
   fs.writeFileSync(sysFile, identity, 'utf-8');
 
   const isWin = process.platform === 'win32';
@@ -149,8 +165,8 @@ ${groupContext}`;
         '--dangerously-skip-permissions',
         isNew ? '--session-id' : '--resume', sessionId,
         '--append-system-prompt-file', sysFile,
-        userMessage,
-        '--mcp-config', mcpConfigFile,
+        `--mcp-config=${mcpConfigFile}`,
+        userMessage,  // must be last — positional arg
       ];
 
       const child = spawn(claudeExe, args, {

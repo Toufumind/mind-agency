@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail, Users as UsersIcon } from 'lucide-react';
 
 interface ChatEvent { type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error'; content?: string; toolName?: string; toolInput?: string; toolOutput?: string; timestamp: string; }
 interface Msg { role: 'user' | 'assistant'; content: string; events: ChatEvent[]; timestamp: string; }
@@ -40,6 +40,8 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [emailCount, setEmailCount] = useState(0);
   const [toastMsg, setToastMsg] = useState('');
+  const [activeGroup, setActiveGroup] = useState('');  // currently joined group
+  const [myGroups, setMyGroups] = useState<string[]>([]); // groups this agent belongs to
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -59,13 +61,22 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
     } catch {}
   }, [agentName, emailCount]);
 
+  // Load my groups
+  const loadGroups = useCallback(async () => {
+    try {
+      const r = await fetch('/api/groups/scan?agent=' + agentName);
+      const d = await r.json();
+      setMyGroups(d.groups || []);
+    } catch {}
+  }, [agentName]);
+
   useEffect(() => {
     fetch('/api/agents').then(r => r.json()).then(d => setAgents(d.agents || [])).catch(() => {});
     fetch(`/api/agents/${agentName}/chat`)
       .then(r => r.json()).then(d => { if (d.messages) setMsgs(d.messages); }).catch(() => {});
-    // Initial email check
     fetch(`/api/emails?agent=${agentName}`).then(r => r.json())
       .then(d => { if (Array.isArray(d)) setEmailCount(d.length); }).catch(() => {});
+    loadGroups();
   }, [agentName]);
 
   // Poll emails
@@ -99,7 +110,9 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
     setMsgs(p => [...p, { role: 'user', content: t, events: [], timestamp: new Date().toISOString() }]);
     setMsgs(p => [...p, { role: 'assistant', content: '', events: [], timestamp: new Date().toISOString() }]);
     try {
-      const r = await fetch(`/api/agents/${agentName}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: t }) });
+      const body: any = { message: t };
+      if (activeGroup) body.group = activeGroup;
+      const r = await fetch(`/api/agents/${agentName}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const reader = r.body!.getReader(); const dec = new TextDecoder(); let buf = '', done = false;
       while (!done) {
         const { done: d, value } = await reader.read();
@@ -143,6 +156,32 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
       <div className="flex items-center justify-between px-5 py-3 shrink-0 select-none">
         <div className="flex items-center gap-3">
           <span className="text-[14px] font-medium text-gray-900">{agentName}</span>
+          {/* Group selector */}
+          {activeGroup && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-white bg-gray-800 px-2.5 py-0.5 rounded-md">
+              <UsersIcon size={10} />
+              {activeGroup}
+              <button onClick={() => { setActiveGroup(''); setMsgs([]); }}
+                className="ml-1 text-white/50 hover:text-white">×</button>
+            </span>
+          )}
+          {myGroups.length > 0 && !activeGroup && (
+            <div className="relative group">
+              <button className="text-[11px] text-gray-400 bg-gray-50 hover:bg-gray-100 px-2.5 py-0.5 rounded-md transition-colors flex items-center gap-1">
+                <UsersIcon size={10} />
+                Groups
+                <ChevronDown size={8} />
+              </button>
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 py-1 min-w-[140px]">
+                {myGroups.map(g => (
+                  <button key={g} onClick={() => { setActiveGroup(g); setMsgs([]); }}
+                    className="w-full text-left px-4 py-2 text-[12px] text-gray-700 hover:bg-gray-50 transition-colors">
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {emailCount > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md">
               <Mail size={10} />
