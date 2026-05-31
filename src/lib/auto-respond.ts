@@ -76,10 +76,11 @@ function checkGroupMentions(agentName: string): string {
           const from = (block.match(/from:\s*(.+)/)?.[1] || '').trim();
           // Don't self-trigger on own messages
           if (from.toLowerCase() === agentName.toLowerCase()) continue;
-          // Only match explicit @mention, not arbitrary name occurrence
-          if (block.includes('@' + agentName)) {
+          // Match explicit @mention (case-insensitive)
+          const blockLower = block.toLowerCase();
+          if (blockLower.includes('@' + agentName.toLowerCase())) {
             const body = (block.split('\n---\n\n')[1] || block).slice(0, 200);
-            parts.push(`${g.name}群 ${from}: ${body}`);
+            parts.push(`${g.name}群 ${from}: ${body.substring(0, 200)}`);
             break;
           }
         }
@@ -197,18 +198,38 @@ export async function autoRespond(agentName: string): Promise<{
     return { triggered: false, reason: 'no triggers' };
   }
 
-  // ── Build prompt ──
+  // ── Build prompt (short, action-first) ──
   const triggerType = proactiveCtx ? '主动扫描' : (groupMentions ? '@提及' : '新邮件');
-  const prompt = `轮询触发 (${triggerType})。
+  const emailCtx = latestEmail ? `新邮件 — ${latestEmail.from}: ${latestEmail.subject}\n${latestEmail.body.slice(0, 400)}` : '';
+  const groupCtx = groupMentions ? `群聊有人@了你：\n${groupMentions}\n` : '';
+  const proactiveCtxInfo = proactiveCtx ? `群聊有与你领域相关的讨论：\n${proactiveCtx}\n` : '';
 
-${latestEmail ? `新邮件 — ${latestEmail.from}: ${latestEmail.subject}\n${latestEmail.body.slice(0, 400)}` : ''}
-${groupMentions ? `群聊@你：${groupMentions}\n必须用 group_send 回复！` : ''}
-${proactiveCtx ? `群聊有与你领域相关的讨论：${proactiveCtx}\n你应该用 group_send 自然地参与讨论，给出专业意见。不要等别人@你。` : ''}
+  // 简洁指令：要求立即行动，不要探索
+  const action = groupMentions
+    ? '用 group_send 在群里简短回复（一句话即可），不要读文件、不要分析'
+    : latestEmail
+    ? '读邮件并执行要求的操作。需要时用 group_send 在群里通知相关人'
+    : '用 group_send 在群里自然参与讨论，给专业意见（简短即可）';
 
-规则：被@必须回复；看到相关讨论主动参与；只沟通常不写代码；用中文。`;
+  const prompt = `轮询触发 (${triggerType})。\n\n${emailCtx}${groupCtx}${proactiveCtxInfo}\n${action}\n\n用中文。`;
 
   try {
     const { reply } = await chatOnce(agentName, prompt);
+
+    // ── Auto-post reply to group chat (agent may forget group_send) ──
+    const mentionCtx = groupMentions || proactiveCtx;
+    if (mentionCtx && reply && !reply.includes('无行动项')) {
+      // Extract the group name from the mention context (e.g. "default群 Alice: ...")
+      const groupMatch = groupMentions.match(/^(\w+)群/);
+      const group = groupMatch ? groupMatch[1] : 'default';
+      const shortReply = reply.length > 500 ? reply.slice(0, 500) + '...' : reply;
+      const chatDir = path.join(process.cwd(), 'Groups', group, 'chat');
+      if (!fs.existsSync(chatDir)) fs.mkdirSync(chatDir, { recursive: true });
+      const date = new Date().toISOString().split('T')[0];
+      const entry = `\n---\nfrom: ${agentName}\ndate: ${new Date().toISOString()}\n---\n\n${shortReply}\n`;
+      fs.appendFileSync(path.join(chatDir, `${date}.md`), entry, 'utf-8');
+    }
+
     return { triggered: true, reply, emailFrom: latestEmail?.from || 'proactive', emailSubject: latestEmail?.subject || triggerType };
   } catch (e: any) {
     return { triggered: false, reason: e.message };

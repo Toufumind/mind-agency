@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 /**
  * Group MCP Server for Mind Agency
  * One instance shared across all agents (agent name passed as CLI arg)
@@ -15,23 +15,46 @@ import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import { writeAudit, checkPermission } from '../src/lib/audit.js';
+import { randomUUID } from 'crypto';
 
-const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || 'http://localhost:3001/broadcast';
+const WS_BASE_URL = process.env.WS_BASE_URL || 'http://localhost:3001';
+const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || `${WS_BASE_URL}/broadcast`;
+const WS_EVENTS_URL = process.env.WS_EVENTS_URL || `${WS_BASE_URL}/events`;
 
-/** Fire-and-forget broadcast to WebSocket clients */
-function broadcast(msg: Record<string, unknown>) {
+/** Fire-and-forget HTTP POST */
+function httpPost(urlStr: string, body: Record<string, unknown>) {
   try {
-    const body = JSON.stringify({ ...msg, timestamp: new Date().toISOString() });
-    const u = new URL(WS_BROADCAST_URL);
+    const data = JSON.stringify(body);
+    const u = new URL(urlStr);
     const req = http.request({
       hostname: u.hostname, port: u.port, path: u.pathname,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
     }, (res) => { res.resume(); });
     req.on('error', () => { /* WS server may not be running */ });
-    req.write(body);
+    req.write(data);
     req.end();
   } catch { /* ignore */ }
+}
+
+/** Fire-and-forget broadcast to WebSocket clients (legacy group chat) */
+function broadcast(msg: Record<string, unknown>) {
+  httpPost(WS_BROADCAST_URL, { ...msg, timestamp: new Date().toISOString() });
+}
+
+/** Emit an Event Bus event via HTTP POST to :3001/events */
+function emitBusEvent(
+  event: string,
+  payload: Record<string, unknown>,
+  source?: string
+) {
+  httpPost(WS_EVENTS_URL, {
+    event,
+    payload,
+    timestamp: Date.now(),
+    source: source || agentName,
+    id: randomUUID(),
+  });
 }
 
 const PROJECT_ROOT = process.env.MIND_PROJECT_ROOT || process.cwd();
@@ -133,6 +156,24 @@ rl.on('line', (line: string) => {
         appendToChat(group, agentName, message);
         broadcast({ type: 'group_message', group, from: agentName, message });
         writeAudit({ agent: agentName, action: 'group.send', resource: `group:${group}`, details: message.slice(0, 200) });
+        // ── EventBus: message.sent ──
+        const mentions = (message.match(/@(\w+)/g) || []).map((m: string) => m.slice(1));
+        emitBusEvent('message.sent', {
+          sender: agentName,
+          group,
+          mentions,
+          length: message.length, // UTF-16 字符数
+        });
+
+        // ── EventBus: message.mention (if mentions present) ──
+        if (mentions.length > 0) {
+          emitBusEvent('message.mention', {
+            sender: agentName,
+            group,
+            mentioned: mentions,
+          });
+        }
+
         respond(id, { content: [{ type: 'text', text: `sent to ${group}` }] });
         return;
       }
@@ -155,6 +196,15 @@ rl.on('line', (line: string) => {
         fs.mkdirSync(path.join(agDir, 'email'), { recursive: true });
         appendToChat(group, 'system', `${agentName} joined the group`);
         writeAudit({ agent: agentName, action: 'group.join', resource: `group:${group}` });
+
+        // ── EventBus: task.assigned (agent joining group scope) ──
+        emitBusEvent('task.assigned', {
+          taskId: `group:${group}`,
+          from: 'system',
+          to: agentName,
+          title: `Joined group ${group}`,
+        });
+
         const others = exists(path.join(gDir, 'Agents')) ? readDir(path.join(gDir, 'Agents')).filter(e => e.isDirectory() && e.name !== agentName).map(e => e.name) : [];
         respond(id, { content: [{ type: 'text', text: `joined ${group}. members: ${others.join(', ') || 'none'}` }] });
         return;
@@ -168,6 +218,14 @@ rl.on('line', (line: string) => {
         appendToChat(group, 'system', `${agentName} left the group`);
         fs.rmSync(agDir, { recursive: true, force: true });
         writeAudit({ agent: agentName, action: 'group.leave', resource: `group:${group}` });
+
+        // ── EventBus: task.completed (agent leaving = completed that scope) ──
+        emitBusEvent('task.completed', {
+          taskId: `group:${group}`,
+          by: agentName,
+          duration: 0,
+        });
+
         respond(id, { content: [{ type: 'text', text: `left ${group}` }] });
         return;
       }

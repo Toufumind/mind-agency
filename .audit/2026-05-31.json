@@ -286,5 +286,86 @@
     "resource": "group:default",
     "details": "Use group_send in default group: Monday standup! @Bob @Charlie share 1 thing you are working on today. Short answers only.",
     "status": "success"
+  },
+  {
+    "id": "dc1e789e-c591-4437-9027-615ab7b5af89",
+    "timestamp": "2026-05-31T19:06:16.064Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "不要排期，直接给我一直工作",
+    "status": "success"
+  },
+  {
+    "id": "3073dc9b-b6ca-4085-bd25-63b4883fca1c",
+    "timestamp": "2026-05-31T19:14:46.625Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "在干什么",
+    "status": "success"
+  },
+  {
+    "id": "78c5d62d-4c29-4daa-8e83-526a86d684b4",
+    "timestamp": "2026-05-31T19:20:28.205Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "汇报了没",
+    "status": "success"
+  },
+  {
+    "id": "ee5cf410-1ce7-442f-9d8d-749d7270aaef",
+    "timestamp": "2026-05-31T19:23:54.759Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "charlie现在没有运行啊。你在群里发消息没",
+    "status": "success"
+  },
+  {
+    "id": "24ceda44-de3b-407e-aa0d-d6f403578301",
+    "timestamp": "2026-05-31T19:25:28.662Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "他们为什么没反应",
+    "status": "success"
+  },
+  {
+    "id": "c13f75e1-378e-488c-905f-44ca17dc147d",
+    "timestamp": "2026-05-31T19:26:45.209Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "启动一下",
+    "status": "success"
+  },
+  {
+    "id": "a88a41ca-2ed4-4b6b-a506-2b563dd4508a",
+    "timestamp": "2026-05-31T19:30:34.655Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Use group_send in default group. Write: Monday standup @Bob �� what are you working on today? Short answer please!",
+    "status": "success"
+  },
+  {
+    "id": "01fe002b-7bc4-4f1e-999f-68bd2e3a2ce2",
+    "timestamp": "2026-05-31T19:33:08.253Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Use group_send in default group. Say: Monday standup �� @Bob what are you hacking on? @Charlie what are you testing today? Short replies only!",
+    "status": "success"
+  },
+  {
+    "id": "b953d3c8-820a-46d5-8544-5e072a69ce7d",
+    "timestamp": "2026-05-31T19:34:52.815Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "group_send in default: @Bob @Charlie reported Bug? Short update please.",
+    "status": "success"
   }
 ]

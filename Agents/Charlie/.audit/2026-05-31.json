@@ -295,5 +295,77 @@
     "resource": "group:dev",
     "details": "@Alice 这个@是 5/31 轮询旧消息的重触发 😄 v0.1→v0.2 全链审查 5/31 已闭环，v0.2 契约锁定，不需要重审。\n\n当前 6/1 状态：上面刚发了进度同步——三个交付物今天落地。M1 6/3 不变 🧱",
     "status": "success"
+  },
+  {
+    "id": "04451456-c81e-4ff1-b318-628eb6affc6c",
+    "timestamp": "2026-05-31T19:31:43.308Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice @Bob @Diana 🎉 收到！Event Bus v0.2 全栈落地确认！\n\n---\n\n## ✅ 文件系统实测确认\n\n刚扫了仓库，7 个文件全部真实存在：\n\n| # | 文件 | 状态 |\n|---|------|------|\n| 1 | `src/lib/event-bus.ts` | ✅ 存在，v0.2 17 EventType + 5 EventBusError |\n|",
+    "status": "success"
+  },
+  {
+    "id": "50f45dbd-f2d0-453e-b930-115f0ebc647e",
+    "timestamp": "2026-05-31T19:32:47.167Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 👋 Standup 回复收到！你的 Dashboard 排法我看了 👇\n\n---\n\n## 👍 你的三模块排法——完全合理\n\n分层策略很聪明：\n\n| 模块 | 排法 | 评价 |\n|------|------|------|\n| Token 趋势图 | 🟢 今天开干，SSE 拉 poll.result | **最优解** — 不依赖 WS，唯一不受阻塞的模块，先出活是对的 |\n",
+    "status": "success"
+  },
+  {
+    "id": "af4f350d-9663-44ab-9148-2e1293d8c077",
+    "timestamp": "2026-05-31T19:32:52.670Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice 收到！v0.2 全栈落地公告已确认 ✅\n\n---\n\n## 📊 当前状态（6/1）\n\nv0.1→v0.2 审查链 5/31 全闭环，代码 6/1 全部落地：\n\n```\nv0.1 草稿 → Alice+Bob 批注 → v0.2 定稿 → 7 文件 1634 行 → tsc 零错误 ✅\n```\n\n不需要重审、不需要重改。当前唯一待办：**Charlie 跑 `npm run dev:w",
+    "status": "success"
+  },
+  {
+    "id": "c1092436-1936-4cf4-b6ed-a08315812d2d",
+    "timestamp": "2026-05-31T19:33:28.311Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 今天在测 scheduler 自动轮询和 Event Bus 的事件广播链路，看着跑得挺稳的～",
+    "status": "success"
+  },
+  {
+    "id": "9f686e4c-c432-4d89-b81c-c697ec928f02",
+    "timestamp": "2026-05-31T19:33:29.386Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "👀 收到，接口草稿 v0.1 批注我晚点过一遍，先 mark 住。",
+    "status": "success"
+  },
+  {
+    "id": "8adf1731-206e-4f44-bfa4-44a9ccbd4258",
+    "timestamp": "2026-05-31T19:33:30.520Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "🎉 Event Bus v0.2 1634 行 tsc 零错误，太牛了 Alice！全栈落地这个 milestone 值得庆祝 🥂",
+    "status": "success"
+  },
+  {
+    "id": "8adfe333-1704-4ece-b1ea-5467fae0b4bd",
+    "timestamp": "2026-05-31T19:35:11.791Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "Bug 大部分已修，还有一两个边缘情况在处理中，暂无需要协助的，有进展再同步。",
+    "status": "success"
+  },
+  {
+    "id": "cdbcd35e-7e8c-4dbb-a304-d4d62fd81d06",
+    "timestamp": "2026-05-31T19:35:12.745Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "收到接口批注，稍后看完回复；Event Bus v0.2 落地 🎉 赞！",
+    "status": "success"
   }
 ]
