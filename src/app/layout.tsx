@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ToastProvider } from '@/components/toast';
+import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       <body className="font-sans">
-        <ToastProvider>{children}</ToastProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

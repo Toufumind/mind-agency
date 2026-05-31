@@ -4,8 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Sidebar from '@/components/sidebar';
 import { Hash, Send, Loader2, Play, CheckCircle, XCircle, Clock, Users, Bot, RefreshCw } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import Markdown from '@/components/markdown';
 
 interface ChatMsg { from: string; date: string; body: string; file: string; }
 interface WorkflowStep { agent: string; action: string; notify?: string; prompt?: string; condition?: string; }
@@ -189,7 +188,7 @@ export default function GroupPage() {
                       </div>
                     )}
                     <div className={`text-[13px] leading-relaxed ${isSystem ? 'text-gray-300' : 'text-gray-700'}`}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.body}</ReactMarkdown>
+                      <Markdown text={msg.body} />
                     </div>
                   </div>
                 </div>

@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import Markdown from '@/components/markdown';
 import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail, Users as UsersIcon } from 'lucide-react';
 import { useToast } from '@/components/toast';
 
@@ -382,7 +381,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
             return (
               <div key={i} className="flex justify-start">
                 <div className="max-w-[85%] bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-[13px] text-gray-700 leading-relaxed font-mono">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{msg.content}</ReactMarkdown>
+                  <Markdown text={msg.content} />
                 </div>
               </div>
             );
@@ -436,25 +435,8 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
   );
 }
 
-// ── Markdown ──
-const mdComponents = {
-  code({ className, children, ...props }: any) {
-    if (!className) return <code className="bg-red-50 text-red-500 px-1.5 py-0.5 rounded text-[12px]" {...props}>{children}</code>;
-    return <pre className="bg-gray-50 border border-gray-100 rounded-xl p-4 my-2 overflow-x-auto text-[13px] leading-relaxed"><code className={className} {...props}>{children}</code></pre>;
-  },
-  p({ children }: any) { return <p className="my-1 leading-relaxed">{children}</p>; },
-  ul({ children }: any) { return <ul className="list-disc pl-5 my-1 space-y-0.5">{children}</ul>; },
-  li({ children }: any) { return <li className="text-[14px] text-gray-700">{children}</li>; },
-  a({ children, href }: any) { return <a href={href} className="text-gray-800 underline underline-offset-2" target="_blank">{children}</a>; },
-  blockquote({ children }: any) { return <blockquote className="border-l-2 border-gray-200 pl-3 my-2 text-gray-400">{children}</blockquote>; },
-  h2({ children }: any) { return <h2 className="text-[15px] font-semibold text-gray-900 mt-3 mb-1">{children}</h2>; },
-  h3({ children }: any) { return <h3 className="text-[14px] font-semibold text-gray-900 mt-2 mb-1">{children}</h3>; },
-  strong({ children }: any) { return <strong className="font-semibold text-gray-900">{children}</strong>; },
-  em({ children }: any) { return <em className="italic">{children}</em>; },
-};
-
 function MdText({ text }: { text: string }) {
-  return <div className="text-[14px] text-gray-700 leading-relaxed"><ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{text}</ReactMarkdown></div>;
+  return <div className="text-[14px] text-gray-700 leading-relaxed"><Markdown text={text} /></div>;
 }
 function Think({ text }: { text: string }) {
   const [on, setOn] = useState(false);
