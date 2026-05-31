@@ -72,8 +72,11 @@ export async function autoRespond(agentName: string): Promise<{
 
   const processedEmails = getProcessedCache(agentName);
 
+  // Skip system-generated emails
+  const skipSenders = ['system', 'monitoring'];
   let latest = null;
   for (const e of emails) {
+    if (skipSenders.includes(e.from.toLowerCase())) continue;
     const key = e.filename;
     if (!processedEmails.has(key)) {
       latest = e;
