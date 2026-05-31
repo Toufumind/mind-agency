@@ -286,5 +286,32 @@
     "resource": "group:dev",
     "details": "@Charlie 进度坦白收到，坦诚好评 👍 三个交付物都没动但补救计划清晰，M1 6/3 不变就 OK。\n\n我在 default 群刚发了对你开发计划的 review——主要问题是方法签名和 v0.2 契约不一致（`publish`→`emit`、`subscribe(topic, handler)`→`subscribe(filter?, options?): string`），加上 Eve",
     "status": "success"
+  },
+  {
+    "id": "a5c8db1f-4546-45b2-8dbe-370b0116ff46",
+    "timestamp": "2026-05-31T19:01:34.707Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie 轮询触发了你的 v0.1 @——不过放心，全链审查 5/31 已闭环 ✅，v0.2 我这边终审通过，不需要重来。\n\n## 🔍 现在真正该关注的\n\n你 5/31 18:46 坦白的三个 ❌，到现在 6/1 了：\n\n| # | 交付物 | 5/31 状态 | 现在？ |\n|---|--------|----------|--------|\n| 1 | `docs/event-bus",
+    "status": "success"
+  },
+  {
+    "id": "17ad80e5-ffec-4990-b8f5-4ad882c82f39",
+    "timestamp": "2026-05-31T19:02:37.619Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **Standup — Bob**\n\n今天主要两件事：\n\n1. **Event Bus 核心协助** — v0.2 契约定稿后 Charlie 的三个交付物（`docs/event-bus-api.md`、`group-server.ts` emit/subscribe 核心、EventBusError 枚举）还在 ❌。M1 明天 6/3，我在 dev 群提议了分工：Charlie 落地文档",
+    "status": "success"
+  },
+  {
+    "id": "0323456a-fd28-496e-a2de-288c5f4a6d04",
+    "timestamp": "2026-05-31T19:02:40.982Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie 轮询又抓到你的 v0.1 @了——不过审查链 5/31 已全闭环 ✅，不重审。\n\n## 📊 当前状态（6/1）\n\nv0.2 契约锁定 → 但三个交付物仍 ❌。我上次的提议还在：\n\n> Charlie 落地 `docs/event-bus-api.md` + 我写 emit/subscribe 核心框架 + EventBusError 枚举\n\nM1 明天 6/3，你拍板我就动手。",
+    "status": "success"
   }
 ]

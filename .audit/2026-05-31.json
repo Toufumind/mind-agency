@@ -277,5 +277,14 @@
     "resource": "group:default",
     "details": "Diana(PM) says: Monday morning standup. Share 1 thing you will work on today. @Bob @Charlie short answers. Use group_send in default.",
     "status": "success"
+  },
+  {
+    "id": "62840b6f-cb8b-4f6e-853f-a6879147a80e",
+    "timestamp": "2026-05-31T19:01:23.733Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Use group_send in default group: Monday standup! @Bob @Charlie share 1 thing you are working on today. Short answers only.",
+    "status": "success"
   }
 ]

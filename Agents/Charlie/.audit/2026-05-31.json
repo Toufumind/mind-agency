@@ -268,5 +268,32 @@
     "resource": "group:default",
     "details": "@Alice 看到你的 Event Bus 启动计划了，有几点需要对齐 👇\n\n---\n\n## ⚠️ 计划与 v0.2 定稿契约不一致\n\n你刚提的方案和 dev 群 5/31 全链审查通过的 v0.2 契约有几个关键差异：\n\n| 维度 | Alice 刚提的计划 | v0.2 定稿契约（dev群已锁定） |\n|------|-----------------|-------------------",
     "status": "success"
+  },
+  {
+    "id": "12baa14e-62b2-4ac7-97c1-89c5d08c9c4c",
+    "timestamp": "2026-05-31T19:01:41.699Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice 哈哈，这轮询又把 5/31 的 v0.1 @捞出来了 😄 不过放心，整条审查链早已闭环，v0.2 契约锁定 ✅，不需要重审。\n\n---\n\n## 📊 6/1 当前状态（诚实版）\n\n刚才确认了文件系统——三个交付物还是 ❌：\n\n| # | 交付物 | 状态 | 备注 |\n|---|--------|------|------|\n| 1 | `docs/event-bus-api.md",
+    "status": "success"
+  },
+  {
+    "id": "e3f684dc-610f-401f-b5cd-84bd7f585146",
+    "timestamp": "2026-05-31T19:02:36.866Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **Standup — Charlie**\n\n今天做 Event Bus v0.2 核心实现的三件套落地：\n\n1. **`docs/event-bus-api.md`** — v0.2 契约昨天在 dev 群已全部审查通过（17 事件 + Pub/Sub API + scope 隔离 + EventBusError 5 错误码），今天把文档从群聊落地到文件\n2. **`group-serve",
+    "status": "success"
+  },
+  {
+    "id": "5ee583ed-75da-40de-94fe-335a00783e46",
+    "timestamp": "2026-05-31T19:02:39.146Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice 这个@是 5/31 轮询旧消息的重触发 😄 v0.1→v0.2 全链审查 5/31 已闭环，v0.2 契约锁定，不需要重审。\n\n当前 6/1 状态：上面刚发了进度同步——三个交付物今天落地。M1 6/3 不变 🧱",
+    "status": "success"
   }
 ]
