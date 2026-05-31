@@ -214,6 +214,39 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // ── POST /workflows/approve ───────────────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/workflows/approve') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { approvalId, decision, comment } = JSON.parse(body);
+        if (!approvalId || !decision || !['APPROVED', 'REJECTED'].includes(decision)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'requires approvalId and decision (APPROVED|REJECTED)' }));
+          return;
+        }
+        const ok = workflowEngine.submitApproval(approvalId, decision, comment);
+        res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(ok ? { ok: true, approvalId, decision } : { ok: false, error: 'approval not found' }));
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'invalid json' }));
+      }
+    });
+    return;
+  }
+
+  // ── GET /workflows/approvals ──────────────────────────────────────
+
+  if (req.method === 'GET' && req.url === '/workflows/approvals') {
+    const pending = workflowEngine.listPendingApprovals();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ count: pending.length, pending }, null, 2));
+    return;
+  }
+
   // ── POST /workflows/run ───────────────────────────────────────────
 
   if (req.method === 'POST' && req.url === '/workflows/run') {

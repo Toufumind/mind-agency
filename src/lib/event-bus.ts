@@ -325,6 +325,8 @@ export class WorkflowEngine {
   private runs = new Map<string, WorkflowRunRecord>();
   private bus?: EventBus;
   private executor: StepExecutor;
+  /** v0.3 P2: Human approval inbox — approvalId → { runId, stepId, node } */
+  private pendingApprovals = new Map<string, { runId: string; stepId: string; node: DagNode; nodes: Map<string, DagNode> }>();
 
   constructor(bus?: EventBus, executor?: StepExecutor) { this.bus = bus; this.executor = executor || createStepExecutor(); }
 
@@ -380,6 +382,22 @@ export class WorkflowEngine {
     const run = this.runs.get(runId); if (!run) return;
     const sid = node.step.id; node.status = StepStatus.IN_PROGRESS; node.startedAt = Date.now(); run.steps.set(sid, StepStatus.IN_PROGRESS);
     const phase = phaseForAction(node.step.action);
+
+    // v0.3 P2: Human approval node — pause DAG, wait for POST /workflows/approve
+    if (node.step.action === 'human_approval') {
+      const approvalId = randomUUID().slice(0, 8);
+      node.status = StepStatus.IN_PROGRESS; node.output = `AWAITING_HUMAN_APPROVAL approvalId=${approvalId}`;
+      run.steps.set(sid, StepStatus.IN_PROGRESS);
+      this.pendingApprovals.set(approvalId, { runId, stepId: sid, node, nodes });
+      if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_REQUESTED, {
+        taskId: runId, stepId: sid, workflow: run.workflowName,
+        agent: node.step.agent, action: 'human_approval',
+        approvalId, phase: WorkflowPhase.APPROVAL,
+        prompt: node.step.prompt,
+      }, 'workflow-engine'));
+      return; // Pause — resume via submitApproval()
+    }
+
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, phase }, 'workflow-engine'));
     const ctx: Record<string, string> = {}; for (const depId of node.deps) { const dn = nodes.get(depId); if (dn?.output) ctx[depId] = dn.output; }
 
@@ -412,6 +430,74 @@ export class WorkflowEngine {
   complete(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }
   fail(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } }
   listRuns(): WorkflowRunRecord[] { const seen = new Set<string>(); const out: WorkflowRunRecord[] = []; for (const r of this.runs.values()) { if (!seen.has(r.runId)) { seen.add(r.runId); out.push(r); } } return out; }
+  /** v0.3 P2: Submit human approval decision and resume DAG execution */
+  submitApproval(approvalId: string, decision: 'APPROVED' | 'REJECTED', comment?: string): boolean {
+    const pending = this.pendingApprovals.get(approvalId);
+    if (!pending) return false;
+    this.pendingApprovals.delete(approvalId);
+
+    const { runId, stepId, node, nodes } = pending;
+    const run = this.runs.get(runId);
+    if (!run) return false;
+
+    // Record human decision as step output
+    node.output = `HUMAN_APPROVAL APPROVAL_ID:${approvalId} DECISION:${decision}${comment ? ` COMMENT:${comment}` : ''}`;
+    node.status = StepStatus.COMPLETED;
+    run.steps.set(stepId, StepStatus.COMPLETED);
+
+    if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, {
+      taskId: runId, stepId, workflow: run.workflowName,
+      agent: node.step.agent, action: 'human_approval',
+      output: node.output, decision,
+      phase: WorkflowPhase.APPROVAL,
+    }, 'workflow-engine'));
+
+    // Notify downstream
+    if (node.step.notify) {
+      const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify];
+      for (const to of nl) {
+        if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_COMPLETED, {
+          taskId: runId, stepId, workflow: run.workflowName,
+          from: node.step.agent, to, decision, approvalId,
+        }, 'workflow-engine'));
+      }
+    }
+
+    // Resume DAG: find the workflow definition and re-execute remaining steps
+    const defs: WorkflowDefinition[] = [];
+    for (const [rid, r] of this.runs) {
+      if (r.runId === runId && r.workflowName === run.workflowName) {
+        // Rebuild definition from stored nodes
+        const steps = [...nodes.values()].map(n => n.step);
+        defs.push({ name: run.workflowName, steps });
+        break;
+      }
+    }
+    if (defs.length > 0) {
+      this.executeDag(runId, defs[0]).then(() => {
+        const r = this.runs.get(runId);
+        if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); }
+      }).catch((err: Error) => {
+        const r = this.runs.get(runId);
+        if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); }
+        if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: err.message }, 'workflow-engine'));
+      });
+    }
+
+    return true;
+  }
+
+  /** List all pending human approvals */
+  listPendingApprovals(): Array<{ approvalId: string; runId: string; stepId: string; agent: string; prompt: string }> {
+    return [...this.pendingApprovals.entries()].map(([approvalId, p]) => ({
+      approvalId,
+      runId: p.runId,
+      stepId: p.stepId,
+      agent: p.node.step.agent,
+      prompt: p.node.step.prompt,
+    }));
+  }
+
   getRun(idOrName: string): WorkflowRunRecord | undefined { return this.runs.get(idOrName); }
 
   /** v0.3 P2: Check system load before scheduling new work */
