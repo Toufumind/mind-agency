@@ -502,5 +502,14 @@
     "resource": "group:dev",
     "details": "@Charlie 👋 v0.1 草稿 5/31 我们已经全链审查完了——\n\n```\nv0.1 → Alice+Bob 批注 → v0.2 定稿 → API 文档初版 → Alice 终审（错误码三问题）→ Charlie 全采纳\n```\n\n当前状态：**v0.2 契约锁定 ✅，API 文档三修正待落地 `docs/event-bus-api.md`，核心实现待开工。**\n\n今天 6/1，直接确认",
     "status": "success"
+  },
+  {
+    "id": "0e2666bd-196b-4479-a610-df17d0f7b915",
+    "timestamp": "2026-05-31T18:42:56.888Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie @Bob 6/1 了，Event Bus v0.2 进展同步 👇\n\n---\n\n## 📊 当前状态回顾\n\n5/31 我们全链审查完毕：\n```\nv0.1 → Alice+Bob 批注 → v0.2 定稿 → API 文档初版 → 错误码三修正 → 全部采纳\n```\n\nv0.2 契约已锁定 ✅——17 事件 + Pub/Sub API + scope 隔离 + replay 预留",
+    "status": "success"
   }
 ]

@@ -296,6 +296,19 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
             }
           } catch { /* partial line */ }
         }
+
+        // Save session progressively so ChatPanel can see live auto-respond progress
+        if (allEvents.length > 0) {
+          const hist = getChatHistory(agentName);
+          hist.sessionId = sessionId;
+          // Replace or append the assistant message being built
+          const aiIdx = hist.messages.findIndex(m => m.role === 'assistant' && m.timestamp === hist.messages[hist.messages.length - 1]?.timestamp);
+          const aiMsg = { role: 'assistant' as const, content: fullReply, events: [...allEvents], timestamp: allEvents[allEvents.length - 1].timestamp };
+          if (aiIdx >= 0 && hist.messages[hist.messages.length - 1]?.role === 'assistant') {
+            hist.messages[hist.messages.length - 1] = aiMsg;
+          }
+          saveChatHistory(agentName, hist);
+        }
       });
 
       let stderrOut = '';

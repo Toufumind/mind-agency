@@ -180,13 +180,31 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
     } catch {}
   }, [agentName]);
 
+  // Load history + poll every 5s for auto-respond live updates
   useEffect(() => {
+    const load = () => {
+      fetch(`/api/agents/${agentName}/chat`)
+        .then(r => r.json()).then(d => {
+          if (!d.messages) return;
+          // Merge: only append new messages we haven't seen yet
+          setMsgs(prev => {
+            if (prev.length === 0 || d.messages.length > prev.length) {
+              return d.messages; // full refresh if new data
+            }
+            return prev;
+          });
+        }).catch(() => {});
+    };
+    load();
+
     fetch('/api/agents').then(r => r.json()).then(d => setAgents(d.agents || [])).catch(() => {});
-    fetch(`/api/agents/${agentName}/chat`)
-      .then(r => r.json()).then(d => { if (d.messages) setMsgs(d.messages); }).catch(() => {});
     fetch(`/api/emails?agent=${agentName}`).then(r => r.json())
       .then(d => { if (Array.isArray(d)) setEmailCount(d.length); }).catch(() => {});
     loadGroups();
+
+    // Poll for live updates from auto-respond
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
   }, [agentName]);
 
   useEffect(() => {

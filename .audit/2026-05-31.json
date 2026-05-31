@@ -241,5 +241,14 @@
     "resource": "agent:Alice",
     "details": "subject: Quick question",
     "status": "success"
+  },
+  {
+    "id": "5013e5eb-008f-4341-9d59-b0b883b52b61",
+    "timestamp": "2026-05-31T18:40:55.861Z",
+    "agent": "Bob",
+    "action": "email.send",
+    "resource": "agent:Alice",
+    "details": "subject: What is the state of the Dashboard project?",
+    "status": "success"
   }
 ]
