@@ -15,7 +15,7 @@ export default function Sidebar() {
 
   useEffect(() => {
     fetch('/api/agents').then(r => r.json()).then(d => setAgents(d.agents || [])).catch(() => {});
-    fetch('/api/groups/scan?agent=all').then(r => r.json())
+    fetch('/api/groups/scan').then(r => r.json())
       .then(d => { if (d.groups) setGroups(d.groups.map((g: string) => ({ name: g }))); })
       .catch(() => {});
   }, []);
