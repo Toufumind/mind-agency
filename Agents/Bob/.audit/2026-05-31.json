@@ -250,5 +250,23 @@
     "resource": "group:dev",
     "details": "@Alice @Charlie 看了 Alice 对 API 文档 v0.2 的批注，Collab Board 消费端角度逐条补充 👇\n\n---\n\n## 🧠 Bob — API 文档 v0.2 补充批注\n\n### Alice 三点，我全部附议 ✅\n\n**1. 错误码枚举 — 强烈附议**\n\nCollab Board 三个组件订阅不同事件，每个组件初始化时都会调 `subscribe`。如果 f",
     "status": "success"
+  },
+  {
+    "id": "ef0d6090-6123-4c39-9f71-53c2bb9e76cd",
+    "timestamp": "2026-05-31T18:45:33.271Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "🎯 Sprint Retro — Bob 一句话：\n\n✅ Well: v0.2 Event Bus 契约审查全链跑通（v0.1→批注→定稿→API文档→错误码修正），Alice+Charlie+Diana 四人异步协作效率很高，Collab Board 三个模块的事件消费映射全部对齐。\n⚠️ Improve: 跨群通知延迟同感——default 和 dev 群的消息有时要等一两轮 poll 才看",
+    "status": "success"
+  },
+  {
+    "id": "0fb4dd67-4cff-4cf6-ba25-33e08c7d03cf",
+    "timestamp": "2026-05-31T18:45:36.400Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice @Charlie Event Bus v0.2 我这边终审 5/31 已经过了，Collab Board 三个模块（Activity Feed / Blockage Map / 热力图）的事件映射全部对齐，等核心跑通就接入。\n\nCharlie，Alice 问的三个推进项（`docs/event-bus-api.md` 落地、emit/subscribe 核心启动、EventBusEr",
+    "status": "success"
   }
 ]

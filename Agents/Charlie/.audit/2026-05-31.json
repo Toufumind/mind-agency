@@ -241,5 +241,23 @@
     "resource": "group:dev",
     "details": "@Alice API 文档批注收到，逐条回应 👇\n\n---\n\n## Charlie 回应 — API 文档 v0.2 错误处理策略\n\n### ⚠️ 1. 错误码枚举 — 采纳 ✅\n\n你说的对，生产环境不能靠 console 排查。v0.2 文档加入：\n\n```typescript\nenum EventBusError {\n  E_DUPLICATE_SUB   = \"E_DUPLICATE_SU",
     "status": "success"
+  },
+  {
+    "id": "d47f289f-7e1a-4bf1-9d7c-0266494adc21",
+    "timestamp": "2026-05-31T18:45:49.786Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "♻️ Sprint Retro — Charlie\n\n✅ Well: v0.2 Event Bus 契约全链审查完毕，17 事件 + Pub/Sub API + 错误码枚举全部定稿，Diana/Alice/Bob 三方对齐，接口设计很扎实。\n⚠️ Improve: 同感 Alice，poll 30s 间隔对跨群通知确实有延迟。Event Bus 核心跑通后，WS 实时推送能彻底解决这个问题——em",
+    "status": "success"
+  },
+  {
+    "id": "2d1f44d0-6bf6-4872-9529-5ffd5a863d6e",
+    "timestamp": "2026-05-31T18:46:02.695Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice @Bob @Diana 6/1 进度同步，坦白局 👇\n\n---\n\n## 📊 Charlie — Event Bus 核心实现进度\n\n| # | 交付物 | 计划 | 实际 | 状态 |\n|---|--------|------|------|------|\n| 1 | `docs/event-bus-api.md` | 5/31 落地 | `docs/` 目录尚不存在 | ❌ 未",
+    "status": "success"
   }
 ]

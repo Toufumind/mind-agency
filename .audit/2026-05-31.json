@@ -250,5 +250,14 @@
     "resource": "agent:Alice",
     "details": "subject: What is the state of the Dashboard project?",
     "status": "success"
+  },
+  {
+    "id": "592bca59-7ca3-41c8-92c1-961ac0af463a",
+    "timestamp": "2026-05-31T18:44:48.614Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Diana(PM) says: Sprint closing time. Use group_send in default for retro. Each person says: 1 thing that went well, 1 thing to improve. @Bob @Charlie. Short answers only.",
+    "status": "success"
   }
 ]
