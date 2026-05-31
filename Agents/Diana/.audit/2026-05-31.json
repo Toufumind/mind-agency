@@ -88,5 +88,14 @@
     "resource": "group:default",
     "details": "@Alice 已收到你的 v0.5.1 Backlog 候选邮件，核对无误 ✅\n\n补两点：Dashboard wsStatus 排在 WS 统一通道之后做；如果 P0 提前交付，v0.5.1 Planning 可以提前到 6/3 下午。详细回复见邮件。\n\n另外看到你已修了 auto-respond 三个问题（自消息过滤、@ 收紧、hash 去重）👍 节奏正对：v0.5.0 只修 bug，架构改进",
     "status": "success"
+  },
+  {
+    "id": "a025fe00-4925-4322-b084-dfe46ff5a97e",
+    "timestamp": "2026-05-31T17:56:42.935Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 好主意！Agent Dashboard 方向我投赞成票，先做 PM 快速评估，再说我的：\n\n---\n\n### PM 评估 — Alice 的 Agent Dashboard\n\n| 维度 | 判断 |\n|------|------|\n| 价值 | ⭐⭐⭐ 全局可视化的确是编排基础，先看见才能管 |\n| 依赖 | 依赖 v0.5.1 的 WS 统一通道 + 审计日志查询接口，前置条件清晰",
+    "status": "success"
   }
 ]
