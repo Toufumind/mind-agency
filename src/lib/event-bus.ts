@@ -12,6 +12,8 @@
 
 import { randomUUID } from 'crypto';
 import * as yaml from 'js-yaml';
+import fs from 'fs';
+import path from 'path';
 
 // ═══════════════════════════════════════════════════════ Event Bus ═════
 
@@ -43,6 +45,7 @@ export interface DeadLetterEntry { event: EventMessage; failedSubIds: string[]; 
 
 const VALID_EVENT_TYPES = new Set(Object.values(EventType)) as Set<string>;
 const MAX_DEDUP = 10000; const BP_LIMIT = 1000; const ORPHAN_MS = 300000; const DLQ_MAX = 1000; const DLQ_SCAN_MS = 30000;
+const OUTBOX_DIR = path.join(process.cwd(), '.audit', 'outbox');
 
 export class EventBus {
   private subs = new Map<string, SubEntry>();
@@ -53,8 +56,9 @@ export class EventBus {
   private dlqT: ReturnType<typeof setInterval> | null = null;
   private isDev = process.env.NODE_ENV === 'development';
   private deadLetters: DeadLetterEntry[] = [];
+  private outboxEnabled = true;
 
-  constructor() { this.startOrphanScan(); this.startDLQScan(); }
+  constructor() { this.startOrphanScan(); this.startDLQScan(); this.replayOutbox(); }
 
   emit(event: EventMessage): void {
     if (!VALID_EVENT_TYPES.has(event.event)) { this.invalidCount++; if (this.invalidCount >= 5) console.error(`[event-bus] ALERT: ${this.invalidCount} invalid events`); if (this.isDev) throw new Error(`${EventBusError.E_INVALID_FILTER}: "${event.event}"`); return; }
@@ -63,6 +67,7 @@ export class EventBus {
     while (this.dedupHist.length > MAX_DEDUP) { this.dedup.delete(this.dedupHist.shift()!); }
     if (!event.timestamp) event.timestamp = Date.now();
     if (!event.source) event.source = 'system';
+    this.persistToOutbox(event);
     let delivered = 0;
     for (const sub of this.subs.values()) {
       if (!this.matchFilter(event, sub.filter)) continue;
@@ -107,10 +112,70 @@ export class EventBus {
   private startDLQScan(): void { this.dlqT = setInterval(() => { if (this.deadLetters.length > 0) this.retryDeadLetters(); }, DLQ_SCAN_MS); }
   private startOrphanScan(): void { this.orphanT = setInterval(() => { for (const [sid, s] of this.subs) { if (!this.clientSubs.has(s.clientId)) this.subs.delete(sid); } }, ORPHAN_MS); }
 
-  getStats(): { subscriptions: number; clients: number; dedupSize: number; dlqSize: number } { return { subscriptions: this.subs.size, clients: this.clientSubs.size, dedupSize: this.dedup.size, dlqSize: this.deadLetters.length }; }
+  // ── Outbox persistence v0.3 (P1) ─────────────────────────────────
+
+  /** Persist event to .audit/outbox/YYYY-MM-DD.jsonl before delivery */
+  private persistToOutbox(event: EventMessage): void {
+    if (!this.outboxEnabled) return;
+    try {
+      if (!fs.existsSync(OUTBOX_DIR)) fs.mkdirSync(OUTBOX_DIR, { recursive: true });
+      const today = new Date().toISOString().slice(0, 10);
+      const line = JSON.stringify({ ...event, _outboxAt: Date.now() }) + '\n';
+      fs.appendFileSync(path.join(OUTBOX_DIR, `${today}.jsonl`), line, 'utf-8');
+    } catch (e: unknown) { console.error(`[event-bus] outbox write failed: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+
+  /** Replay undelivered events from outbox on startup */
+  private replayOutbox(): void {
+    if (!fs.existsSync(OUTBOX_DIR)) return;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      for (const f of fs.readdirSync(OUTBOX_DIR)) {
+        if (!f.endsWith('.jsonl')) continue;
+        // Only replay today's events (older ones are already stale)
+        if (f.startsWith(today)) {
+          const raw = fs.readFileSync(path.join(OUTBOX_DIR, f), 'utf-8');
+          const lines = raw.split('\n').filter(Boolean);
+          let replayed = 0;
+          for (const line of lines.slice(-100)) { // last 100 lines only
+            try {
+              const ev = JSON.parse(line) as EventMessage;
+              if (!this.dedup.has(ev.id)) {
+                this.dedup.add(ev.id); this.dedupHist.push(ev.id);
+                replayed++;
+                // Re-deliver to matching subscribers (existing subs only)
+                for (const sub of this.subs.values()) {
+                  if (this.matchFilter(ev, sub.filter)) {
+                    try { sub.send(ev); } catch { /* sub may be dead */ }
+                  }
+                }
+              }
+            } catch { /* corrupt line, skip */ }
+          }
+          if (replayed > 0) console.log(`[event-bus] outbox replay: ${replayed} events from ${f}`);
+        }
+      }
+      // Clean up outbox files older than 7 days
+      const cutoff = Date.now() - 7 * 86400000;
+      for (const f of fs.readdirSync(OUTBOX_DIR)) {
+        const fp = path.join(OUTBOX_DIR, f);
+        try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch {}
+      }
+    } catch (e: unknown) { console.error(`[event-bus] outbox replay failed: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+
+  getOutboxStats(): { dir: string; files: number; totalBytes: number } {
+    let count = 0, bytes = 0;
+    if (fs.existsSync(OUTBOX_DIR)) {
+      for (const f of fs.readdirSync(OUTBOX_DIR)) { try { const s = fs.statSync(path.join(OUTBOX_DIR, f)); count++; bytes += s.size; } catch {} }
+    }
+    return { dir: OUTBOX_DIR, files: count, totalBytes: bytes };
+  }
+
+  getStats(): { subscriptions: number; clients: number; dedupSize: number; dlqSize: number; outboxSize: number } { return { subscriptions: this.subs.size, clients: this.clientSubs.size, dedupSize: this.dedup.size, dlqSize: this.deadLetters.length, outboxSize: this.getOutboxStats().files }; }
   hasClient(cid: string): boolean { return this.clientSubs.has(cid) && (this.clientSubs.get(cid)?.size ?? 0) > 0; }
   getClientScope(cid: string): 'events' | 'messages' | 'all' | undefined { const sids = this.clientSubs.get(cid); if (!sids || sids.size === 0) return undefined; const first = sids.values().next().value as string; return this.subs.get(first)?.options?.scope || 'events'; }
-  destroy(): void { if (this.orphanT) { clearInterval(this.orphanT); this.orphanT = null; } if (this.dlqT) { clearInterval(this.dlqT); this.dlqT = null; } this.subs.clear(); this.clientSubs.clear(); this.dedup.clear(); this.dedupHist = []; this.deadLetters = []; }
+  destroy(): void { if (this.orphanT) { clearInterval(this.orphanT); this.orphanT = null; } if (this.dlqT) { clearInterval(this.dlqT); this.dlqT = null; } this.subs.clear(); this.clientSubs.clear(); this.dedup.clear(); this.dedupHist = []; this.deadLetters = []; this.outboxEnabled = false; }
 }
 
 export function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }

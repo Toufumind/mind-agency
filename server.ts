@@ -195,6 +195,15 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // ── GET /events/outbox ────────────────────────────────────────────
+
+  if (req.method === 'GET' && req.url === '/events/outbox') {
+    const stats = bus.getOutboxStats();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(stats, null, 2));
+    return;
+  }
+
   // ── POST /workflows/run ───────────────────────────────────────────
 
   if (req.method === 'POST' && req.url === '/workflows/run') {
@@ -464,6 +473,7 @@ server.listen(PORT, () => {
   console.log(`[ws]   Events:    POST http://localhost:${PORT}/events`);
   console.log(`[ws]   Stats:     GET  http://localhost:${PORT}/events/stats`);
   console.log(`[ws]   DLQ:       GET  http://localhost:${PORT}/events/dlq | POST .../dlq/retry | POST .../dlq/purge`);
+  console.log(`[ws]   Outbox:    GET  http://localhost:${PORT}/events/outbox`);
   console.log(`[ws]   Workflows: POST http://localhost:${PORT}/workflows/run | GET .../workflows/stats`);
   console.log(`[ws] EventBus v0.3 — DLQ + retry, WorkflowEngine v0.3 — DAG`);
 
