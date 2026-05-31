@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-/** GET: return group info — members, recent chat, chat files */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ name: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   const groupDir = path.join(process.cwd(), 'Groups', name);
 
@@ -42,4 +38,17 @@ export async function GET(
   }
 
   return NextResponse.json({ group: name, members, messages, messageCount: messages.length });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ name: string }> }
+) {
+  const { name } = await params;
+  const groupDir = path.join(process.cwd(), 'Groups', name);
+  if (!fs.existsSync(groupDir)) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+  fs.rmSync(groupDir, { recursive: true, force: true });
+  return NextResponse.json({ success: true });
 }
