@@ -91,8 +91,13 @@ function Terminal({ agentName }: TerminalProps) {
 
     ws.onopen = () => {
       setConnected(true);
-      fitAddon.fit();
-      setTimeout(() => term.focus(), 100);
+      // Delay fit to ensure container has final dimensions
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try { fitAddon.fit(); } catch {}
+          term.focus();
+        });
+      });
     };
 
     ws.onmessage = (event) => {
@@ -170,7 +175,7 @@ function Terminal({ agentName }: TerminalProps) {
   const badge = activityBadge();
 
   return (
-    <div className={`flex flex-col bg-[#0d1117] ${fullscreen ? 'fixed inset-0 z-50' : 'h-full rounded-xl overflow-hidden border border-[#30363d] shadow-2xl'}`}>
+    <div className={`flex flex-col bg-[#0d1117] ${fullscreen ? 'fixed inset-0 z-50' : 'h-full rounded-xl overflow-hidden border border-[#30363d] shadow-2xl'}`} style={fullscreen ? {} : { minHeight: 400 }}>
       {/* ── Toolbar ── */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-[#21262d] shrink-0 select-none">
         <div className="flex items-center gap-3">
@@ -206,7 +211,11 @@ function Terminal({ agentName }: TerminalProps) {
       </div>
 
       {/* ── Terminal ── */}
-      <div ref={containerRef} className="flex-1 min-h-0 px-1.5 py-1" />
+      <div
+        ref={containerRef}
+        className="flex-1 min-h-0 w-full"
+        style={{ overflow: 'hidden' }}
+      />
 
       {/* ── Status bar ── */}
       <div className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-t border-[#21262d] shrink-0 select-none">

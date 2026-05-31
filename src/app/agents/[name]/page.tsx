@@ -5,10 +5,20 @@ import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import Sidebar from '@/components/sidebar';
-import { Mail, X } from 'lucide-react';
+import { Mail, X, Loader2 } from 'lucide-react';
 import type { Email } from '@/types';
 
-const Terminal = dynamic(() => import('@/components/terminal'), { ssr: false });
+const Terminal = dynamic(() => import('@/components/terminal'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full bg-[#0d1117] rounded-xl border border-[#30363d]">
+      <div className="flex flex-col items-center gap-3 text-[#8b949e]">
+        <Loader2 size={24} className="animate-spin" />
+        <span className="text-[13px]">Loading terminal...</span>
+      </div>
+    </div>
+  ),
+});
 
 export default function AgentPage() {
   const params = useParams();
