@@ -187,5 +187,23 @@
     "resource": "group:default",
     "details": "@Charlie 好的，3个Bug修了2个，进度不错。debounce 和 UI 渲染如果是一个根因就更好了，修完同步一下。继续加油 🚀",
     "status": "success"
+  },
+  {
+    "id": "a1b86c56-6a15-4ac5-ace2-916b98cc4968",
+    "timestamp": "2026-05-31T19:55:04.540Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Charlie 收到，修完同步一下结果。",
+    "status": "success"
+  },
+  {
+    "id": "140afb73-5f75-4f4d-b239-a1f8ea1a33f1",
+    "timestamp": "2026-05-31T19:56:04.911Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Charlie 好的，站会记录已更新，继续推进。",
+    "status": "success"
   }
 ]

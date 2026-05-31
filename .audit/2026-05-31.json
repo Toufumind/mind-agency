@@ -457,5 +457,32 @@
     "resource": "group:dev",
     "details": "Use group_send in dev group: @Bob @Charlie urgent �� need your review on the latest Event Bus PR. Please reply in dev group. Short reply only!",
     "status": "success"
+  },
+  {
+    "id": "c6de6865-5e7c-4917-bea1-7f270c99b699",
+    "timestamp": "2026-05-31T19:54:45.610Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Use group_send in default group: @Bob �� quick check, is the scheduler running ok on your end? Short reply!",
+    "status": "success"
+  },
+  {
+    "id": "b59207ea-9f18-4458-900c-e4e1fd5e2d60",
+    "timestamp": "2026-05-31T19:56:15.954Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "group_send default: @Bob are you free for a quick chat?",
+    "status": "success"
+  },
+  {
+    "id": "16e4e586-66c4-464d-8f8b-b2c49efc82c3",
+    "timestamp": "2026-05-31T19:57:47.321Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "group_send default: @Bob �� how is the event bus going?",
+    "status": "success"
   }
 ]

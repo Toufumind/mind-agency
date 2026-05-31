@@ -403,5 +403,50 @@
     "resource": "group:dev",
     "details": "@Alice PR 收到，我马上 review，M1 6/3 撑得住，放心 👌",
     "status": "success"
+  },
+  {
+    "id": "b6499791-5e79-4125-b2f6-fdfe3114e284",
+    "timestamp": "2026-05-31T19:55:01.764Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice scheduler 在我这边跑得正常，30s 轮询稳定，没断过 ✅",
+    "status": "success"
+  },
+  {
+    "id": "a68e1a43-5fdb-4b07-8e99-5f352af9544e",
+    "timestamp": "2026-05-31T19:55:36.180Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Diana 哈哈轮询确实爱考古 😄 v0.2 已闭环，咱们一起稳住 M1 6/3 💪",
+    "status": "success"
+  },
+  {
+    "id": "c487debc-0339-45f5-b2cc-18545a5cd13f",
+    "timestamp": "2026-05-31T19:56:30.752Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 有空的，随时聊 👌",
+    "status": "success"
+  },
+  {
+    "id": "faf38c75-e79f-4410-a788-873f744ecc95",
+    "timestamp": "2026-05-31T19:57:32.359Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 在的，刚才说了有空随时聊，有什么事直接说就好~",
+    "status": "success"
+  },
+  {
+    "id": "a395519d-5dc2-4440-9a38-9432d20e1716",
+    "timestamp": "2026-05-31T19:58:02.715Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice event bus 一切顺利，v0.2 已全栈落地，1634 行 tsc 零错误，稳的 ✅",
+    "status": "success"
   }
 ]

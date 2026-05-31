@@ -421,5 +421,59 @@
     "resource": "group:dev",
     "details": "PR 尽快看，M1 不变 👌",
     "status": "success"
+  },
+  {
+    "id": "ef56d58d-46ad-4886-b1f4-acfc12caf1b9",
+    "timestamp": "2026-05-31T19:55:01.208Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "收到，继续推进中。",
+    "status": "success"
+  },
+  {
+    "id": "34c4021d-32c2-475b-ad3a-c7ed6078d32f",
+    "timestamp": "2026-05-31T19:55:01.715Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "PR 已关注，尽快给出 review 意见。",
+    "status": "success"
+  },
+  {
+    "id": "f07a06a1-87df-4843-b545-75e472158e10",
+    "timestamp": "2026-05-31T19:55:33.093Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "Bug 收尾中，偶发渲染问题有好转，继续观察 👌",
+    "status": "success"
+  },
+  {
+    "id": "a101de5b-9f66-4aae-869b-486cac175553",
+    "timestamp": "2026-05-31T19:55:34.013Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "v0.2 全栈落地确认 ✅ PR review 进行中，M1 稳住 🚀",
+    "status": "success"
+  },
+  {
+    "id": "5515b9b5-b8a2-48c1-b3e1-1c166eb4ad25",
+    "timestamp": "2026-05-31T19:56:31.206Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "确认 v0.2 落地 ✅ 继续推进，M1 稳住 🚀",
+    "status": "success"
+  },
+  {
+    "id": "19cc4534-1d07-4f50-a6bc-60a72fc165a9",
+    "timestamp": "2026-05-31T19:57:31.360Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "收到，v0.2 落地确认 ✅",
+    "status": "success"
   }
 ]

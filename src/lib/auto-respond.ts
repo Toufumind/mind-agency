@@ -72,10 +72,16 @@ function checkGroupMentions(agentName: string): string {
       try {
         const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
         const blocks = raw.split(/\n(?=---\nfrom:)/);
-        // Collect ALL @mentions in this file (not just first one)
+        // Collect @mentions from the last 120s only (skip old ones)
+        const now = Date.now();
         for (const block of blocks) {
           const from = (block.match(/from:\s*(.+)/)?.[1] || '').trim();
           if (from.toLowerCase() === agentName.toLowerCase()) continue;
+          // Parse block timestamp
+          const dateMatch = block.match(/date:\s*(.+)/);
+          const blockTs = dateMatch ? new Date(dateMatch[1].trim()).getTime() : 0;
+          // Only process @mentions from the last 60 seconds
+          if (now - blockTs > 60000) continue;
           const blockLower = block.toLowerCase();
           if (blockLower.includes('@' + agentName.toLowerCase())) {
             const body = (block.split('\n---\n\n')[1] || block).slice(0, 200);
@@ -182,24 +188,24 @@ export async function autoRespond(agentName: string): Promise<{
     saveProcessedCache(agentName, already);
   }
 
-  // ── Proactive check (every ~90s, scan for domain-relevant discussions) ──
-  let proactiveCtx = '';
-  if (config.autoRespondToEmail && !latestEmail && !groupMentions) {
-    const pcache = getProcessedCache(agentName + '_proactive');
-    const lastKey = [...pcache].find(k => k.startsWith('t:')) || 't:0';
-    const lastTime = parseInt(lastKey.replace('t:', '')) || 0;
-    if (Date.now() - lastTime > 90000) {
-      proactiveCtx = checkGroupActivity(agentName);
-      // Reset proactive cache
-      const fresh = new Set<string>();
-      fresh.add('t:' + Date.now());
-      saveProcessedCache(agentName + '_proactive', fresh);
-    }
+  // ── Proactive scanning DISABLED — too noisy, triggers on stale messages ──
+  // Only @mentions and emails trigger agents now.
+  const proactiveCtx = '';
+
+  // ── Nothing to do ──
+  if (!latestEmail && !groupMentions && !proactiveCtx) {
+    return { triggered: false, reason: 'no triggers' };
   }
 
   // ── Nothing to do ──
   if (!latestEmail && !groupMentions && !proactiveCtx) {
     return { triggered: false, reason: 'no triggers' };
+  }
+
+  // Skip idle time — proactive keywords are noisy. Only respond if
+  // explicitly @mentioned, or if an email demands action.
+  if (!latestEmail && !groupMentions) {
+    return { triggered: false, reason: 'idle — no @mention or email requiring action' };
   }
 
   // ── Build prompt (short, action-first) ──
