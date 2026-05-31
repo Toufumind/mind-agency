@@ -29,6 +29,27 @@ export enum EventType {
   EMAIL_RECEIVED = 'email.received', EMAIL_SENT = 'email.sent',
 }
 
+/** v0.3 P1: Workflow phase tags — MetaGPT-style stage markers for pipeline visualization */
+export enum WorkflowPhase {
+  REQUIREMENT = 'requirement', DESIGN = 'design', REVIEW = 'review',
+  APPROVAL = 'approval', DEPLOY = 'deploy', VERIFY = 'verify',
+  COMPENSATION = 'compensation', COMPLETED = 'completed',
+}
+
+/** Map step action to workflow phase */
+export function phaseForAction(action: string): WorkflowPhase {
+  const a = action.toLowerCase();
+  if (a.includes('review')) return WorkflowPhase.REVIEW;
+  if (a.includes('approve')) return WorkflowPhase.APPROVAL;
+  if (a.includes('reject')) return WorkflowPhase.REVIEW;
+  if (a.includes('deploy')) return WorkflowPhase.DEPLOY;
+  if (a.includes('verify') || a.includes('test')) return WorkflowPhase.VERIFY;
+  if (a.includes('compensat') || a.includes('notify') || a.includes('rollback')) return WorkflowPhase.COMPENSATION;
+  if (a.includes('design')) return WorkflowPhase.DESIGN;
+  if (a.includes('require')) return WorkflowPhase.REQUIREMENT;
+  return WorkflowPhase.COMPLETED;
+}
+
 export enum EventBusError {
   E_DUPLICATE_SUB = 'E_DUPLICATE_SUB', E_INVALID_FILTER = 'E_INVALID_FILTER',
   E_SUB_NOT_FOUND = 'E_SUB_NOT_FOUND', E_EMIT_FAILED = 'E_EMIT_FAILED',
@@ -295,20 +316,21 @@ export class WorkflowEngine {
   private async execNode(runId: string, node: DagNode, nodes: Map<string, DagNode>): Promise<void> {
     const run = this.runs.get(runId); if (!run) return;
     const sid = node.step.id; node.status = StepStatus.IN_PROGRESS; node.startedAt = Date.now(); run.steps.set(sid, StepStatus.IN_PROGRESS);
-    if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action }, 'workflow-engine'));
+    const phase = phaseForAction(node.step.action);
+    if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, phase }, 'workflow-engine'));
     const ctx: Record<string, string> = {}; for (const depId of node.deps) { const dn = nodes.get(depId); if (dn?.output) ctx[depId] = dn.output; }
 
     try {
       const out = await this.executor.execute(node.step, ctx);
       node.output = out; node.status = StepStatus.COMPLETED; run.steps.set(sid, StepStatus.COMPLETED);
-      if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output: out }, 'workflow-engine'));
-      if (node.step.notify) { const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify]; for (const to of nl) if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_REQUESTED, { taskId: runId, stepId: sid, workflow: run.workflowName, from: node.step.agent, to, title: `${node.step.action}`, prompt: node.step.prompt.slice(0, 200) }, 'workflow-engine')); }
+      if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output: out, phase }, 'workflow-engine'));
+      if (node.step.notify) { const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify]; for (const to of nl) if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_REQUESTED, { taskId: runId, stepId: sid, workflow: run.workflowName, from: node.step.agent, to, title: `${node.step.action}`, prompt: node.step.prompt.slice(0, 200), phase }, 'workflow-engine')); }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err); node.error = msg;
       if (node.retryCount < node.maxRetries) { node.retryCount++; run.stepRetries.set(sid, node.retryCount); node.status = StepStatus.PENDING; run.steps.set(sid, StepStatus.PENDING); const bf = node.step.retryBackoff === 'fixed' ? 3000 : Math.pow(2, node.retryCount) * 1000; await new Promise(r => setTimeout(r, bf)); return this.execNode(runId, node, nodes); }
       node.status = StepStatus.FAILED; run.steps.set(sid, StepStatus.FAILED); run.rollbacks.push({ stepId: sid, reason: msg, timestamp: Date.now() });
-      if (node.onFailure && nodes.has(node.onFailure)) { const cn = nodes.get(node.onFailure)!; run.compensations.push(node.onFailure); if (cn.status === StepStatus.PENDING) { if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: node.onFailure, workflow: run.workflowName, agent: cn.step.agent, action: 'compensation', note: `Triggered by: ${sid}` }, 'workflow-engine')); await this.execNode(runId, cn, nodes); } return; }
-      if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true }, 'workflow-engine'));
+      if (node.onFailure && nodes.has(node.onFailure)) { const cn = nodes.get(node.onFailure)!; run.compensations.push(node.onFailure); if (cn.status === StepStatus.PENDING) { if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: node.onFailure, workflow: run.workflowName, agent: cn.step.agent, action: 'compensation', note: `Triggered by: ${sid}`, phase: WorkflowPhase.COMPENSATION }, 'workflow-engine')); await this.execNode(runId, cn, nodes); } return; }
+      if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true, phase }, 'workflow-engine'));
     }
   }
 
