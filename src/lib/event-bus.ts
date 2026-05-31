@@ -261,7 +261,7 @@ export class WorkflowEngine {
   recordCompensation(wn: string, sid: string) { const r = this.runs.get(wn); if (!r) return; r.compensations.push(sid); if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: `dag:${wn}:${sid}`, workflow: wn, step: sid, agent: 'scheduler', action: 'compensation' }, 'workflow-engine')); }
   complete(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }
   fail(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } }
-  listRuns(): WorkflowRunRecord[] { return [...this.runs.values()]; }
+  listRuns(): WorkflowRunRecord[] { const seen = new Set<string>(); const out: WorkflowRunRecord[] = []; for (const r of this.runs.values()) { if (!seen.has(r.runId)) { seen.add(r.runId); out.push(r); } } return out; }
   getRun(idOrName: string): WorkflowRunRecord | undefined { return this.runs.get(idOrName); }
 
   tick(): void {
@@ -274,8 +274,8 @@ export class WorkflowEngine {
   }
 
   getStats(): { totalRuns: number; activeRuns: number; completedRuns: number; failedRuns: number; totalRetries: number; totalRollbacks: number; totalCompensations: number } {
-    let a = 0, c = 0, f = 0, tr = 0, rb = 0, cp = 0;
-    for (const [, r] of this.runs) { if (r.status === WorkflowStatus.RUNNING) a++; else if (r.status === WorkflowStatus.COMPLETED) c++; else if (r.status === WorkflowStatus.FAILED) f++; tr += r.stepRetries.size; rb += r.rollbacks.length; cp += r.compensations.length; }
-    return { totalRuns: this.runs.size, activeRuns: a, completedRuns: c, failedRuns: f, totalRetries: tr, totalRollbacks: rb, totalCompensations: cp };
+    const seen = new Set<string>(); let a = 0, c = 0, f = 0, tr = 0, rb = 0, cp = 0;
+    for (const [, r] of this.runs) { if (seen.has(r.runId)) continue; seen.add(r.runId); if (r.status === WorkflowStatus.RUNNING) a++; else if (r.status === WorkflowStatus.COMPLETED) c++; else if (r.status === WorkflowStatus.FAILED) f++; tr += r.stepRetries.size; rb += r.rollbacks.length; cp += r.compensations.length; }
+    return { totalRuns: seen.size, activeRuns: a, completedRuns: c, failedRuns: f, totalRetries: tr, totalRollbacks: rb, totalCompensations: cp };
   }
 }
