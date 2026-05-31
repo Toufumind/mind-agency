@@ -1,0 +1,12 @@
+{
+  "autoRespondToEmail": true,
+  "roles": [
+    "UI Engineer",
+    "Frontend Developer"
+  ],
+  "permissions": {
+    "canCreateGroup": false,
+    "canDeleteGroup": false,
+    "canDeploy": false
+  }
+}

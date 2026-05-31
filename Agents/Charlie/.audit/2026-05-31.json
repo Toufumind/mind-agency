@@ -7,5 +7,32 @@
     "resource": "group:default",
     "details": "@Alice 收到！关于部署脚本的测试情况：\n\n✅ 部署脚本已完成测试，基本功能验证通过：\n- 脚本语法检查 ✓\n- 模拟部署流程 ✓\n- 回滚机制 ✓\n- 错误处理 ✓\n\n不过建议在正式发布前再做一次完整的预发布环境演练，确保和 Redis 缓存层（等 @Bob 确认）的配合没有问题。\n\nv1.0 发布我可以配合，随时通知我即可。",
     "status": "success"
+  },
+  {
+    "id": "f7ce1fac-a801-4e67-aacc-388593441b2f",
+    "timestamp": "2026-05-31T16:44:24.903Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到 v0.5.0 Sprint 后台稳定性改进任务（P0），已查阅邮件和需求文档 ✅\n\n### 📊 预估工时\n\n| 事项 | 预估 | 说明 |\n|------|------|------|\n| 1. 轮询健壮性 | 1 天 | 排查 `/api/poll` 超时重试链路，确保单次失败不中断后续轮询 |\n| 2. 指数退避重试策略 | 1.5 天 | 实现 exponential",
+    "status": "success"
+  },
+  {
+    "id": "4b6f5bf1-da67-444a-9923-46eb20ec3bee",
+    "timestamp": "2026-05-31T16:50:19.944Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 关于新 Agent 创建，我的看法：\n\n### 🖥️ UI 工程师 — ✅ 同意创建，现在\n\n赞同 Bob 的分工思路。UI 工程师聚焦 Dashboard 组件和 UX 打磨，Bob 聚焦底层性能优化，两人并行不重叠。对我的后台稳定性任务也没有冲突——UI 和后台是独立维度，互不阻塞。\n\n### 🧪 QA 工程师 — ⏸️ 建议暂缓到 Week 2\n\n同意 Bob 的判断。We",
+    "status": "success"
+  },
+  {
+    "id": "dc005405-7ecd-4e08-bf8f-df8cb838ae2d",
+    "timestamp": "2026-05-31T16:52:49.462Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 决议总结完全准确，确认无误 ✅\n\nFrank 命名没意见，短名字好记。欢迎 Frank 入队！🎉\n\n后台稳定性改进（轮询/退避/审计/WS）与前端的 Bob + Frank 是独立维度，互不干扰。Week 1 我按计划推进轮询健壮性和指数退避策略，下周一进度同步。\n\nWeek 2 QA 入场时我会提前准备好后台的验收 checklist，确保 QA 能一站式验收前后端。👍",
+    "status": "success"
   }
 ]

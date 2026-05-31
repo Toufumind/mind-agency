@@ -61,5 +61,32 @@
     "resource": "group:default",
     "details": "@Alice 收到！Redis 缓存层已确认 ready：\n- 缓存连接池配置完成\n- 缓存预热策略已就绪\n- 缓存失效/淘汰策略已配置\n- 压测通过，命中率 > 95%\n\nRedis 这块可以勾上了 ✅",
     "status": "success"
+  },
+  {
+    "id": "a76e08a8-e777-44e9-a149-eac31ee191c3",
+    "timestamp": "2026-05-31T16:43:48.070Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到 v0.5.0 Sprint 前端性能优化任务（P0），已查阅邮件和详细需求文档 ✅\n\n### 📊 预估工时\n\n| 事项 | 预估 | 说明 |\n|------|------|------|\n| 1. Lighthouse 性能基线测量 | 0.5 天 | 搭建测量环境，跑 3 次取均值，输出基线报告 |\n| 2. SSE 连接复用 | 1 天 | 排查现有 EventSour",
+    "status": "success"
+  },
+  {
+    "id": "e8651a94-3cc3-4299-943f-cf4964151658",
+    "timestamp": "2026-05-31T16:49:49.337Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 关于新 Agent 创建的几点想法：\n\n### 🖥️ UI 工程师 — 建议创建，与我的前端任务明确分工\n\n**分工边界：**\n- Bob（我）：偏底层优化 — SSE 复用、代码分割配置、Tailwind purge、缓存策略\n- UI 工程师：偏上层 — Dashboard 组件重构、Markdown 渲染器 UX 打磨、Skeleton/动画交互\n\n两人可以并行，互不阻塞。U",
+    "status": "success"
+  },
+  {
+    "id": "0f96e64f-41fa-4707-936a-c5c0056531ff",
+    "timestamp": "2026-05-31T16:52:32.078Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 分工清晰，确认无误！✅\n\nFrank 加入后我们的前端分工明确：\n- 我（底层）：SSE复用 / 代码分割 / Tailwind purge / 缓存策略\n- Frank（上层）：Dashboard组件 / Markdown UX / 虚拟滚动 / 动画\n\n两线并行，我会在 SSE 复用和代码分割完成后通知 Frank，确保他的组件能直接受益于底层优化。\n\n欢迎 Frank 入队！\ud83c",
+    "status": "success"
   }
 ]

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "fb6e45f8-3bb0-42a4-8e52-580d1f5e678a",
+    "timestamp": "2026-05-31T16:41:15.001Z",
+    "agent": "Alice",
+    "action": "config.update",
+    "resource": "agent:Alice",
+    "details": "{\"autoRespondToEmail\":true}",
+    "status": "success"
+  },
+  {
+    "id": "7bdb78b1-77e1-4dae-a68d-7a63958c09e5",
+    "timestamp": "2026-05-31T16:41:15.102Z",
+    "agent": "Bob",
+    "action": "config.update",
+    "resource": "agent:Bob",
+    "details": "{\"autoRespondToEmail\":true}",
+    "status": "success"
+  },
+  {
+    "id": "a4e33959-98d7-49bc-aa59-f4eb9a6c0d3b",
+    "timestamp": "2026-05-31T16:41:15.434Z",
+    "agent": "Charlie",
+    "action": "config.update",
+    "resource": "agent:Charlie",
+    "details": "{\"autoRespondToEmail\":true}",
+    "status": "success"
+  },
+  {
+    "id": "8908ec78-6746-4fed-8dab-00e99c3b4c85",
+    "timestamp": "2026-05-31T16:41:15.841Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "����PM���� group_send �� default Ⱥ���� Mind Agency v0.5.0 �� Sprint �滮������Ҫ���������Ŀ��������������1)ǰ�������Ż� @Bob 2)����ȶ��ԸĽ� @Charlie 3)�¹�������(������)��ÿ�������г���������Ȼ���ʼ��� Bob �� Char",
+    "status": "success"
+  },
+  {
+    "id": "e8548c27-4497-4f21-8a4d-684311a0f0a0",
+    "timestamp": "2026-05-31T16:47:16.886Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "用 group_send 在 default 群发一条团队建设公告：我们要组建 v0.5.0 产品团队。我已经创建了 Diana 作为 PM。我们需要：1)一个前端工程师专注于 Dashboard 性能优化 2)一个 QA 工程师做自动化测试 3)一个 DevOps 工程师做部署流水线。请在群里讨论要不要创建这些新 Agent，各自角色的职责边界是什么。@Bob @Charlie",
+    "status": "success"
+  },
+  {
+    "id": "71bd4d0e-4a51-42bf-b6d8-c0cc6177792e",
+    "timestamp": "2026-05-31T16:48:52.866Z",
+    "agent": "Diana",
+    "action": "agent.create",
+    "resource": "agent:Diana",
+    "details": "roles: PM,CEO",
+    "status": "success"
+  },
+  {
+    "id": "e9230b5e-f9dd-416f-b74d-16af3a29b4c5",
+    "timestamp": "2026-05-31T16:48:53.758Z",
+    "agent": "Alice",
+    "action": "config.update",
+    "resource": "agent:Alice",
+    "details": "{\"roles\":[\"admin\",\"CEO\"],\"permissions\":{\"canCreateGroup\":true,\"canDeleteGroup\":true,\"canDeploy\":true}}",
+    "status": "success"
+  },
+  {
+    "id": "9c6cd0bc-ef7b-41ed-86e9-8ec54ce19f72",
+    "timestamp": "2026-05-31T16:48:54.287Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "用 group_send 在 default 群发公告：团队通知 — 我们新增了 Diana 作为产品经理(PM/CEO)。她将负责 v0.5.0 的产品规划。我们需要讨论：1)要不要创建 UI 工程师和 QA 工程师两个新 Agent 2)各自职责边界 3)v0.5.0 的时间线。请 @Bob @Charlie 直接在群里发表意见。只沟通。",
+    "status": "success"
+  }
+]

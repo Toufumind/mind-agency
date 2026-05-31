@@ -91,6 +91,7 @@ const tools = [
   { name: 'group_join', description: '加入群组。创建 Groups/<group>/Agents/<you>/email/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
   { name: 'group_create', description: '创建一个新的群组。会在 Groups/<name>/ 下创建完整的目录结构（Agents/<you>/email/ + chat/ + TASK_SPEC.md）。创建者自动加入该群组。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
   { name: 'group_leave', description: '退出群组。删除 Groups/<group>/Agents/<you>/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
+  { name: 'agent_create', description: '创建新的 AI Agent 并加入团队。需要提供名字和角色（如 "PM"、"Developer"、"QA"）。创建后 Agent 会自动拥有自己的 email 和 CLAUDE.md。Agent 目录在 Agents/<name>/ 下。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Agent 名字（英文名）' }, roles: { type: 'string', description: '角色列表，逗号分隔，如 "PM,Developer"' }, autoRespond: { type: 'boolean', description: '是否启用自动回复，默认 true' } }, required: ['name', 'roles'] } },
 ];
 
 const rl = createInterface({ input: process.stdin });
@@ -164,6 +165,24 @@ rl.on('line', (line: string) => {
         fs.rmSync(agDir, { recursive: true, force: true });
         writeAudit({ agent: agentName, action: 'group.leave', resource: `group:${group}` });
         respond(id, { content: [{ type: 'text', text: `left ${group}` }] });
+        return;
+      }
+
+      if (name === 'agent_create') {
+        const { name: newName, roles: rolesStr, autoRespond } = a;
+        if (!newName || !rolesStr) { respond(id, { content: [{ type: 'text', text: 'name and roles required' }], isError: true }); return; }
+        if (!/^[a-zA-Z0-9_-]+$/.test(newName)) { respond(id, { content: [{ type: 'text', text: 'invalid name' }], isError: true }); return; }
+        const AgentsDir = path.join(PROJECT_ROOT, 'Agents', newName);
+        if (exists(AgentsDir)) { respond(id, { content: [{ type: 'text', text: `agent ${newName} already exists` }] }); return; }
+        const roles = rolesStr.split(',').map((r: string) => r.trim());
+        fs.mkdirSync(path.join(AgentsDir, 'email'), { recursive: true });
+        fs.mkdirSync(path.join(AgentsDir, 'chat'), { recursive: true });
+        fs.mkdirSync(path.join(AgentsDir, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(AgentsDir, 'CLAUDE.md'), `# 规则\n\n你的名字是 ${newName}。你是 Mind Agency 团队的一员。\n角色：${roles.join(', ')}。\n不能在自己 email/ 下添加/修改文件。\n给其他人发邮件时在对方 email/ 下创建 .md 文件。\n`, 'utf-8');
+        fs.writeFileSync(path.join(AgentsDir, '.claude', 'CLAUDE.md'), `你的名字是 ${newName}。角色：${roles.join(', ')}。`, 'utf-8');
+        fs.writeFileSync(path.join(AgentsDir, 'config.json'), JSON.stringify({ autoRespondToEmail: autoRespond ?? true, roles, permissions: roles.includes('PM') || roles.includes('CEO') ? { canCreateGroup: true, canDeleteGroup: true, canDeploy: true } : { canCreateGroup: false, canDeleteGroup: false, canDeploy: false } }, null, 2), 'utf-8');
+        writeAudit({ agent: agentName, action: 'agent.create', resource: `agent:${newName}`, details: `roles: ${roles.join(',')}` });
+        respond(id, { content: [{ type: 'text', text: `created agent ${newName} with roles: ${roles.join(', ')}` }] });
         return;
       }
 
