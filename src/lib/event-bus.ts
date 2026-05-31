@@ -1,419 +1,281 @@
 /**
- * Unified Event Bus — v0.2 spec
+ * Unified Event Bus + Workflow Engine — v0.3
  *
- * Central event routing for Dashboard, Collab Board, and Workflow automation.
- * 17 event types, filtered subscriptions, UUID dedup, backpressure protection.
+ * Event Bus: 17 event types, filtered subscriptions, UUID dedup, backpressure,
+ * Dead Letter Queue + exponential backoff retry.
+ *
+ * Workflow Engine: YAML-parsed DAG execution, JSONPath condition branching,
+ * retry/rollback/compensation, priority scheduling, pluggable StepExecutor.
  *
  * Used by: server.ts (WebSocket on :3001)
- * Called from: group-server.ts, Next.js API routes (via HTTP POST /events)
  */
 
 import { randomUUID } from 'crypto';
+import * as yaml from 'js-yaml';
 
-// ── EventType (17 events — v0.2 final) ──────────────────────────────────
+// ═══════════════════════════════════════════════════════ Event Bus ═════
 
 export enum EventType {
-  // Agent 生命周期
-  AGENT_STATUS_CHANGED = 'agent.status.changed',
-  AGENT_ERROR = 'agent.error',
-
-  // 任务流转
-  TASK_CREATED = 'task.created',
-  TASK_ASSIGNED = 'task.assigned',
-  TASK_IN_PROGRESS = 'task.in_progress',
-  TASK_COMPLETED = 'task.completed',
-  TASK_BLOCKED = 'task.blocked',
-  TASK_REVIEW_REQUESTED = 'task.review_requested',
+  AGENT_STATUS_CHANGED = 'agent.status.changed', AGENT_ERROR = 'agent.error',
+  TASK_CREATED = 'task.created', TASK_ASSIGNED = 'task.assigned',
+  TASK_IN_PROGRESS = 'task.in_progress', TASK_COMPLETED = 'task.completed',
+  TASK_BLOCKED = 'task.blocked', TASK_REVIEW_REQUESTED = 'task.review_requested',
   TASK_REVIEW_COMPLETED = 'task.review_completed',
-
-  // 消息
-  MESSAGE_SENT = 'message.sent',
-  MESSAGE_MENTION = 'message.mention',
-
-  // 轮询 & 健康
-  POLL_RESULT = 'poll.result',
-  POLL_ERROR = 'poll.error',
-
-  // WebSocket
-  WS_CONNECT = 'ws.connect',
-  WS_DISCONNECT = 'ws.disconnect',
-
-  // 邮件
-  EMAIL_RECEIVED = 'email.received',
-  EMAIL_SENT = 'email.sent',
+  MESSAGE_SENT = 'message.sent', MESSAGE_MENTION = 'message.mention',
+  POLL_RESULT = 'poll.result', POLL_ERROR = 'poll.error',
+  WS_CONNECT = 'ws.connect', WS_DISCONNECT = 'ws.disconnect',
+  EMAIL_RECEIVED = 'email.received', EMAIL_SENT = 'email.sent',
 }
 
-// ── EventBusError (5 error codes — v0.2 final) ──────────────────────────
-
 export enum EventBusError {
-  E_DUPLICATE_SUB = 'E_DUPLICATE_SUB',
-  E_INVALID_FILTER = 'E_INVALID_FILTER',
-  E_SUB_NOT_FOUND = 'E_SUB_NOT_FOUND',
-  E_EMIT_FAILED = 'E_EMIT_FAILED',
+  E_DUPLICATE_SUB = 'E_DUPLICATE_SUB', E_INVALID_FILTER = 'E_INVALID_FILTER',
+  E_SUB_NOT_FOUND = 'E_SUB_NOT_FOUND', E_EMIT_FAILED = 'E_EMIT_FAILED',
   E_BACKPRESSURE = 'E_BACKPRESSURE',
 }
 
-// ── Core interfaces ──────────────────────────────────────────────────────
+export interface EventMessage { event: EventType; payload: Record<string, unknown>; timestamp: number; source: string; id: string; }
+export interface SubscribeFilter { event?: EventType | EventType[]; agent?: string; taskId?: string; }
+export interface SubscribeOptions { scope?: 'events' | 'messages' | 'all'; replay?: boolean; since?: number; }
 
-export interface EventMessage {
-  event: EventType;
-  payload: Record<string, unknown>;
-  timestamp: number; // Unix ms
-  source: string; // Agent name | "system"
-  id: string; // UUID v4, idempotent dedup
-}
+interface SubEntry { subId: string; filter?: SubscribeFilter; options?: SubscribeOptions; clientId: string; send: (e: EventMessage) => void; backpressureCount: number; createdAt: number; }
 
-export interface SubscribeFilter {
-  event?: EventType | EventType[]; // AND with other fields; OR within array
-  agent?: string; // filter by source agent
-  taskId?: string; // filter by task
-}
+export interface DeadLetterEntry { event: EventMessage; failedSubIds: string[]; errors: string[]; deadAt: number; retryCount: number; nextRetryAt: number; maxRetries: number; }
 
-export interface SubscribeOptions {
-  scope?: 'events' | 'messages' | 'all'; // default "events"
-  replay?: boolean; // MVP reserved
-  since?: number; // MVP reserved, Unix ms
-}
-
-interface SubEntry {
-  subId: string;
-  filter?: SubscribeFilter;
-  options?: SubscribeOptions;
-  clientId: string;
-  send: (event: EventMessage) => void;
-  backpressureCount: number; // events queued since last ack
-  createdAt: number;
-}
-
-// ── Constants ────────────────────────────────────────────────────────────
-
-const VALID_EVENT_TYPES: Set<string> = new Set(Object.values(EventType));
-const MAX_DEDUP_IDS = 10000;
-const BACKPRESSURE_LIMIT = 1000;
-const ORPHAN_SCAN_MS = 5 * 60 * 1000; // 5 min
-const INVALID_EVENT_COUNTER_THRESHOLD = 5; // prod alert threshold
-
-// ── EventBus class ───────────────────────────────────────────────────────
+const VALID_EVENT_TYPES = new Set(Object.values(EventType)) as Set<string>;
+const MAX_DEDUP = 10000; const BP_LIMIT = 1000; const ORPHAN_MS = 300000; const DLQ_MAX = 1000; const DLQ_SCAN_MS = 30000;
 
 export class EventBus {
-  private subscriptions = new Map<string, SubEntry>();
-  private clientSubs = new Map<string, Set<string>>(); // clientId → Set<subId>
-  private dedupSet = new Set<string>();
-  private dedupHistory: string[] = []; // sliding window for LRU eviction
-  private invalidEventCounter = 0;
-  private orphanTimer: ReturnType<typeof setInterval> | null = null;
+  private subs = new Map<string, SubEntry>();
+  private clientSubs = new Map<string, Set<string>>();
+  private dedup = new Set<string>(); private dedupHist: string[] = [];
+  private invalidCount = 0;
+  private orphanT: ReturnType<typeof setInterval> | null = null;
+  private dlqT: ReturnType<typeof setInterval> | null = null;
   private isDev = process.env.NODE_ENV === 'development';
+  private deadLetters: DeadLetterEntry[] = [];
 
-  constructor() {
-    this.startOrphanScan();
-  }
+  constructor() { this.startOrphanScan(); this.startDLQScan(); }
 
-  // ── emit ─────────────────────────────────────────────────────────────
-
-  /**
-   * Publish an event to the bus. All matching subscribers receive it asynchronously.
-   *
-   * - Invalid EventType → throws E_INVALID_FILTER (dev) or console.error + counter (prod)
-   * - Duplicate id → silently dropped (idempotent)
-   * - Missing id → auto-generated UUID
-   * - No subscribers → console.warn (dev) / counter (prod)
-   */
   emit(event: EventMessage): void {
-    // Validate EventType
-    if (!VALID_EVENT_TYPES.has(event.event)) {
-      this.invalidEventCounter++;
-      const err = `Invalid EventType: "${event.event}"`;
-      if (this.isDev) {
-        throw new Error(`${EventBusError.E_INVALID_FILTER}: ${err}`);
-      }
-      console.error(`[event-bus] ${err}`);
-      if (this.invalidEventCounter >= INVALID_EVENT_COUNTER_THRESHOLD) {
-        console.error(
-          `[event-bus] ALERT: ${this.invalidEventCounter} invalid events received — possible client bug`
-        );
-      }
-      return;
-    }
-
-    // Ensure id
-    if (!event.id || typeof event.id !== 'string' || event.id.length < 8) {
-      event.id = randomUUID();
-    }
-
-    // Idempotent dedup
-    if (this.dedupSet.has(event.id)) return;
-    this.dedupSet.add(event.id);
-    this.dedupHistory.push(event.id);
-    // LRU eviction
-    while (this.dedupHistory.length > MAX_DEDUP_IDS) {
-      const old = this.dedupHistory.shift()!;
-      this.dedupSet.delete(old);
-    }
-
-    // Ensure timestamp
-    if (!event.timestamp) {
-      event.timestamp = Date.now();
-    }
-
-    // Ensure source
-    if (!event.source) {
-      event.source = 'system';
-    }
-
-    // Route to matching subscribers
+    if (!VALID_EVENT_TYPES.has(event.event)) { this.invalidCount++; if (this.invalidCount >= 5) console.error(`[event-bus] ALERT: ${this.invalidCount} invalid events`); if (this.isDev) throw new Error(`${EventBusError.E_INVALID_FILTER}: "${event.event}"`); return; }
+    if (!event.id || event.id.length < 8) event.id = randomUUID();
+    if (this.dedup.has(event.id)) return; this.dedup.add(event.id); this.dedupHist.push(event.id);
+    while (this.dedupHist.length > MAX_DEDUP) { this.dedup.delete(this.dedupHist.shift()!); }
+    if (!event.timestamp) event.timestamp = Date.now();
+    if (!event.source) event.source = 'system';
     let delivered = 0;
-    for (const sub of this.subscriptions.values()) {
-      if (!this.matchesFilter(event, sub.filter)) continue;
-
-      // Scope check: events-only subs shouldn't get message events routed through event bus
-      // (scope routing is handled in server.ts for /broadcast; here we just send)
-
-      // Backpressure check
-      sub.backpressureCount++;
-      if (sub.backpressureCount > BACKPRESSURE_LIMIT) {
-        console.error(
-          `[event-bus] E_BACKPRESSURE: sub ${sub.subId} backlog > ${BACKPRESSURE_LIMIT}, disconnecting`
-        );
-        try {
-          sub.send({
-            event: EventType.AGENT_ERROR,
-            payload: {
-              code: EventBusError.E_BACKPRESSURE,
-              message: `Backpressure limit ${BACKPRESSURE_LIMIT} exceeded`,
-              subId: sub.subId,
-            },
-            timestamp: Date.now(),
-            source: 'system',
-            id: randomUUID(),
-          });
-        } catch {
-          /* best-effort */
-        }
-        this.unsubscribe(sub.subId);
-        continue;
-      }
-
-      delivered++;
-
-      // Async push (non-blocking)
-      try {
-        sub.send(event);
-        // Reset backpressure on successful send (optimistic)
-        sub.backpressureCount = Math.max(0, sub.backpressureCount - 1);
-      } catch (e: any) {
-        console.error(`[event-bus] send failed for sub ${sub.subId}: ${e.message}`);
-        try {
-          this.unsubscribe(sub.subId);
-        } catch {
-          /* already gone */
-        }
-      }
-    }
-
-    if (delivered === 0 && this.isDev) {
-      console.warn(`[event-bus] emit ${event.event}: no matching subscribers`);
+    for (const sub of this.subs.values()) {
+      if (!this.matchFilter(event, sub.filter)) continue;
+      sub.backpressureCount++; if (sub.backpressureCount > BP_LIMIT) { try { sub.send({ event: EventType.AGENT_ERROR, payload: { code: EventBusError.E_BACKPRESSURE, message: 'Backpressure limit', subId: sub.subId }, timestamp: Date.now(), source: 'system', id: randomUUID() }); } catch {} this.unsubscribe(sub.subId); continue; }
+      delivered++; try { sub.send(event); sub.backpressureCount = Math.max(0, sub.backpressureCount - 1); } catch (e: any) { this.enqueueDLQ(event, sub.subId, e.message); try { this.unsubscribe(sub.subId); } catch {} }
     }
   }
 
-  // ── subscribe ───────────────────────────────────────────────────────
-
-  /**
-   * Subscribe to the event stream. Returns subId (UUID).
-   *
-   * Filter fields are AND together; event array is OR.
-   * Throws E_INVALID_FILTER for unknown EventType values.
-   */
-  subscribe(
-    filter: SubscribeFilter | undefined,
-    options: SubscribeOptions | undefined,
-    clientId: string,
-    send: (event: EventMessage) => void
-  ): string {
-    // Validate filter events
-    if (filter?.event) {
-      const events = Array.isArray(filter.event) ? filter.event : [filter.event];
-      for (const e of events) {
-        if (!VALID_EVENT_TYPES.has(e)) {
-          throw new Error(`${EventBusError.E_INVALID_FILTER}: unknown EventType "${e}"`);
-        }
-      }
-    }
-
-    const scope = options?.scope || 'events';
-
-    const subId = randomUUID();
-    const entry: SubEntry = {
-      subId,
-      filter: filter
-        ? { event: filter.event, agent: filter.agent, taskId: filter.taskId }
-        : undefined,
-      options: { scope, replay: options?.replay, since: options?.since },
-      clientId,
-      send,
-      backpressureCount: 0,
-      createdAt: Date.now(),
-    };
-
-    this.subscriptions.set(subId, entry);
-
-    // Track client → subs mapping
-    if (!this.clientSubs.has(clientId)) {
-      this.clientSubs.set(clientId, new Set());
-    }
-    this.clientSubs.get(clientId)!.add(subId);
-
-    return subId;
+  subscribe(filter: SubscribeFilter | undefined, opts: SubscribeOptions | undefined, clientId: string, send: (e: EventMessage) => void): string {
+    if (filter?.event) { for (const e of Array.isArray(filter.event) ? filter.event : [filter.event]) { if (!VALID_EVENT_TYPES.has(e)) throw new Error(`${EventBusError.E_INVALID_FILTER}: "${e}"`); } }
+    const sid = randomUUID();
+    this.subs.set(sid, { subId: sid, filter: filter ? { event: filter.event, agent: filter.agent, taskId: filter.taskId } : undefined, options: { scope: opts?.scope || 'events', replay: opts?.replay, since: opts?.since }, clientId, send, backpressureCount: 0, createdAt: Date.now() });
+    if (!this.clientSubs.has(clientId)) this.clientSubs.set(clientId, new Set());
+    this.clientSubs.get(clientId)!.add(sid);
+    return sid;
   }
 
-  // ── unsubscribe ─────────────────────────────────────────────────────
+  unsubscribe(subId: string): void { const s = this.subs.get(subId); if (!s) throw new Error(`${EventBusError.E_SUB_NOT_FOUND}: "${subId}"`); this.subs.delete(subId); const cs = this.clientSubs.get(s.clientId); if (cs) { cs.delete(subId); if (cs.size === 0) this.clientSubs.delete(s.clientId); } }
+  unsubscribeSilent(subId: string): void { try { const s = this.subs.get(subId); if (!s) return; this.subs.delete(subId); const cs = this.clientSubs.get(s.clientId); if (cs) { cs.delete(subId); if (cs.size === 0) this.clientSubs.delete(s.clientId); } } catch {} }
 
-  /**
-   * Cancel a subscription. Throws E_SUB_NOT_FOUND for unknown subId.
-   * Idempotent for WS-disconnect cleanup (which is normal, not an error).
-   */
-  unsubscribe(subId: string): void {
-    const sub = this.subscriptions.get(subId);
-    if (!sub) {
-      throw new Error(`${EventBusError.E_SUB_NOT_FOUND}: subId "${subId}" not found`);
-    }
+  cleanupClient(clientId: string): number { const sids = this.clientSubs.get(clientId); if (!sids) return 0; let c = 0; for (const sid of sids) { this.subs.delete(sid); c++; } this.clientSubs.delete(clientId); return c; }
 
-    this.subscriptions.delete(subId);
-    const clientSet = this.clientSubs.get(sub.clientId);
-    if (clientSet) {
-      clientSet.delete(subId);
-      if (clientSet.size === 0) {
-        this.clientSubs.delete(sub.clientId);
-      }
-    }
+  private matchFilter(ev: EventMessage, f?: SubscribeFilter): boolean { if (!f) return true; if (f.event) { const arr = Array.isArray(f.event) ? f.event : [f.event]; if (!arr.includes(ev.event as EventType)) return false; } if (f.agent && ev.source !== f.agent) return false; if (f.taskId && ev.payload?.taskId !== f.taskId) return false; return true; }
+
+  // DLQ
+  private enqueueDLQ(event: EventMessage, subId: string, error: string): void {
+    const exist = this.deadLetters.find(d => d.event.id === event.id && d.failedSubIds.includes(subId)); if (exist) return;
+    const same = this.deadLetters.find(d => d.event.id === event.id);
+    if (same) { same.failedSubIds.push(subId); same.errors.push(error); return; }
+    this.deadLetters.push({ event: { ...event }, failedSubIds: [subId], errors: [error], deadAt: Date.now(), retryCount: 0, nextRetryAt: Date.now() + 1000, maxRetries: 5 });
+    while (this.deadLetters.length > DLQ_MAX) this.deadLetters.shift();
+    console.warn(`[event-bus] DLQ: ${event.event} → ${subId.slice(0, 8)}... (${this.deadLetters.length})`);
   }
 
-  /**
-   * Silent unsubscribe — for WS disconnect cleanup where subId may or may not exist.
-   * Does NOT throw.
-   */
-  unsubscribeSilent(subId: string): void {
+  retryDeadLetters(): number { const now = Date.now(); let r = 0; for (let i = this.deadLetters.length - 1; i >= 0; i--) { const e = this.deadLetters[i]; if (e.nextRetryAt > now) continue; if (e.retryCount >= e.maxRetries) { for (const sid of e.failedSubIds) { const s = this.subs.get(sid); if (s) try { s.send({ event: EventType.AGENT_ERROR, payload: { code: 'E_DLQ_EXHAUSTED', message: 'DLQ exhausted', originalEventId: e.event.id }, timestamp: Date.now(), source: 'system', id: randomUUID() }); } catch {} } this.deadLetters.splice(i, 1); continue; }
+    e.retryCount++; let ok = 0; for (const sid of e.failedSubIds) { const s = this.subs.get(sid); if (!s) { ok++; continue; } try { s.send(e.event); ok++; } catch (err: any) { e.errors.push(`r${e.retryCount}: ${err.message}`); } }
+    if (ok === e.failedSubIds.length) this.deadLetters.splice(i, 1); else e.nextRetryAt = Date.now() + Math.min(1000 * Math.pow(2, e.retryCount), 60000); r++; } return r; }
+  getDeadLetters(): DeadLetterEntry[] { return [...this.deadLetters]; }
+  purgeDeadLetters(): number { const c = this.deadLetters.length; this.deadLetters = []; return c; }
+  getDLQStats(): { size: number; oldestMs: number; exhausted: number } { const now = Date.now(); return { size: this.deadLetters.length, oldestMs: this.deadLetters.length > 0 ? now - Math.min(...this.deadLetters.map(d => d.deadAt)) : 0, exhausted: this.deadLetters.filter(d => d.retryCount >= d.maxRetries).length }; }
+
+  private startDLQScan(): void { this.dlqT = setInterval(() => { if (this.deadLetters.length > 0) this.retryDeadLetters(); }, DLQ_SCAN_MS); }
+  private startOrphanScan(): void { this.orphanT = setInterval(() => { for (const [sid, s] of this.subs) { if (!this.clientSubs.has(s.clientId)) this.subs.delete(sid); } }, ORPHAN_MS); }
+
+  getStats(): { subscriptions: number; clients: number; dedupSize: number; dlqSize: number } { return { subscriptions: this.subs.size, clients: this.clientSubs.size, dedupSize: this.dedup.size, dlqSize: this.deadLetters.length }; }
+  hasClient(cid: string): boolean { return this.clientSubs.has(cid) && (this.clientSubs.get(cid)?.size ?? 0) > 0; }
+  getClientScope(cid: string): 'events' | 'messages' | 'all' | undefined { const sids = this.clientSubs.get(cid); if (!sids || sids.size === 0) return undefined; const first = sids.values().next().value as string; return this.subs.get(first)?.options?.scope || 'events'; }
+  destroy(): void { if (this.orphanT) { clearInterval(this.orphanT); this.orphanT = null; } if (this.dlqT) { clearInterval(this.dlqT); this.dlqT = null; } this.subs.clear(); this.clientSubs.clear(); this.dedup.clear(); this.dedupHist = []; this.deadLetters = []; }
+}
+
+export function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }
+export function isValidEventType(t: string): t is EventType { return VALID_EVENT_TYPES.has(t); }
+
+// ═══════════════════════════════════════════════════ Workflow Engine ═══
+
+export enum StepStatus { PENDING = 'pending', BLOCKED = 'blocked', IN_PROGRESS = 'in_progress', COMPLETED = 'completed', SKIPPED = 'skipped', FAILED = 'failed' }
+export enum WorkflowStatus { IDLE = 'idle', RUNNING = 'running', COMPLETED = 'completed', FAILED = 'failed' }
+
+export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; timeout?: number; onFailure?: string; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; }
+export interface WorkflowDefinition { name: string; description?: string; steps: WorkflowStep[]; source?: string; }
+export interface WorkflowRunRecord { runId: string; workflowName: string; startedAt: number; completedAt?: number; status: WorkflowStatus; steps: Map<string, StepStatus>; stepRetries: Map<string, number>; rollbacks: Array<{ stepId: string; reason: string; timestamp: number }>; compensations: string[]; }
+
+export interface StepExecutor { execute(step: WorkflowStep, context: Record<string, string>): Promise<string>; }
+
+/** Simulated executor — synthetic outputs for dev/testing */
+class SimulatedStepExecutor implements StepExecutor {
+  async execute(step: WorkflowStep, _ctx: Record<string, string>): Promise<string> {
+    const a = step.action.toLowerCase();
+    if (a.includes('review')) return `REVIEW_COMPLETE ACTION:${step.action} AGENT:${step.agent} DECISION:APPROVED`;
+    if (a.includes('approve')) return `APPROVED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('reject')) return `REJECTED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('deploy')) return `DEPLOYED+PASSED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('verify')) return `VERIFIED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('notify')) return `NOTIFIED ACTION:${step.action} AGENT:${step.agent}`;
+    return `COMPLETED ACTION:${step.action} AGENT:${step.agent}`;
+  }
+}
+
+/** Production executor — calls agent via chatOnce (real AI) */
+export class ChatStepExecutor implements StepExecutor {
+  async execute(step: WorkflowStep, ctx: Record<string, string>): Promise<string> {
     try {
-      const sub = this.subscriptions.get(subId);
-      if (!sub) return;
-      this.subscriptions.delete(subId);
-      const clientSet = this.clientSubs.get(sub.clientId);
-      if (clientSet) {
-        clientSet.delete(subId);
-        if (clientSet.size === 0) {
-          this.clientSubs.delete(sub.clientId);
-        }
-      }
-    } catch {
-      /* already gone */
-    }
-  }
-
-  // ── WS disconnect cleanup ───────────────────────────────────────────
-
-  /** Remove all subscriptions for a disconnected client. */
-  cleanupClient(clientId: string): number {
-    const subIds = this.clientSubs.get(clientId);
-    if (!subIds) return 0;
-    let count = 0;
-    for (const subId of subIds) {
-      this.subscriptions.delete(subId);
-      count++;
-    }
-    this.clientSubs.delete(clientId);
-    if (count > 0) {
-      console.log(`[event-bus] cleaned up ${count} subs for client ${clientId.slice(0, 8)}...`);
-    }
-    return count;
-  }
-
-  // ── Filter matching ─────────────────────────────────────────────────
-
-  private matchesFilter(event: EventMessage, filter?: SubscribeFilter): boolean {
-    if (!filter) return true;
-
-    // Event filter: OR within array, AND with other fields
-    if (filter.event) {
-      const events = Array.isArray(filter.event) ? filter.event : [filter.event];
-      if (!events.includes(event.event as EventType)) return false;
-    }
-
-    if (filter.agent && event.source !== filter.agent) return false;
-
-    if (filter.taskId && event.payload?.taskId !== filter.taskId) return false;
-
-    return true;
-  }
-
-  // ── Orphan scan ─────────────────────────────────────────────────────
-
-  private startOrphanScan(): void {
-    this.orphanTimer = setInterval(() => {
-      for (const [subId, sub] of this.subscriptions) {
-        // Subscription whose client is no longer tracked → orphan
-        if (!this.clientSubs.has(sub.clientId)) {
-          this.subscriptions.delete(subId);
-          console.warn(`[event-bus] orphan scan: removed sub ${subId.slice(0, 8)}... (client gone)`);
-        }
-      }
-    }, ORPHAN_SCAN_MS);
-  }
-
-  // ── Stats ───────────────────────────────────────────────────────────
-
-  getStats(): { subscriptions: number; clients: number; dedupSize: number } {
-    return {
-      subscriptions: this.subscriptions.size,
-      clients: this.clientSubs.size,
-      dedupSize: this.dedupSet.size,
-    };
-  }
-
-  /** Check if a client has any active subscriptions */
-  hasClient(clientId: string): boolean {
-    return this.clientSubs.has(clientId) && (this.clientSubs.get(clientId)?.size ?? 0) > 0;
-  }
-
-  /** Get the scope for a client (derived from their first subscription) */
-  getClientScope(clientId: string): 'events' | 'messages' | 'all' | undefined {
-    const subs = this.clientSubs.get(clientId);
-    if (!subs || subs.size === 0) return undefined;
-    const firstSubId = subs.values().next().value as string;
-    const sub = this.subscriptions.get(firstSubId);
-    return sub?.options?.scope || 'events';
-  }
-
-  // ── Cleanup ─────────────────────────────────────────────────────────
-
-  destroy(): void {
-    if (this.orphanTimer) {
-      clearInterval(this.orphanTimer);
-      this.orphanTimer = null;
-    }
-    this.subscriptions.clear();
-    this.clientSubs.clear();
-    this.dedupSet.clear();
-    this.dedupHistory = [];
+      const { chatOnce } = await import('./chat.js');
+      const ctxStr = Object.entries(ctx).map(([k, v]) => `[${k}] → ${v}`).join('\n');
+      const prompt = ctxStr ? `DAG 步骤: ${step.action}\n\n上游输出:\n${ctxStr}\n\n${step.prompt}\n\n简短回复，包含你的决定（如 APPROVED, REJECTED, DEPLOYED 等关键字）。` : step.prompt;
+      const { reply } = await chatOnce(step.agent, prompt);
+      return reply || `EMPTY_REPLY ACTION:${step.action} AGENT:${step.agent}`;
+    } catch (e: unknown) { throw new Error(`ChatStepExecutor failed: ${e instanceof Error ? e.message : String(e)}`); }
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────
+export function createStepExecutor(): StepExecutor { return process.env.WORKFLOW_EXECUTOR === 'chat' ? new ChatStepExecutor() : new SimulatedStepExecutor(); }
 
-/** Build an EventMessage with auto-generated id and timestamp. */
-export function createEvent(
-  event: EventType,
-  payload: Record<string, unknown>,
-  source: string
-): EventMessage {
-  return {
-    event,
-    payload,
-    timestamp: Date.now(),
-    source,
-    id: randomUUID(),
-  };
+/** Parse workflow YAML — supports snake_case aliases */
+export function parseWorkflowYaml(raw: string): WorkflowDefinition {
+  const p = yaml.load(raw) as Record<string, any>;
+  if (!p || typeof p !== 'object') throw new Error('Invalid workflow YAML');
+  const sl = p.steps || p.tasks || [];
+  if (!Array.isArray(sl)) throw new Error('YAML "steps" must be an array');
+  return { name: p.name || 'unnamed', description: p.description, steps: sl.map((s: any, i: number) => ({ id: s.id || `step_${i}`, agent: s.agent || 'unknown', action: s.action || 'execute', prompt: s.prompt || '', notify: s.notify, condition: s.condition, dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined), timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined, retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined, retryBackoff: s.retry_backoff || s.retryBackoff || undefined, priority: s.priority || undefined })) };
 }
 
-/** Check if a string is a valid EventType enum value. */
-export function isValidEventType(type: string): type is EventType {
-  return VALID_EVENT_TYPES.has(type);
+// ── DAG internal types ──────────────────────────────────────────────
+
+interface DagNode { step: WorkflowStep; deps: string[]; dependents: string[]; status: StepStatus; output: string; error: string; retryCount: number; maxRetries: number; onFailure?: string; timeout: number; startedAt: number; }
+const PRIORITY: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
+
+// ═══════════════════════════════════════════════════ WorkflowEngine ═══
+
+export class WorkflowEngine {
+  private runs = new Map<string, WorkflowRunRecord>();
+  private bus?: EventBus;
+  private executor: StepExecutor;
+
+  constructor(bus?: EventBus, executor?: StepExecutor) { this.bus = bus; this.executor = executor || createStepExecutor(); }
+
+  /** Execute a workflow — starts DAG asynchronously. Returns run record immediately. */
+  execute(def: WorkflowDefinition): WorkflowRunRecord {
+    const runId = randomUUID();
+    const rec: WorkflowRunRecord = { runId, workflowName: def.name, startedAt: Date.now(), status: WorkflowStatus.RUNNING, steps: new Map(def.steps.map(s => [s.id, StepStatus.PENDING])), stepRetries: new Map(), rollbacks: [], compensations: [] };
+    this.runs.set(runId, rec); this.runs.set(def.name, rec);
+    if (this.bus) this.bus.emit(createEvent(EventType.TASK_CREATED, { taskId: runId, title: `Workflow: ${def.name}`, stepsTotal: def.steps.length }, 'workflow-engine'));
+    this.executeDag(runId, def).then(() => { const r = this.runs.get(runId); if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }).catch((err: Error) => { const r = this.runs.get(runId); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: err.message }, 'workflow-engine')); });
+    return rec;
+  }
+
+  // ── Core DAG execution ────────────────────────────────────────────
+
+  private async executeDag(runId: string, def: WorkflowDefinition): Promise<void> {
+    const run = this.runs.get(runId); if (!run) return;
+    const nodes = new Map<string, DagNode>();
+    const compOnly = new Set<string>();
+
+    for (const s of def.steps) { const deps = (s.dependsOn || []).filter(Boolean); if (s.onFailure) compOnly.add(s.onFailure); nodes.set(s.id, { step: s, deps, dependents: [], status: StepStatus.PENDING, output: '', error: '', retryCount: 0, maxRetries: s.retry ?? 3, onFailure: s.onFailure, timeout: s.timeout || 300000, startedAt: 0 }); }
+    for (const [id, node] of nodes) { for (const depId of node.deps) { const d = nodes.get(depId); if (d) d.dependents.push(id); } }
+
+    const maxIter = Math.min(nodes.size * 10, 500); let iter = 0;
+
+    while (iter++ < maxIter) {
+      if (run.status !== WorkflowStatus.RUNNING) return;
+      const ready: DagNode[] = [];
+
+      for (const [id, node] of nodes) {
+        if (node.status !== StepStatus.PENDING && node.status !== StepStatus.BLOCKED) continue;
+        // Skip compensation-only steps (no deps, referenced via on_failure)
+        if (node.deps.length === 0 && compOnly.has(id) && node.status === StepStatus.PENDING) continue;
+        const depsOk = node.deps.every(depId => { const dn = nodes.get(depId); return dn && (dn.status === StepStatus.COMPLETED || dn.status === StepStatus.SKIPPED); });
+        if (!depsOk) { node.status = StepStatus.BLOCKED; run.steps.set(id, StepStatus.BLOCKED); continue; }
+        if (node.step.condition) { const ctx: Record<string, string> = {}; for (const [, n] of nodes) { if (n.output) ctx[n.step.id] = n.output; } if (!this.evalCond(node.step.condition, ctx)) { node.status = StepStatus.SKIPPED; run.steps.set(id, StepStatus.SKIPPED); continue; } }
+        ready.push(node);
+      }
+
+      if (ready.length === 0) { const pending = [...nodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED); if (pending.length === 0) break; for (const n of pending) { if (n.deps.some(depId => { const dn = nodes.get(depId); return dn && dn.status === StepStatus.FAILED; })) { n.status = StepStatus.SKIPPED; run.steps.set(n.step.id, StepStatus.SKIPPED); } } break; }
+
+      ready.sort((a, b) => (PRIORITY[a.step.priority || 'normal'] ?? 2) - (PRIORITY[b.step.priority || 'normal'] ?? 2));
+      await Promise.allSettled(ready.map(n => this.execNode(runId, n, nodes)));
+    }
+
+    let failed = false, allDone = true;
+    for (const [id, node] of nodes) { run.steps.set(id, node.status); if (node.status === StepStatus.FAILED) failed = true; if (node.status !== StepStatus.COMPLETED && node.status !== StepStatus.SKIPPED) allDone = false; }
+    run.status = failed ? WorkflowStatus.FAILED : (allDone ? WorkflowStatus.COMPLETED : WorkflowStatus.RUNNING);
+    run.completedAt = Date.now();
+  }
+
+  private async execNode(runId: string, node: DagNode, nodes: Map<string, DagNode>): Promise<void> {
+    const run = this.runs.get(runId); if (!run) return;
+    const sid = node.step.id; node.status = StepStatus.IN_PROGRESS; node.startedAt = Date.now(); run.steps.set(sid, StepStatus.IN_PROGRESS);
+    if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action }, 'workflow-engine'));
+    const ctx: Record<string, string> = {}; for (const depId of node.deps) { const dn = nodes.get(depId); if (dn?.output) ctx[depId] = dn.output; }
+
+    try {
+      const out = await this.executor.execute(node.step, ctx);
+      node.output = out; node.status = StepStatus.COMPLETED; run.steps.set(sid, StepStatus.COMPLETED);
+      if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output: out }, 'workflow-engine'));
+      if (node.step.notify) { const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify]; for (const to of nl) if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_REQUESTED, { taskId: runId, stepId: sid, workflow: run.workflowName, from: node.step.agent, to, title: `${node.step.action}`, prompt: node.step.prompt.slice(0, 200) }, 'workflow-engine')); }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err); node.error = msg;
+      if (node.retryCount < node.maxRetries) { node.retryCount++; run.stepRetries.set(sid, node.retryCount); node.status = StepStatus.PENDING; run.steps.set(sid, StepStatus.PENDING); const bf = node.step.retryBackoff === 'fixed' ? 3000 : Math.pow(2, node.retryCount) * 1000; await new Promise(r => setTimeout(r, bf)); return this.execNode(runId, node, nodes); }
+      node.status = StepStatus.FAILED; run.steps.set(sid, StepStatus.FAILED); run.rollbacks.push({ stepId: sid, reason: msg, timestamp: Date.now() });
+      if (node.onFailure && nodes.has(node.onFailure)) { const cn = nodes.get(node.onFailure)!; run.compensations.push(node.onFailure); if (cn.status === StepStatus.PENDING) { if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: node.onFailure, workflow: run.workflowName, agent: cn.step.agent, action: 'compensation', note: `Triggered by: ${sid}` }, 'workflow-engine')); await this.execNode(runId, cn, nodes); } return; }
+      if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true }, 'workflow-engine'));
+    }
+  }
+
+  private evalCond(cond: string, ctx: Record<string, string>): boolean {
+    const m = cond.match(/^\$\.(\w+)\.output\s+(contains|==|!=)\s+(.+)$/i);
+    if (m) { const [, sid, op, raw] = m; const v = raw.trim().replace(/^['"]|['"]$/g, ''); const out = (ctx[sid] || '').toLowerCase(); const o = op.toLowerCase(); if (o === 'contains') return out.includes(v.toLowerCase()); if (o === '==') return out === v.toLowerCase(); if (o === '!=') return out !== v.toLowerCase(); }
+    return Object.prototype.hasOwnProperty.call(ctx, cond);
+  }
+
+  // ── Public helpers ────────────────────────────────────────────────
+
+  updateStep(wn: string, sid: string, s: StepStatus) { const r = this.runs.get(wn); if (r) r.steps.set(sid, s); }
+  recordRetry(wn: string, sid: string): number { const r = this.runs.get(wn); if (!r) return 0; const n = (r.stepRetries.get(sid) || 0) + 1; r.stepRetries.set(sid, n); return n; }
+  recordRollback(wn: string, sid: string, reason: string) { const r = this.runs.get(wn); if (r) r.rollbacks.push({ stepId: sid, reason, timestamp: Date.now() }); }
+  recordCompensation(wn: string, sid: string) { const r = this.runs.get(wn); if (!r) return; r.compensations.push(sid); if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: `dag:${wn}:${sid}`, workflow: wn, step: sid, agent: 'scheduler', action: 'compensation' }, 'workflow-engine')); }
+  complete(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }
+  fail(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } }
+  listRuns(): WorkflowRunRecord[] { return [...this.runs.values()]; }
+  getRun(idOrName: string): WorkflowRunRecord | undefined { return this.runs.get(idOrName); }
+
+  tick(): void {
+    for (const [rid, run] of this.runs) {
+      if (run.status !== WorkflowStatus.RUNNING) continue;
+      for (const [sid, s] of run.steps) {
+        if (s === StepStatus.BLOCKED) { const rt = run.stepRetries.get(sid) || 0; if (rt < 3) { run.steps.set(sid, StepStatus.IN_PROGRESS); if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: rid, stepId: sid, workflow: run.workflowName, action: 'auto-retry', attempt: rt + 1 }, 'workflow-engine')); } }
+      }
+    }
+  }
+
+  getStats(): { totalRuns: number; activeRuns: number; completedRuns: number; failedRuns: number; totalRetries: number; totalRollbacks: number; totalCompensations: number } {
+    let a = 0, c = 0, f = 0, tr = 0, rb = 0, cp = 0;
+    for (const [, r] of this.runs) { if (r.status === WorkflowStatus.RUNNING) a++; else if (r.status === WorkflowStatus.COMPLETED) c++; else if (r.status === WorkflowStatus.FAILED) f++; tr += r.stepRetries.size; rb += r.rollbacks.length; cp += r.compensations.length; }
+    return { totalRuns: this.runs.size, activeRuns: a, completedRuns: c, failedRuns: f, totalRetries: tr, totalRollbacks: rb, totalCompensations: cp };
+  }
 }

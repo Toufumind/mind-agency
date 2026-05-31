@@ -1,11 +1,16 @@
 /**
- * WebSocket notification server for Mind Agency — v0.2 Event Bus integration.
+ * WebSocket notification server for Mind Agency — v0.3 Event Bus + Workflow integration.
  *
  * Runs alongside `next dev` on port 3001. Provides:
  *   - ws://localhost:3001           Browser clients connect here
  *   - POST /broadcast               Legacy group-chat push (scope-aware routing)
  *   - POST /events                  Event Bus emit endpoint (internal)
- *   - GET  /events/stats            Monitoring endpoint
+ *   - GET  /events/stats            Monitoring + DLQ stats
+ *   - GET  /events/dlq              Dead Letter Queue inspection
+ *   - POST /events/dlq/retry        Manual DLQ retry trigger
+ *   - POST /events/dlq/purge        Clear DLQ
+ *   - POST /workflows/run           Execute a workflow definition
+ *   - GET  /workflows/stats         Workflow engine stats
  *
  * Clients send JSON over WS:
  *   → { type: "subscribe", filter?: {...}, options?: {...} }
@@ -15,23 +20,25 @@
  *   ← { type: "event", ...EventMessage }  (pushed by server)
  *   ← { type: "error", code: "E_...", message: "..." }
  *
- * Scope routing:
- *   - POST /broadcast → clients with scope "messages" | "all" | legacy (no sub)
- *   - POST /events    → EventBus.emit() → matching subscribers with scope "events" | "all"
- *
  * Start: npx tsx server.ts   (or via `npm run dev:ws`)
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'crypto';
-import { EventBus, EventType, EventBusError, createEvent } from './src/lib/event-bus.js';
+import { EventBus, EventType, EventBusError, createEvent, WorkflowEngine, parseWorkflowYaml } from './src/lib/event-bus.js';
+import type { EventMessage, WorkflowRunRecord } from './src/lib/event-bus.js';
+import { startScheduler, stopScheduler } from './src/lib/scheduler.js';
 
 const PORT = parseInt(process.env.WS_PORT || '3001', 10);
 
 // ── EventBus singleton ───────────────────────────────────────────────────
 
 const bus = new EventBus();
+
+// ── WorkflowEngine singleton ───────────────────────────────────────────────
+
+const workflowEngine = new WorkflowEngine(bus);
 
 // ── Per-client state ─────────────────────────────────────────────────────
 
@@ -159,6 +166,80 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // ── GET /events/dlq ──────────────────────────────────────────────
+
+  if (req.method === 'GET' && req.url === '/events/dlq') {
+    const dlq = bus.getDeadLetters();
+    const dlqStats = bus.getDLQStats();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ...dlqStats, entries: dlq }, null, 2));
+    return;
+  }
+
+  // ── POST /events/dlq/retry ────────────────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/events/dlq/retry') {
+    const retried = bus.retryDeadLetters();
+    const stats = bus.getDLQStats();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, retried, remaining: stats.size }));
+    return;
+  }
+
+  // ── POST /events/dlq/purge ────────────────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/events/dlq/purge') {
+    const purged = bus.purgeDeadLetters();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, purged }));
+    return;
+  }
+
+  // ── POST /workflows/run ───────────────────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/workflows/run') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      try {
+        const input = JSON.parse(body);
+        // Accept raw YAML string or pre-parsed definition
+        const def = typeof input.yaml === 'string' ? parseWorkflowYaml(input.yaml) : input;
+        if (!def.name || !def.steps?.length) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'workflow requires name and steps' }));
+          return;
+        }
+        const run = await workflowEngine.execute(def);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, runId: run.runId, status: run.status, stepsCompleted: run.steps.size }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── GET /workflows/stats ──────────────────────────────────────────
+
+  if (req.method === 'GET' && req.url === '/workflows/stats') {
+    const stats = workflowEngine.getStats();
+    const runs = workflowEngine.listRuns().map((r: WorkflowRunRecord) => ({
+      runId: r.runId,
+      workflowName: r.workflowName,
+      status: r.status,
+      stepCount: r.steps.size,
+      startedAt: r.startedAt,
+      completedAt: r.completedAt,
+    }));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ...stats, runs }, null, 2));
+    return;
+  }
+
   // ── Everything else ────────────────────────────────────────────────
 
   res.writeHead(404);
@@ -225,7 +306,7 @@ wss.on('connection', (ws: WebSocket) => {
           msg.filter,
           msg.options,
           clientId,
-          (event) => {
+          (event: EventMessage) => {
             // Only send if WS is still open
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(
@@ -378,17 +459,27 @@ setInterval(() => {
 // ── Start ────────────────────────────────────────────────────────────────
 
 server.listen(PORT, () => {
-  console.log(`[ws] WebSocket + EventBus server listening on ws://localhost:${PORT}`);
+  console.log(`[ws] WebSocket + EventBus + Workflow server on ws://localhost:${PORT}`);
   console.log(`[ws]   Broadcast:  POST http://localhost:${PORT}/broadcast`);
   console.log(`[ws]   Events:    POST http://localhost:${PORT}/events`);
   console.log(`[ws]   Stats:     GET  http://localhost:${PORT}/events/stats`);
-  console.log(`[ws] EventBus v0.2 — 17 event types, 5 error codes`);
+  console.log(`[ws]   DLQ:       GET  http://localhost:${PORT}/events/dlq | POST .../dlq/retry | POST .../dlq/purge`);
+  console.log(`[ws]   Workflows: POST http://localhost:${PORT}/workflows/run | GET .../workflows/stats`);
+  console.log(`[ws] EventBus v0.3 — DLQ + retry, WorkflowEngine v0.3 — DAG`);
+
+  // ── Start background scheduler (poll + DAG loops) ─────────────────
+  startScheduler({
+    engine: workflowEngine,
+    pollIntervalMs: parseInt(process.env.POLL_INTERVAL || '30000', 10),
+    dagIntervalMs: parseInt(process.env.DAG_INTERVAL || '10000', 10),
+  });
 });
 
 // ── Graceful shutdown ────────────────────────────────────────────────────
 
 process.on('SIGINT', () => {
   console.log('[ws] Shutting down...');
+  stopScheduler();
   bus.destroy();
   wss.close();
   server.close();
@@ -397,6 +488,7 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   console.log('[ws] Shutting down...');
+  stopScheduler();
   bus.destroy();
   wss.close();
   server.close();

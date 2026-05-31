@@ -5,7 +5,8 @@
  * Works from both Next.js API routes (same machine) and the MCP group-server.
  */
 
-const WS_BASE_URL = process.env.WS_BASE_URL || 'http://localhost:3001';
+const WS_PORT = process.env.WS_PORT || '3001';
+const WS_BASE_URL = process.env.WS_BASE_URL || `http://localhost:${WS_PORT}`;
 const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || `${WS_BASE_URL}/broadcast`;
 const WS_EVENTS_URL = process.env.WS_EVENTS_URL || `${WS_BASE_URL}/events`;
 

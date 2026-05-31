@@ -1,24 +1,56 @@
 name: deploy-pipeline
-description: 简单的部署审批流水线 — Alice 审核 → Bob 批准/拒绝 → Charlie 部署
+description: 部署审批流水线 v0.3 — Alice 审核 → Bob 批准/拒绝 → Charlie 部署，含条件分支 + 失败回滚
 steps:
-  - agent: Alice
+  - id: review
+    agent: Alice
     action: review
     notify: Bob
+    on_failure: rollback_review
+    retry: 3
+    timeout: 300000
     prompt: |
       请审核本次部署变更。查看最近的群聊消息了解上下文，
       然后回复你的审核意见。必须在回复中明确写 APPROVED 或 REJECTED。
 
-  - agent: Bob
+  - id: approve
+    agent: Bob
     action: approve|reject
+    dependsOn: [review]
+    condition: "$.review.output contains APPROVED"
     notify: Charlie
+    retry: 2
+    on_failure: rollback_approve
     prompt: |
       请根据 Alice 的审核结果做出最终决定。
       如果同意 Alice 的意见，回复 APPROVED；如果不同意，回复 REJECTED。
-      必须在回复中明确写 APPROVED 或 REJECTED。
 
-  - agent: Charlie
+  - id: deploy
+    agent: Charlie
     action: deploy
-    condition: Bob.approved
+    dependsOn: [approve]
+    condition: "$.approve.output contains APPROVED"
+    retry: 3
+    on_failure: rollback_deploy
     prompt: |
       审批已通过！请执行部署操作。
       确认部署完成后，回复 DEPLOYED。
+
+  # ── Compensation steps (on_failure rollback) ──
+
+  - id: rollback_approve
+    agent: Diana
+    action: notify_rejection
+    prompt: |
+      Bob 的审批步骤失败了。请检查原因并在群里通知相关人员。
+
+  - id: rollback_deploy
+    agent: Diana
+    action: notify_deploy_failure
+    prompt: |
+      部署失败了。请在群里通知团队并协调排查。
+
+  - id: rollback_review
+    agent: Diana
+    action: notify_review_failure
+    prompt: |
+      Alice 的审核步骤失败了。请检查原因并在群里通知相关人员。

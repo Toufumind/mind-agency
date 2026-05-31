@@ -1,0 +1,109 @@
+name: deploy-pipeline-v3
+description: >
+  v0.3 全功能工作流 — 条件分支 + 多路路由 + 失败回滚补偿 + 指数退避重试 + 超时 + 通知链
+  Diana 审批 → Bob 批准/拒绝(条件分支) → Charlie 部署 → Alice 前端验证
+  完整测试: condition, on_failure, retry, retryBackoff, timeout, priority, notify
+steps:
+  # ── Step 1: 审批 (高优先级, 5min 超时) ──
+  - id: review
+    agent: Diana
+    action: review
+    notify: Bob
+    priority: high
+    retry: 2
+    retry_backoff: exponential
+    on_failure: rollback_review
+    timeout: 300000
+    prompt: |
+      请审核本次部署变更。查看最近的群聊消息了解上下文，
+      然后回复你的审核意见。必须在回复中明确写 APPROVED 或 REJECTED。
+
+  # ── Step 2a: 批准 (条件: Diana APPROVED) ──
+  - id: approve
+    agent: Bob
+    action: approve
+    dependsOn: [review]
+    condition: "$.review.output contains APPROVED"
+    notify: Charlie
+    priority: normal
+    retry: 3
+    retry_backoff: exponential
+    on_failure: rollback_approve
+    prompt: |
+      Diana 审核通过 (APPROVED)。请做出最终批准决定。
+      如果同意，回复 APPROVED；如果不同意，回复 REJECTED。
+
+  # ── Step 2b: 拒绝路径 (条件: Diana REJECTED) ──
+  - id: reject
+    agent: Bob
+    action: reject
+    dependsOn: [review]
+    condition: "$.review.output contains REJECTED"
+    notify: Diana
+    priority: high
+    retry: 1
+    prompt: |
+      Diana 审核未通过 (REJECTED)。请查看原因并决定：
+      - 直接拒绝 → 回复 REJECTED
+      - 有条件通过 → 回复 CONDITIONAL_APPROVED，并在群中说明条件
+
+  # ── Step 3: 部署 (条件: Bob APPROVED) ──
+  - id: deploy
+    agent: Charlie
+    action: deploy
+    dependsOn: [approve]
+    condition: "$.approve.output contains APPROVED"
+    notify: Alice
+    priority: critical
+    retry: 3
+    retry_backoff: exponential
+    on_failure: rollback_deploy
+    timeout: 600000
+    prompt: |
+      审批已通过！请执行部署操作并运行自动化测试。
+      部署成功且测试通过 → 回复 DEPLOYED+PASSED
+      部署成功但测试失败 → 回复 DEPLOYED+FAILED
+      部署失败 → 回复 DEPLOY_FAILED
+
+  # ── Step 4: 前端验证 (条件: Charlie DEPLOYED+PASSED) ──
+  - id: verify_frontend
+    agent: Alice
+    action: verify_frontend
+    dependsOn: [deploy]
+    condition: "$.deploy.output contains PASSED"
+    notify: Diana
+    priority: normal
+    retry: 2
+    timeout: 180000
+    prompt: |
+      部署成功且测试通过。请验证前端页面是否正常：
+      - 检查 Dashboard 加载
+      - 检查 Agent 列表
+      - 检查群聊面板
+      验证通过回复 VERIFIED，发现问题回复 ISSUES_FOUND
+
+  # ── Compensation steps (on_failure 回滚) ──
+
+  - id: rollback_review
+    agent: Diana
+    action: notify_review_failure
+    priority: high
+    prompt: |
+      review 步骤在重试耗尽后仍然失败。请检查 Diana 的状态，
+      并在群里通知团队审批步骤需要人工介入。
+
+  - id: rollback_approve
+    agent: Diana
+    action: notify_approve_failure
+    priority: high
+    prompt: |
+      approve 步骤在重试耗尽后仍然失败。请检查 Bob 的状态，
+      并通知团队最终批准未能完成，需要 CEO 介入。
+
+  - id: rollback_deploy
+    agent: Diana
+    action: notify_deploy_failure
+    priority: critical
+    prompt: |
+      deploy 步骤在重试耗尽后仍然失败。这是严重事件！
+      请在群里通知全体团队，协调 Charlie 和其他人排查部署故障。
