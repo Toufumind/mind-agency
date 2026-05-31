@@ -1,0 +1,11 @@
+[
+  {
+    "id": "fdddb8aa-5df5-430b-90c7-3c5e992c53c8",
+    "timestamp": "2026-05-31T15:41:19.379Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "## 🚀 Deploy Pipeline — Bob 审批\n\n**决定：APPROVED** ✅\n\n---\n\n### 审批依据\n\n已审阅 Alice 的部署审核报告，同意其结论：\n\n| 提交 | 功能 | Alice 评估 | Bob 确认 |\n|------|------|-----------|----------|\n| `5300e0c` | Agent 角色权限 + 审计日志 | 🟢 ",
+    "status": "success"
+  }
+]

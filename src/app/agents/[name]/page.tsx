@@ -4,21 +4,23 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import ChatPanel from '@/components/chat-panel';
 import Sidebar from '@/components/sidebar';
-import { Mail, FileText, Hash, Settings, X, RefreshCw, Zap, Shield } from 'lucide-react';
+import {
+  Mail, FileText, Hash, Settings, X, RefreshCw, Zap, Shield, Clock,
+  Activity, Check, AlertCircle, Plus
+} from 'lucide-react';
 
 interface Context { agent: string; emails: number; messages: number; groups: string[]; }
 interface AgentConfig {
-  autoRespondToEmail: boolean;
-  autoProcessGroupInvites: boolean;
-  notifyOnEmail: boolean;
-  notifyOnGroupMention: boolean;
+  autoRespondToEmail: boolean; autoProcessGroupInvites: boolean;
+  notifyOnEmail: boolean; notifyOnGroupMention: boolean;
+  roles: string[]; permissions: Record<string, boolean>;
 }
+interface AuditEntry { agent: string; action: string; resource: string; timestamp: string; status?: string; details?: string; }
 
 const defaultConfig: AgentConfig = {
-  autoRespondToEmail: false,
-  autoProcessGroupInvites: false,
-  notifyOnEmail: true,
-  notifyOnGroupMention: true,
+  autoRespondToEmail: false, autoProcessGroupInvites: false,
+  notifyOnEmail: true, notifyOnGroupMention: true,
+  roles: [], permissions: {},
 };
 
 export default function AgentPage() {
@@ -27,11 +29,11 @@ export default function AgentPage() {
   const [showCtx, setShowCtx] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [loadingAudit, setLoadingAudit] = useState(false);
   const [config, setConfig] = useState<AgentConfig>(defaultConfig);
   const [saving, setSaving] = useState(false);
   const [polling, setPolling] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [wsConnected, setWsConnected] = useState(false);
 
   const loadContext = useCallback(() => {
     Promise.all([
@@ -44,76 +46,74 @@ export default function AgentPage() {
       const chat = await chatR.json();
       const groups = await groupsR.json();
       const emails = await emailsR.json();
-      const agent = (agents.agents || []).find((a: any) => a.name === name);
       setCtx({
-        agent: name,
-        emails: Array.isArray(emails) ? emails.length : 0,
-        messages: chat.messages?.length || 0,
-        groups: groups.groups || [],
+        agent: name, emails: Array.isArray(emails) ? emails.length : 0,
+        messages: chat.messages?.length || 0, groups: groups.groups || [],
       });
     }).catch(() => {});
   }, [name]);
 
   const loadConfig = useCallback(() => {
-    fetch(`/api/agents/${name}/config`)
-      .then(r => r.json())
-      .then(d => { if (!d.error) setConfig({ ...defaultConfig, ...d }); })
-      .catch(() => {});
+    fetch(`/api/agents/${name}/config`).then(r => r.json())
+      .then(d => { if (!d.error) setConfig({ ...defaultConfig, ...d }); }).catch(() => {});
   }, [name]);
 
-  const loadAuditLogs = useCallback(() => {
-    setLoadingAudit(true);
-    fetch(`/api/audit?agent=${name}&limit=50`)
-      .then(r => r.json())
-      .then(d => { setAuditLogs(d.logs || []); })
-      .catch(() => {})
-      .finally(() => setLoadingAudit(false));
+  const loadAudit = useCallback(() => {
+    fetch(`/api/audit?agent=${name}&limit=20`).then(r => r.json())
+      .then(d => setAuditLogs(d.logs || [])).catch(() => {});
   }, [name]);
 
-  useEffect(() => { loadContext(); loadConfig(); }, [loadContext, loadConfig]);
+  useEffect(() => { loadContext(); loadConfig(); loadAudit(); }, [loadContext, loadConfig, loadAudit]);
 
-  // Background auto-poll for auto-respond agents (every 30s)
+  // WS connect for status dot
+  useEffect(() => {
+    const ws = new WebSocket(`ws://localhost:3001`);
+    ws.onopen = () => setWsConnected(true);
+    ws.onclose = () => setWsConnected(false);
+    setTimeout(() => { if (ws.readyState !== WebSocket.OPEN) { ws.close(); setWsConnected(false); } }, 2000);
+    return () => ws.close();
+  }, [name]);
+
+  // Background auto-poll
   useEffect(() => {
     if (!config.autoRespondToEmail) return;
     const t = setInterval(() => {
       fetch(`/api/agents/${name}/auto-respond`, { method: 'POST' })
-        .then(r => r.json())
-        .then(d => { if (d.triggered) setTimeout(loadContext, 2000); })
+        .then(r => r.json()).then(d => { if (d.triggered) { setTimeout(loadContext, 2000); setTimeout(loadAudit, 3000); } })
         .catch(() => {});
     }, 30000);
     return () => clearInterval(t);
-  }, [config.autoRespondToEmail, name, loadContext]);
+  }, [config.autoRespondToEmail, name, loadContext, loadAudit]);
 
   const handlePoll = async () => {
     setPolling(true);
-    try {
-      const r = await fetch(`/api/agents/${name}/auto-respond`, { method: 'POST' });
-      const d = await r.json();
-      if (d.triggered) {
-        // Reload context after auto-respond
-        setTimeout(loadContext, 2000);
-      }
-    } catch {}
+    try { await fetch(`/api/agents/${name}/auto-respond`, { method: 'POST' }); setTimeout(loadContext, 2000); setTimeout(loadAudit, 3000); }
+    catch {}
     setPolling(false);
   };
 
-  // Estimate tokens from message count (rough: ~200 tokens per message)
-  const tokenEstimate = ctx ? ctx.messages * 200 + ctx.emails * 50 + 20000 : 0;
-  const tokenPct = Math.min(100, Math.round((tokenEstimate / 200000) * 100));
-
   const toggleConfig = async (key: keyof AgentConfig) => {
     const next = { ...config, [key]: !config[key] };
-    setConfig(next);
-    setSaving(true);
-    try {
-      await fetch(`/api/agents/${name}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: !config[key] }),
-      });
-    } catch {}
+    setConfig(next); setSaving(true);
+    try { await fetch(`/api/agents/${name}/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: !config[key] }) }); }
+    catch {}
     setSaving(false);
   };
+
+  const tokenEstimate = ctx ? ctx.messages * 200 + ctx.emails * 50 + 15000 : 0;
+  const tokenPct = Math.min(100, Math.round((tokenEstimate / 200000) * 100));
+
+  const actionLabel = (action: string) => {
+    if (action.includes('chat')) return 'Chat';
+    if (action.includes('email')) return 'Email';
+    if (action.includes('group')) return 'Group';
+    if (action.includes('config')) return 'Config';
+    if (action.includes('agent')) return 'Agent';
+    return action.slice(0, 10);
+  };
+
+  const isAdmin = config.roles?.includes('admin');
+  const autoOn = config.autoRespondToEmail;
 
   return (
     <div className="flex h-screen overflow-hidden bg-white">
@@ -121,39 +121,46 @@ export default function AgentPage() {
       <main className="flex-1 flex flex-col min-w-0">
         {/* Context bar */}
         {ctx && showCtx && (
-          <div className="px-5 py-2.5 border-b border-gray-100 bg-gray-50/50 flex items-center gap-4 shrink-0 text-[12px]">
-            <span className="font-medium text-gray-800">{ctx.agent}</span>
-            <span className="text-gray-300">·</span>
-            <span className="flex items-center gap-1 text-gray-500"><Mail size={11} />{ctx.emails} emails</span>
-            <span className="flex items-center gap-1 text-gray-500"><FileText size={11} />{ctx.messages} msgs</span>
-            {ctx.groups.length > 0 && <>
-              <span className="text-gray-300">·</span>
-              <span className="flex items-center gap-1 text-gray-500"><Hash size={11} />{ctx.groups.join(', ')}</span>
-            </>}
+          <div className="px-5 py-2 border-b border-gray-100 bg-gray-50/30 flex items-center gap-4 shrink-0 text-[12px]">
+            <div className="flex items-center gap-2">
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium ${isAdmin ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                {name[0]}
+              </span>
+              <span className="font-medium text-gray-800">{name}</span>
+              {isAdmin && <Shield size={10} className="text-gray-400" />}
+              {autoOn && <span className="text-[9px] bg-green-50 text-green-500 px-1.5 py-0.5 rounded-full font-medium">auto</span>}
+            </div>
+
+            <span className="text-gray-200">|</span>
+            <span className="flex items-center gap-1 text-gray-500"><Mail size={11} />{ctx.emails}</span>
+            <span className="flex items-center gap-1 text-gray-500"><FileText size={11} />{ctx.messages}</span>
+            {ctx.groups.length > 0 && <><span className="text-gray-200">|</span><span className="flex items-center gap-1 text-gray-500"><Hash size={11} />{ctx.groups.join(', ')}</span></>}
+
             {/* Token estimate */}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${tokenPct > 80 ? 'bg-red-50 text-red-500' : tokenPct > 50 ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-100 text-gray-400'}`}
-              title={`~${(tokenEstimate/1000).toFixed(0)}k tokens used (out of 200k)`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
+              tokenPct > 80 ? 'bg-red-50 text-red-500' : tokenPct > 50 ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-400'
+            }`} title={`~${(tokenEstimate/1000).toFixed(0)}k tokens`}>
               ~{(tokenEstimate/1000).toFixed(0)}k
             </span>
+
             <div className="ml-auto flex items-center gap-2">
-              {/* Poll button */}
+              {/* WS status */}
+              <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-emerald-400' : 'bg-gray-200'}`} title={wsConnected ? 'WS connected' : 'WS offline'} />
+
               <button onClick={handlePoll} disabled={polling}
-                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${polling ? 'text-gray-300' : 'text-green-500 hover:text-green-700 hover:bg-green-50'}`}
-                title="Trigger auto-respond for this agent">
-                <Zap size={11} className={polling ? 'animate-spin' : ''} /> Poll
+                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${polling ? 'text-gray-300' : 'text-green-500 hover:text-green-700 hover:bg-green-50'}`}>
+                <Zap size={11} className={polling ? 'animate-spin inline mr-0.5' : 'inline mr-0.5'} />Poll
               </button>
-              <button onClick={loadContext} className="text-gray-300 hover:text-gray-500" title="Refresh"><RefreshCw size={11} /></button>
-              <button onClick={() => { setShowAudit(!showAudit); if (!showAudit) loadAuditLogs(); }}
-                className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${showAudit ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}
-              >
-                <Shield size={12} className="inline mr-1" />Audit Log
+              <button onClick={loadContext} className="text-gray-300 hover:text-gray-500"><RefreshCw size={11} /></button>
+              <button onClick={() => setShowAudit(!showAudit)}
+                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${showAudit ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
+                <Activity size={11} className="inline mr-1" />Audit
               </button>
               <button onClick={() => setShowConfig(!showConfig)}
-                className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${showConfig ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}
-              >
-                <Settings size={12} className="inline mr-1" />Config
+                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${showConfig ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
+                <Settings size={11} className="inline mr-1" />Config
               </button>
-              <button onClick={() => setShowCtx(false)} className="text-gray-300 hover:text-gray-500">×</button>
+              <button onClick={() => setShowCtx(false)} className="text-gray-300 hover:text-gray-500"><X size={12} /></button>
             </div>
           </div>
         )}
@@ -162,46 +169,63 @@ export default function AgentPage() {
         {showConfig && (
           <div className="px-5 py-4 border-b border-gray-100 bg-white shrink-0">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[13px] font-medium text-gray-800">Agent Configuration</h3>
-              {saving && <span className="text-[10px] text-gray-400">saving...</span>}
+              <div className="flex items-center gap-3">
+                <h3 className="text-[13px] font-medium text-gray-800">Agent Configuration</h3>
+                {saving && <span className="text-[10px] text-gray-400 animate-pulse">saving...</span>}
+              </div>
+              <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                {isAdmin && <span className="flex items-center gap-1"><Shield size={10} /> admin</span>}
+                <span>roles: {config.roles?.join(', ') || 'none'}</span>
+              </div>
             </div>
+
+            {/* Permissions display */}
+            {Object.keys(config.permissions).length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {Object.entries(config.permissions).map(([perm, val]) => (
+                  <span key={perm} className={`text-[10px] px-2 py-1 rounded-md flex items-center gap-1 ${
+                    val ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-400'
+                  }`}>
+                    {val ? <Check size={10} /> : <X size={10} />} {perm}
+                  </span>
+                ))}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
-              <ConfigToggle label="Auto-respond to emails" desc="When a new email arrives, agent automatically reads and responds" checked={config.autoRespondToEmail} onChange={() => toggleConfig('autoRespondToEmail')} />
-              <ConfigToggle label="Auto-process group invites" desc="When invited to a group via email, agent auto-joins" checked={config.autoProcessGroupInvites} onChange={() => toggleConfig('autoProcessGroupInvites')} />
-              <ConfigToggle label="Notify on new email" desc="Show a toast notification when new email arrives in inbox" checked={config.notifyOnEmail} onChange={() => toggleConfig('notifyOnEmail')} />
-              <ConfigToggle label="Notify on group @mention" desc="Alert when mentioned in a group chat" checked={config.notifyOnGroupMention} onChange={() => toggleConfig('notifyOnGroupMention')} />
+              <Toggle label="Auto-respond to emails" desc="Agent reads and responds to new emails automatically" checked={config.autoRespondToEmail} onChange={() => toggleConfig('autoRespondToEmail')} />
+              <Toggle label="Auto-process group invites" desc="Agent auto-joins groups when invited via email" checked={config.autoProcessGroupInvites} onChange={() => toggleConfig('autoProcessGroupInvites')} />
+              <Toggle label="Notify on new email" desc="Toast notification when new email arrives" checked={config.notifyOnEmail} onChange={() => toggleConfig('notifyOnEmail')} />
+              <Toggle label="Notify on group mention" desc="Alert when @mentioned in a group" checked={config.notifyOnGroupMention} onChange={() => toggleConfig('notifyOnGroupMention')} />
             </div>
-            <p className="text-[10px] text-gray-300 mt-3 font-mono">
-              Config stored at: Agents/{name}/config.json
-            </p>
+
+            <p className="text-[10px] text-gray-300 mt-3 font-mono">Agents/{name}/config.json</p>
           </div>
         )}
 
-        {/* Audit Log panel */}
+        {/* Audit log panel */}
         {showAudit && (
-          <div className="px-5 py-4 border-b border-gray-100 bg-white shrink-0 max-h-64 overflow-y-auto">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[13px] font-medium text-gray-800">Audit Log</h3>
-              <button onClick={() => { loadAuditLogs(); }} disabled={loadingAudit}
-                className={`text-[10px] px-2 py-0.5 rounded ${loadingAudit ? 'text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}>
-                <RefreshCw size={11} className={`inline mr-1 ${loadingAudit ? 'animate-spin' : ''}`} />Refresh
-              </button>
+          <div className="px-5 py-3 border-b border-gray-100 bg-white shrink-0 max-h-[200px] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-[13px] font-medium text-gray-800 flex items-center gap-2">
+                <Activity size={12} /> Audit Log ({auditLogs.length})
+              </h3>
+              <button onClick={loadAudit} className="text-gray-300 hover:text-gray-500"><RefreshCw size={11} /></button>
             </div>
             {auditLogs.length === 0 ? (
-              <p className="text-[11px] text-gray-400">No audit logs found for {name}.</p>
+              <p className="text-[11px] text-gray-400 text-center py-4">No audit records</p>
             ) : (
               <div className="space-y-1">
-                {auditLogs.slice(0, 30).map((entry: any) => (
-                  <div key={entry.id} className="text-[11px] font-mono flex gap-2 py-1 border-b border-gray-50 last:border-0">
-                    <span className="text-gray-400 shrink-0">{entry.timestamp?.replace('T', ' ').slice(0, 19)}</span>
-                    <span className={`shrink-0 w-16 px-1 text-center rounded text-[10px] ${entry.status === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}`}>{entry.action}</span>
-                    <span className="text-gray-600 truncate">{entry.resource}</span>
-                    {entry.details && <span className="text-gray-400 truncate hidden lg:inline">- {entry.details.slice(0, 60)}</span>}
+                {auditLogs.map((e, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[11px]">
+                    <span className="text-gray-300 font-mono w-[40px]">{e.timestamp?.slice(11, 19)}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                      e.status === 'error' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-600'
+                    }`}>{actionLabel(e.action)}</span>
+                    <span className="text-gray-600 truncate flex-1">{e.resource}</span>
+                    {e.details && <span className="text-gray-400 truncate max-w-[200px]">{e.details.slice(0, 60)}</span>}
                   </div>
                 ))}
-                {auditLogs.length > 30 && (
-                  <p className="text-[10px] text-gray-300 pt-1">Showing 30 of {auditLogs.length} entries (latest first)</p>
-                )}
               </div>
             )}
           </div>
@@ -216,11 +240,9 @@ export default function AgentPage() {
   );
 }
 
-function ConfigToggle({ label, desc, checked, onChange }: {
-  label: string; desc: string; checked: boolean; onChange: () => void;
-}) {
+function Toggle({ label, desc, checked, onChange }: { label: string; desc: string; checked: boolean; onChange: () => void }) {
   return (
-    <label className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 cursor-pointer transition-colors">
+    <label className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 cursor-pointer transition-colors bg-gray-50/30">
       <div className="relative mt-0.5">
         <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
         <div className={`w-9 h-5 rounded-full transition-colors ${checked ? 'bg-gray-800' : 'bg-gray-200'}`}>
