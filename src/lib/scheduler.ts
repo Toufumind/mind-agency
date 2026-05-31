@@ -21,9 +21,8 @@ let dagTid: ReturnType<typeof setInterval> | null = null;
 let pollRunning = false; let dagRunning = false;
 let pollMs = 30000; let dagMs = 10000;
 let engine: WorkflowEngine | undefined;
-/** Cooldown: prevent re-triggering a workflow within this window (ms) */
-const COOLDOWN_MS = parseInt(process.env.WORKFLOW_COOLDOWN || '60000', 10);
-const lastTrigger = new Map<string, number>();
+/** Track last-triggered YAML mtime — only re-trigger if file changed */
+const lastMtime = new Map<string, number>();
 
 export function startScheduler(
   opts?: number | { pollIntervalMs?: number; dagIntervalMs?: number; engine?: WorkflowEngine }
@@ -72,22 +71,24 @@ async function tickDag(): Promise<void> {
       const yp = path.join(gd, e.name, 'workflow.yaml');
       if (!fs.existsSync(yp)) continue;
       try {
+        const st = fs.statSync(yp);
+        const mtime = st.mtimeMs;
+        const prev = lastMtime.get(yp) || 0;
+        if (mtime === prev) continue; // YAML unchanged — skip
+        lastMtime.set(yp, mtime);
+
         const raw = fs.readFileSync(yp, 'utf-8');
         const def = parseWorkflowYaml(raw);
         if (!def?.name || !def.steps?.length) continue;
 
-        // Check cooldown + active run before auto-triggering
-        const now = Date.now();
-        const last = lastTrigger.get(def.name) || 0;
-        if (now - last < COOLDOWN_MS) continue;
+        // Check if workflow has an active run — skip if still running
         const active = engine.listRuns().some(
           r => r.workflowName === def.name && r.status === 'running'
         );
-        if (!active) {
-          console.log(`[scheduler] auto-trigger workflow: "${def.name}" (${def.steps.length} steps)`);
-          lastTrigger.set(def.name, now);
-          engine.execute(def);
-        }
+        if (active) continue;
+
+        console.log(`[scheduler] auto-trigger workflow: "${def.name}" (${def.steps.length} steps)`);
+        engine.execute(def);
       } catch (er: unknown) { /* parse failure, skip */ }
     }
   } catch (e: unknown) { console.error(`[scheduler] dag error: ${e instanceof Error ? e.message : String(e)}`); }

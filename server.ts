@@ -38,7 +38,11 @@ const bus = new EventBus();
 
 // ── WorkflowEngine singleton ───────────────────────────────────────────────
 
-const workflowEngine = new WorkflowEngine(bus);
+import { ChatStepExecutor } from './src/lib/event-bus.js';
+const useChat = process.env.WORKFLOW_EXECUTOR === 'chat';
+const executor = useChat ? new ChatStepExecutor() : undefined;
+const workflowEngine = new WorkflowEngine(bus, executor);
+if (useChat) console.log('[ws] WorkflowEngine using ChatStepExecutor (real AI)');
 
 // ── Per-client state ─────────────────────────────────────────────────────
 
