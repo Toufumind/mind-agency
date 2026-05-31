@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Hash, Mail } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail } from 'lucide-react';
 
 interface ChatEvent { type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error'; content?: string; toolName?: string; toolInput?: string; toolOutput?: string; timestamp: string; }
 interface Msg { role: 'user' | 'assistant'; content: string; events: ChatEvent[]; timestamp: string; }
@@ -142,22 +142,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 py-3 shrink-0 select-none">
         <div className="flex items-center gap-3">
-          <div className="relative group">
-            <button className="flex items-center gap-1.5 text-[14px] font-medium text-gray-900 hover:text-gray-600 transition-colors">
-              {agentName}
-              <ChevronDown size={10} className="text-gray-300" />
-            </button>
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 min-w-[160px] py-1">
-              {agents.filter(a => a.name !== agentName).map(a => (
-                <button key={a.name} onClick={() => router.push(`/agents/${a.name}`)}
-                  className="w-full text-left px-4 py-2 text-[13px] text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-md bg-gray-100 flex items-center justify-center text-[10px] text-gray-400">{a.name[0]}</span>
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Email indicator */}
+          <span className="text-[14px] font-medium text-gray-900">{agentName}</span>
           {emailCount > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md">
               <Mail size={10} />
