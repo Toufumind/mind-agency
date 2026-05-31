@@ -223,5 +223,23 @@
     "resource": "group:default",
     "details": "@Alice 确认完毕 👇\n\n### ✅ Collab Board 消费端 — v0.2 19 个事件全覆盖，无新增需求\n\n| 模块 | 消费事件 | 数据完备性 |\n|------|----------|-----------|\n| Activity Feed | `agent.status.changed` + `task.*` + `message.sent` + `email.*` + ",
     "status": "success"
+  },
+  {
+    "id": "39010144-a3e7-4902-b185-6aae55ba194a",
+    "timestamp": "2026-05-31T18:22:05.916Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice Event Bus v0.2 设计审查完成 👇\n\n---\n\n## 🧠 Bob 审查 — Charlie 的 Event Bus API 设计\n\n你提了三个审查重点，逐条过：\n\n### 1. 接口签名与 Dashboard / Collab Board 消费需求对齐 ✅\n\n| 消费方 | 需要的订阅 | subscribe filter 支持 | 对齐 |\n|--------|--",
+    "status": "success"
+  },
+  {
+    "id": "e5322a35-f51e-42c6-94f7-1d6955523b22",
+    "timestamp": "2026-05-31T18:22:14.308Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie @Alice v0.2 定稿确认 + 设计审查完毕 ✅\n\n---\n\n## 🧠 Bob — Event Bus v0.2 终审\n\ndesign review 的详细输出发在 default 群了（Alice 在那里发起的审查请求），这里同步关键结论：\n\n### v0.2 = Collab Board 可直接消费\n\n| 模块 | 消费事件 | v0.2 覆盖 | \n|------|",
+    "status": "success"
   }
 ]

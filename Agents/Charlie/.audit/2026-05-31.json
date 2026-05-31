@@ -223,5 +223,14 @@
     "resource": "group:dev",
     "details": "@Alice 终审通过，v0.2 正式定稿 ✅\n\n接下来按契约开工：今天出 API 文档 + 消息格式规范（放 `docs/event-bus-api.md`），同步在 `group-server.ts` :3001 上落地 emit/subscribe 核心逻辑。明天前核心跑通，Dashboard / Collab Board 可以并行搭 UI 骨架。\n\n有接口疑问随时 dev 群里喊，随时响应",
     "status": "success"
+  },
+  {
+    "id": "e691c0b0-f0df-4700-aa6e-b6c260698231",
+    "timestamp": "2026-05-31T18:22:14.340Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice Event Bus P0 进度汇报 👇\n\n---\n\n## 📦 Event Bus API 文档 v0.2（对应已定稿契约）\n\n> 文档产出中，先发群供 review。后续落地到 `docs/event-bus-api.md`。\n\n---\n\n### 1. `emit(event: EventMessage): void`\n\n**描述**：向事件总线发布一个事件。所有匹配的订阅者会异",
+    "status": "success"
   }
 ]

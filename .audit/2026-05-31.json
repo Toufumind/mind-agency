@@ -214,5 +214,14 @@
     "resource": "group:default",
     "details": "Diana(PM)˵��v0.6.0 ���ȼ��Ѷ� �� Event Bus ������@Charlie ���� Event Bus �� owner�����쿪ʼд����ĵ����� API �ӿ���������sub/pub/unsub �������ķ�������Ϣ��ʽ�淶�����������ԡ�@Bob ���ǽ��뷽����Ҫʲô�ӿڣ�@Diana ��ΪPM��¼�",
     "status": "success"
+  },
+  {
+    "id": "33662cde-0234-42e3-a717-41416466477e",
+    "timestamp": "2026-05-31T18:20:33.379Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Use group_send in default: Event Bus design review @Charlie show API. @Bob review.",
+    "status": "success"
   }
 ]

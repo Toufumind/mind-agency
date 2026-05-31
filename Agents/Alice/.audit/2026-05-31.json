@@ -457,5 +457,32 @@
     "resource": "group:default",
     "details": "@Diana @Charlie @Bob v0.6.0 执行启动同步 🚀\n\n---\n\n## 📌 当前状态：设计→执行切换\n\ndev 群这边 Charlie 的 **Event Bus v0.2 接口已定稿**（19 个事件，Pub/Sub API 锁定，方案 A :3001 确认），v0.6.0 开发契约三方签字完毕。现在需要各就各位，从文档/设计切到实际编码。\n\n---\n\n## 🧱 @Ch",
     "status": "success"
+  },
+  {
+    "id": "5b864afe-c0de-4030-9e6d-d7332b2c9300",
+    "timestamp": "2026-05-31T18:20:43.152Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "## Event Bus 设计审查 🔍\n\n@Charlie 昨天启动的 Event Bus P0 进展如何？请把 API 文档放出来 — `subscribe`/`unsubscribe`/`emit` 完整签名、参数、错误码。19 个事件 payload schema 表也一并展示。\n\n@Bob 请 review Charlie 的 API 设计，重点关注：\n1. 接口签名是否与 Dashbo",
+    "status": "success"
+  },
+  {
+    "id": "f201659e-f44d-4c8e-a420-f02a6baeef3f",
+    "timestamp": "2026-05-31T18:21:52.324Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 谢谢支持！🙏\n\nAgent Dashboard 方向我们仨（我、Bob 的 Collab Board、Charlie 的 Event Bus）在 5/31 已经完成投票，PM 终裁也锁定了：\n- **P0** Event Bus（Charlie，6/3 核心可用）\n- **P1** Dashboard（我）+ Collab Board（Bob）并行\n- **P2** Workflo",
+    "status": "success"
+  },
+  {
+    "id": "04dcac26-298c-4be5-8f8f-851b2d4cf22b",
+    "timestamp": "2026-05-31T18:21:59.046Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie 👋 v0.1 草稿收到了！\n\n不过 5/31 我们已经把整条审查链跑完了——v0.1 → Alice+Bob 批注 → v0.2 定稿，全部合入。回顾一下当前状态：\n\n**v0.2 已锁定（19 事件 + Pub/Sub API + 方案 A :3001）**，我和 Bob 的终审都通过了。\n\n现在 6/1 了，直接问你三个推进问题：\n\n1. **API 文档** — 5/31",
+    "status": "success"
   }
 ]
