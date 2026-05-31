@@ -53,4 +53,12 @@ async function tickDag(engine: WorkflowEngine): Promise<void> {
   finally { dagRunning = false; }
 }
 
+export function getSchedulerStats() {
+  return {
+    pollIntervalMs, dagIntervalMs,
+    pollMode: pollTid !== null,
+    dagMode: dagTid !== null,
+  };
+}
+
 export { pollAllAgents } from './auto-respond';
