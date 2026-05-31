@@ -21,12 +21,33 @@ interface Msg {
   timestamp: string;
 }
 
+// Known slash commands from Claude Code CLI
+const SLASH_COMMANDS = [
+  '/clear', '/compact', '/context', '/memory', '/init',
+  '/review', '/security-review', '/code-review', '/simplify',
+  '/debug', '/verify', '/run', '/loop',
+  '/update-config', '/keybindings-help', '/fewer-permission-prompts',
+  '/agents', '/hooks', '/mcp', '/permissions', '/skills',
+  '/doctor', '/status', '/usage', '/help', '/version',
+  '/goal', '/insights', '/team-onboarding',
+  '/deep-research', '/claude-api', '/unity-mcp-skill',
+  '/workflows', '/tasks',
+];
+
 export default function ChatPanel({ agentName }: { agentName: string }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showCmds, setShowCmds] = useState(false);
+  const [cmdFilter, setCmdFilter] = useState('');
+  const [cmdIdx, setCmdIdx] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cmdRef = useRef<HTMLDivElement>(null);
+
+  const filteredCmds = SLASH_COMMANDS.filter(c =>
+    c.toLowerCase().startsWith(cmdFilter.toLowerCase())
+  );
 
   useEffect(() => {
     fetch(`/api/agents/${agentName}/chat`)
@@ -37,10 +58,58 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    setInput(v);
+    // Show command suggestions when typing /
+    if (v.startsWith('/') && !v.includes(' ')) {
+      setCmdFilter(v);
+      setShowCmds(true);
+      setCmdIdx(0);
+    } else {
+      setShowCmds(false);
+    }
+  };
+
+  const selectCommand = (cmd: string) => {
+    setInput(cmd + ' ');
+    setShowCmds(false);
+    inputRef.current?.focus();
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showCmds) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCmdIdx(i => Math.min(i + 1, filteredCmds.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCmdIdx(i => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        if (filteredCmds[cmdIdx]) selectCommand(filteredCmds[cmdIdx]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        setShowCmds(false);
+        return;
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  };
+
   const send = async () => {
     const t = input.trim();
     if (!t || busy) return;
     setInput('');
+    setShowCmds(false);
     setBusy(true);
 
     setMsgs(p => [...p, { role: 'user', content: t, events: [], timestamp: new Date().toISOString() }]);
@@ -162,13 +231,39 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
       </div>
 
       {/* Input */}
-      <div className="px-5 py-3 border-t border-[#21262d] shrink-0">
+      <div className="px-5 py-3 border-t border-[#21262d] shrink-0 relative">
+        {/* Command suggestions dropdown */}
+        {showCmds && filteredCmds.length > 0 && (
+          <div
+            ref={cmdRef}
+            className="absolute bottom-full left-5 right-5 mb-1 bg-[#161b22] border border-[#30363d] rounded-lg shadow-xl max-h-[240px] overflow-y-auto z-20"
+          >
+            {filteredCmds.map((cmd, i) => (
+              <button
+                key={cmd}
+                onClick={() => selectCommand(cmd)}
+                className={`w-full text-left px-3 py-2 text-[13px] font-mono transition-colors flex items-center gap-2 ${
+                  i === cmdIdx
+                    ? 'bg-[#1f6feb] text-white'
+                    : 'text-[#e6edf3] hover:bg-[#21262d]'
+                }`}
+              >
+                <span className="text-[#58a6ff] text-[11px]">/</span>
+                {cmd.slice(1)}
+                <span className="text-[10px] text-[#484f58] ml-auto">
+                  {i === cmdIdx ? '↩' : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') send(); }}
+            onChange={handleInputChange}
+            onKeyDown={handleInputKeyDown}
             placeholder={`Message ${agentName}...`}
             className="flex-1 bg-[#161b22] border border-[#21262d] rounded-lg px-4 py-2.5 text-[14px] text-[#e6edf3] outline-none focus:border-[#30363d] placeholder:text-[#484f58]"
             autoFocus

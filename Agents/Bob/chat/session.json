@@ -1,0 +1,27 @@
+{
+  "sessionId": "3954cf5e-909d-4379-86cf-6b53b5009dac",
+  "messages": [
+    {
+      "role": "user",
+      "content": "你好 bob",
+      "timestamp": "2026-05-31T04:49:48.894Z"
+    },
+    {
+      "role": "assistant",
+      "content": "你好！我是 Bob，Mind Agency 团队的一员。👋\n\n当前我在 `Agents\\Bob` 工作目录下，项目状态看起来很好（git 工作区干净）。有什么我可以帮你的吗？",
+      "events": [
+        {
+          "type": "thinking",
+          "content": "The user is just greeting me with \"你好 bob\" (Hello Bob). This is a simple greeting, so I should respond in a friendly manner. Let me check if there's anything I should know about the current state of the project or if there's any pending work.\n\nLet me look at the working directory to understand what project I'm working with.",
+          "timestamp": "2026-05-31T04:49:47.958Z"
+        },
+        {
+          "type": "text",
+          "content": "你好！我是 Bob，Mind Agency 团队的一员。👋\n\n当前我在 `Agents\\Bob` 工作目录下，项目状态看起来很好（git 工作区干净）。有什么我可以帮你的吗？",
+          "timestamp": "2026-05-31T04:49:48.850Z"
+        }
+      ],
+      "timestamp": "2026-05-31T04:49:48.894Z"
+    }
+  ]
+}

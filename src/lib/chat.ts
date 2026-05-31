@@ -75,10 +75,8 @@ export function createChatStream(agentName: string, userMessage: string): Readab
       let fullReply = '';
       const allEvents: ChatEvent[] = [];
 
-      // Use claude.exe directly (bypass cmd.exe, no stdin encoding issues)
-      const claudeExe = isWin
-        ? path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
-        : 'claude';
+      // Use claude-deepseek-zhijiao (the user's custom wrapper)
+      const cmd = isWin ? 'claude-deepseek-zhijiao.cmd' : 'claude-deepseek-zhijiao';
 
       const args = [
         '-p',
@@ -87,11 +85,10 @@ export function createChatStream(agentName: string, userMessage: string): Readab
         '--dangerously-skip-permissions',
         isNew ? '--session-id' : '--resume', sessionId,
         '--append-system-prompt-file', sysFile,
-        // Positional arg: user message (avoids stdin encoding entirely)
         userMessage,
       ];
 
-      const child = spawn(claudeExe, args, {
+      const child = spawn(cmd, args, {
         cwd: agentDir, env,
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 300_000,
