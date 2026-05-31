@@ -17,6 +17,16 @@ export default function HomePage() {
   const [totalEmails, setTotalEmails] = useState(0);
   const [pipeline, setPipeline] = useState<PipelineStats>({ totalRuns: 0, running: 0, completed: 0, failed: 0, runs: [] });
   const [loading, setLoading] = useState(true);
+  const [sysLoad, setSysLoad] = useState(0);
+  const [uptime, setUptime] = useState(0);
+
+  const loadSystem = useCallback(async () => {
+    try {
+      const s = await fetch('/api/system/status').then(r => r.json());
+      setSysLoad(s.load?.loadPercent || 0);
+      setUptime(s.uptime || 0);
+    } catch {}
+  }, []);
 
   const loadPipeline = useCallback(async () => {
     try {
@@ -47,7 +57,8 @@ export default function HomePage() {
       setGroups((d.groups || []).map((g: string) => ({ name: g, messageCount: 0, memberCount: 0 })));
     }).catch(() => {});
     loadPipeline();
-  }, [loadPipeline]);
+    loadSystem();
+  }, [loadPipeline, loadSystem]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -83,7 +94,7 @@ export default function HomePage() {
             <StatCard icon={<Hash size={16} />} label="Groups" value={groups.length} color="text-indigo-600" bg="bg-indigo-50" />
             <StatCard icon={<Mail size={16} />} label="Emails" value={totalEmails} color="text-amber-600" bg="bg-amber-50" />
             <StatCard icon={<Zap size={16} />} label="Auto" value={agents.filter(a => a.config?.autoRespondToEmail).length} sub="active" color="text-green-600" bg="bg-green-50" />
-            <StatCard icon={<GitBranch size={16} />} label="Pipeline" value={pipeline.running} sub={`${pipeline.completed} done`} color="text-purple-600" bg="bg-purple-50" />
+            <StatCard icon={<GitBranch size={16} />} label="Pipeline" value={pipeline.running} sub={`${pipeline.completed} done · CPU ${sysLoad}% · ${Math.floor(uptime / 60)}m up`} color="text-purple-600" bg="bg-purple-50" />
           </div>
 
           <div className="grid grid-cols-2 gap-6 mb-10">
