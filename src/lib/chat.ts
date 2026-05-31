@@ -53,6 +53,22 @@ export function createChatStream(agentName: string, userMessage: string): Readab
   const sessionId = history.sessionId || randomUUID();
 
   const sysFile = path.join(os.tmpdir(), `mind-sys-${sessionId}.txt`);
+  const mcpConfigFile = path.join(os.tmpdir(), `mind-mcp-${sessionId}.json`);
+
+  // 写 MCP 配置文件（每个 agent 独立，用于加载 Group MCP Server）
+  const mcpConfig = {
+    mcpServers: {
+      'group-chat': {
+        command: 'npx',
+        args: ['tsx', path.resolve(process.cwd(), 'mcp/group-server.ts'), agentName],
+        cwd: process.cwd(),
+        env: {
+          MIND_PROJECT_ROOT: process.cwd(),
+        },
+      },
+    },
+  };
+  fs.writeFileSync(mcpConfigFile, JSON.stringify(mcpConfig, null, 2), 'utf-8');
 
   // 扫描 Groups/*/Agents/ 发现 agent 的 group 归属
   let groupContext = '';
@@ -134,6 +150,7 @@ ${groupContext}`;
         isNew ? '--session-id' : '--resume', sessionId,
         '--append-system-prompt-file', sysFile,
         userMessage,
+        '--mcp-config', mcpConfigFile,
       ];
 
       const child = spawn(claudeExe, args, {
@@ -190,6 +207,7 @@ ${groupContext}`;
 
       child.on('close', code => {
         try { fs.unlinkSync(sysFile); } catch {}
+        try { fs.unlinkSync(mcpConfigFile); } catch {}
         if (code !== 0 && !allEvents.length) {
           ctrl.enqueue({ type: 'error', content: stderrOut || `CLI exit ${code}`, timestamp: ts() });
         }
@@ -203,6 +221,7 @@ ${groupContext}`;
 
       child.on('error', err => {
         try { fs.unlinkSync(sysFile); } catch {}
+        try { fs.unlinkSync(mcpConfigFile); } catch {}
         ctrl.enqueue({ type: 'error', content: err.message, timestamp: ts() });
         ctrl.enqueue({ type: 'done', content: '', timestamp: ts() });
         ctrl.close();
