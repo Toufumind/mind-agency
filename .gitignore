@@ -43,6 +43,9 @@ MEMORY.md
 # mind cache files (runtime-generated)
 /.mind/
 
+# agent runtime data (chat history, sessions, group chat)
+**/chat/
+
 # agent startup scripts (contain API keys)
 **/start.cmd
 **/start.sh
