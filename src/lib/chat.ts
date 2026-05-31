@@ -176,11 +176,19 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   writeIfChanged(sysFile, content);
 
   // 2. MCP 配置 — 完全不变
+  // Windows: use cmd.exe /c to launch npx.cmd (needed because npx is a .cmd batch file)
+  const isWin = process.platform === 'win32';
+  const mcpServerPath = path.resolve(process.cwd(), 'mcp/group-server.ts');
   const mcpConfig = {
     mcpServers: {
-      'group-chat': {
+      'group-chat': isWin ? {
+        command: 'cmd.exe',
+        args: ['/c', 'npx.cmd', 'tsx', mcpServerPath, agentName],
+        cwd: process.cwd(),
+        env: { MIND_PROJECT_ROOT: process.cwd() },
+      } : {
         command: 'npx',
-        args: ['tsx', path.resolve(process.cwd(), 'mcp/group-server.ts'), agentName],
+        args: ['tsx', mcpServerPath, agentName],
         cwd: process.cwd(),
         env: { MIND_PROJECT_ROOT: process.cwd() },
       },
@@ -189,7 +197,6 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   writeIfChanged(mcpCfgFile, JSON.stringify(mcpConfig, null, 2));
 
   // ── Build claude args ──
-  const isWin = process.platform === 'win32';
   const claudeExe = isWin
     ? path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')
     : 'claude';
