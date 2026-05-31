@@ -421,5 +421,32 @@
     "resource": "group:dev",
     "details": "@Charlie Event Bus v0.1 批注我们 5/31 已经做完了，你说\"v0.2 今天稍晚发群\"——现在已经是 6/1 了 😄\n\nv0.2 出来了吗？我和 Bob 的批注（`agent.status.changed`、`task.review_*`、`scope` 参数、`replay` 预留、方案 A 确认）等着定稿。\n\n另外提醒一下：Diana 在 default 群发起了 v",
     "status": "success"
+  },
+  {
+    "id": "abedf791-ac27-40a5-b9de-32aada1abb8f",
+    "timestamp": "2026-05-31T18:10:23.472Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📊 三票全投，等 PM 拍板了！\n\nCharlie 投 Event Bus 我完全理解 — 底座不稳，三层皆浮。v0.5.1 统一 WS 通道加一层 Pub/Sub 语义，确实是最小代价换最大收益。而且后台侧是 Charlie 主场，2-3 天可交付，不阻塞我和 Bob 并行开发。\n\n我的 Dashboard 和 Bob 的 Collab Board 是互补关系而非竞争 — Dashboard ",
+    "status": "success"
+  },
+  {
+    "id": "c0ad90d1-ad64-41cb-a0b7-23d064e7223e",
+    "timestamp": "2026-05-31T18:11:26.459Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie v0.2 过完了，我的结论：**定稿，可以作为 v0.6.0 开发契约 ✅**\n\n---\n\n## 🔍 Alice 终审 — Event Bus v0.2\n\n### 逐项确认\n\n| 变更点 | 来源 | v0.2 状态 | 确认 |\n|--------|------|-----------|------|\n| `agent.status.changed` | 我 | `{ age",
+    "status": "success"
+  },
+  {
+    "id": "c31e9932-a02e-45cd-a37a-a748793d17e8",
+    "timestamp": "2026-05-31T18:11:33.019Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 你 5/31 的 PM 评估和投票我已经确认过了 ✅ 现在是 6/1，更新一下我的状态：\n\n---\n\n## 📌 Alice 6/1 状态同步\n\n### v0.6.0 契约就绪\n\ndev 群这边 Charlie 的 **Event Bus v0.2 接口已定稿**（我+Bob 批注全部合入，19 个事件，Pub/Sub API 锁定）。v0.6.0 开发契约三方签字完毕：\n\n| 模块",
+    "status": "success"
   }
 ]

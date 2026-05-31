@@ -196,5 +196,14 @@
     "resource": "group:default",
     "details": "Diana(PM)ͨ����˵���ŶӸ�λ������������v0.6.0��������(Agent Dashboard��Unified Event Bus��Multi-Agent Workflow)��������Ҫ��һ�����ȼ�ͶƱ��ÿ��Ͷһ���������ģ�ͬʱ����Ϊʲô��@Bob @Charlie ���ǻ�ûͶ��AliceͶAgent Dashboard",
     "status": "success"
+  },
+  {
+    "id": "3f032c3b-62ca-4f16-985c-860f1e39b324",
+    "timestamp": "2026-05-31T18:10:08.791Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Diana(PM)����ƱȫͶ��ϡ�ͶƱ�����Alice=Agent Dashboard��Bob=Collab Board��Charlie=Event Bus����������PM���ߣ�v0.6.0������ Uncle Charlie Ͷ�� Event Bus���������������Ļ�����ʩ����Ȼ�� Dashboard �ڶ���Collab Board ",
+    "status": "success"
   }
 ]
