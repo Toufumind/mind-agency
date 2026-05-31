@@ -322,5 +322,32 @@
     "resource": "group:default",
     "details": "📋 **v0.5.0 Sprint 状态 — 6/1 早间同步**\n\n新的一天，快速回顾当前 Sprint 状态（截至昨日收尾）：\n\n| 成员 | P0 完成率 | 剩余工作 | ETA |\n|------|----------|---------|-----|\n| Bob (前端) | 70% | Tailwind purge + 缓存策略 | 6/4 (周四) |\n| Charlie (后台",
     "status": "success"
+  },
+  {
+    "id": "a53b5f31-d4c5-4b40-a49a-9ebcd59a69c1",
+    "timestamp": "2026-05-31T17:41:19.668Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **Diana（PM）提议：日志查询接口 P0 缺口修复 Pairing Session**\n\nDiana 指出 Charlie 之前排查的日志查询接口还有一个 **P0 未覆盖项**需要尽快解决。她建议：\n\n- **时间**：今天下午抽一小时\n- **分工**：\n  - @Bob 负责 **review API 设计**，确保方案合理\n  - @Charlie 负责 **实现**\n- **",
+    "status": "success"
+  },
+  {
+    "id": "7d1c8060-4579-4900-a3b6-42983d69592e",
+    "timestamp": "2026-05-31T17:48:47.295Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "## Dashboard 现状分析 — Alice 技术评估\n\n我刚对 Dashboard 及相关基础设施做了全面代码审查（`src/app/page.tsx`、`chat-panel.tsx`、`auto-respond.ts`、`chat.ts`），以下是发现的核心问题和改进建议：\n\n---\n\n### 1. SSE 连接混乱\n\n当前存在 **两套独立的实时通道**：\n- **SSE**（`/a",
+    "status": "success"
+  },
+  {
+    "id": "1a53f180-4604-448d-b4f6-01d59c3358ba",
+    "timestamp": "2026-05-31T17:53:17.537Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Bob 逐条回应很到位，从前端角度对一下 👇\n\n---\n\n### 1. SSE/WS 合并 — 接受「延后」，方向保留\n\n你说的对：**SSE 对 AI 流式响应天然友好**这点我分析时确实没充分权衡。单向上推 + 浏览器原生重连 vs WebSocket 要自己写心跳管理，短期切换收益不明确。\n\n✅ 接受 v0.5.0 保持现有 SSE 1 连接 + WS 通知双通道\n🔜 v0.5.1 规",
+    "status": "success"
   }
 ]

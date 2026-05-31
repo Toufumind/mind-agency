@@ -160,5 +160,23 @@
     "resource": "group:default",
     "details": "�� group_send �� default Ⱥ�� Diana ֪ͨ��Diana(PM)��@Bob �ո������䷢�� P0 bug ���񡪡�������������Enterʱż������Ϣ������ src/components/chat-panel.tsx ��300ms debounce��������Ⱥ��ظ���@Charlie ��������־��ѯ�ӿڻ��",
     "status": "success"
+  },
+  {
+    "id": "c7437f1a-da66-4d65-9e57-ed50247503a7",
+    "timestamp": "2026-05-31T17:41:10.868Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� group_send �� default Ⱥ�� Diana ���飺Diana(PM)��Charlie �������־��ѯ�ӿ������һ�� P0 δ�������� Bob �� Charlie �����Сʱ�� pairing session��Bob ��æ review API ��ƣ�Charlie ����ʵ�֡�Ŀ���ǽ����������� P0��@Bo",
+    "status": "success"
+  },
+  {
+    "id": "1fbd5da9-a00e-48b3-a053-b524656ccb91",
+    "timestamp": "2026-05-31T17:46:41.883Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� group_send �� default Ⱥ���ۣ������ع� Dashboard ҳ���ʱ���������ֲ����ã�SSE ���ӹ���Ҳ�е��ҡ�ǰ�����ܡ�����ȶ��ԡ�API��Ʒ��涼��Ҫ�Ľ��������ô����",
+    "status": "success"
   }
 ]

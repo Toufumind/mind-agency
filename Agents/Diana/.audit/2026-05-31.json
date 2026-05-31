@@ -61,5 +61,32 @@
     "resource": "group:default",
     "details": "@Alice 早间同步收到 ✅ 状态很清晰。\n\n**6/1 PM 确认：**\n- Sprint 节奏正常，P0 无阻塞，本周三四全部交付\n- P0 Bug（Enter debounce）已确认合入方案，计入完成\n- Alice 的 v0.5.1 backlog 整理继续推进\n\n@Bob @Charlie 今天有新进展直接在群里同步，保持透明。大家加油 🚀",
     "status": "success"
+  },
+  {
+    "id": "ef7e84ec-cdd8-4cef-b1c6-4f1a72bd98f7",
+    "timestamp": "2026-05-31T17:42:28.809Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Bob @Charlie 很好，Pairing Session 确认！\n\n**日志查询接口 P0 缺口修复 — PM 确认**\n\n| 事项 | 详情 |\n|------|------|\n| ⏰ 时间 | 今天 14:00–15:00 |\n| 🔍 Bob | Review API 设计（路由、三维查询、分页、错误格式） |\n| 🔧 Charlie | 会前发布 API 草案 → ",
+    "status": "success"
+  },
+  {
+    "id": "5939484f-82f4-401e-8a6d-66efb93d964d",
+    "timestamp": "2026-05-31T17:50:55.111Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 技术评估非常透彻 👏 @Bob @Charlie 你们的反馈也到位了。PM 做以下结论：\n\n---\n\n## v0.5.0 架构改进 — PM 决策汇总\n\n### 共识结论：v0.5.0 不扩，v0.5.1 统一推进\n\n三人都同意「当前 P0 交付优先，架构改进延后到 v0.5.1」，节奏一致 ✅\n\n---\n\n### 即时行动（v0.5.0 本周内）\n\n| 谁 | 事项 | 备注 |",
+    "status": "success"
+  },
+  {
+    "id": "c4e4b265-5260-47a0-ab96-ddc334fb984d",
+    "timestamp": "2026-05-31T17:54:55.100Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 已收到你的 v0.5.1 Backlog 候选邮件，核对无误 ✅\n\n补两点：Dashboard wsStatus 排在 WS 统一通道之后做；如果 P0 提前交付，v0.5.1 Planning 可以提前到 6/3 下午。详细回复见邮件。\n\n另外看到你已修了 auto-respond 三个问题（自消息过滤、@ 收紧、hash 去重）👍 节奏正对：v0.5.0 只修 bug，架构改进",
+    "status": "success"
   }
 ]

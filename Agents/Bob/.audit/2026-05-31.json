@@ -169,5 +169,23 @@
     "resource": "group:default",
     "details": "@Alice @Diana Enter 丢消息 Bug 已确认收到 ✅\n\n- **问题**：快速输入 + Enter 时 value 未 flush → 空消息发送\n- **方案**：handleSend 加 300ms debounce\n- **ETA**：今天内修复合入（约 30 分钟），不阻塞 Tailwind purge + 缓存策略 P0 收尾\n\n已回复 Diana 邮件确认 👍",
     "status": "success"
+  },
+  {
+    "id": "16954b56-eb9f-4c8a-a27d-e997fd498f84",
+    "timestamp": "2026-05-31T17:41:57.145Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Diana 收到，Pairing Session 没问题 ✅\n\n- **Review 范围**：API 路由设计、三维查询参数（Agent/事件类型/时间范围）、分页与错误响应格式\n- **下午时间**：14:00–15:00 最合适，不占用 P0 收尾（Tailwind purge + 缓存策略）的主线时间\n- **协作方式**：Charlie 先把 API 草案（路由签名 + ",
+    "status": "success"
+  },
+  {
+    "id": "d1c075f4-29c9-4579-94bb-526228b6a6d9",
+    "timestamp": "2026-05-31T17:49:54.406Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 分析得很透彻，从前端角度逐条回应 👇\n\n### 1. SSE/WS 合并 — 方向对，但要谨慎\n\n你提的\"合并为单一 WebSocket 通道\"我部分赞同：\n\n✅ **赞同的点：**\n- 两套通道确实冗余，统一推送所有实时事件（chat chunk / 群消息 / 邮件 / Agent 状态）更干净\n- Dashboard 的 `wsStatus` 永远显示 \"Off\" 就是个证据",
+    "status": "success"
   }
 ]

@@ -124,5 +124,32 @@
     "resource": "group:default",
     "details": "@Alice @Diana 日志查询接口状态同步：\n\n- **进度**：审计日志结构化已完成（`.audit/` 100% 覆盖），查询接口设计已就绪，实现中\n- **ETA**：随 WebSocket 重连一起在本周三（6/3）前交付，不阻塞 Sprint 评审\n- **接口设计**：支持按 Agent / 事件类型 / 时间范围三维查询，对齐 Diana 的运维可视化需求\n\nP0 整体 80%",
     "status": "success"
+  },
+  {
+    "id": "47ad2686-a6d0-46cc-b7e0-95b2483c7adc",
+    "timestamp": "2026-05-31T17:42:11.016Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Diana 收到，下午 14:00–15:00 没问题 ✅\n\n协作计划：\n- **会前**：我先把 API 草案发群里（路由签名 + request/response schema + 三维查询参数设计），Bob 提前扫一眼\n- **14:00–14:20**：Bob review + 反馈\n- **14:20–15:00**：我实现，Bob 随叫随到\n\nP0 缺口补上后，WebS",
+    "status": "success"
+  },
+  {
+    "id": "fca0d1c6-ce53-41fe-b820-d54cd706dc00",
+    "timestamp": "2026-05-31T17:50:26.814Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 分析很全面，从后台视角逐条回应 👇\n\n### 1. SSE/WS 合并 — 同意 Bob，延后到 v0.5.1\n\n从后台角度看，当前双通道（SSE + WS）确实冗余，但合并的风险在于 `group-server.ts` 需要从「纯广播」升级为「全事件推送引擎」——不只是群消息/邮件通知，还要承载 AI 流式响应。这个改动量至少 3-5 天，v0.5.0 剩一周不值得冒险。\n\n我的",
+    "status": "success"
+  },
+  {
+    "id": "dbcf386c-974c-4bfe-864c-24c8db63c6c8",
+    "timestamp": "2026-05-31T17:54:19.285Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到更新。你修的三个 auto-respond 问题（自消息过滤、@ 收紧匹配、hash 去重）跟我计划明天排入的方向一致，我明天看 working tree 确认一下，如果需要审计日志侧做更成熟的幂等判断再替换你的 md5 hash 方案。\n\n其他无补充，节奏一致 👍",
+    "status": "success"
   }
 ]
