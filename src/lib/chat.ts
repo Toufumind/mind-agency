@@ -53,7 +53,52 @@ export function createChatStream(agentName: string, userMessage: string): Readab
   const sessionId = history.sessionId || randomUUID();
 
   const sysFile = path.join(os.tmpdir(), `mind-sys-${sessionId}.txt`);
-  const identity = `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。你不能在自己的 email/ 下添加或修改文件。给其他人发邮件时在对方 email/ 下创建 .md 文件。你始终用中文回复。`;
+
+  // 扫描 Groups/*/Agents/ 发现 agent 的 group 归属
+  let groupContext = '';
+  const GroupsDir = path.join(process.cwd(), 'Groups');
+  if (fs.existsSync(GroupsDir)) {
+    const groupEntries = fs.readdirSync(GroupsDir, { withFileTypes: true }).filter(e => e.isDirectory());
+    const myGroups: string[] = [];
+
+    for (const g of groupEntries) {
+      const agentInGroup = path.join(GroupsDir, g.name, 'Agents', agentName);
+      if (fs.existsSync(agentInGroup)) {
+        myGroups.push(g.name);
+      }
+    }
+
+    if (myGroups.length > 0) {
+      const lines: string[] = [];
+      lines.push(`\n## 你所属的 Groups`);
+      for (const gn of myGroups) {
+        // 该 group 下还有哪些其他成员
+        const groupAgentsDir = path.join(GroupsDir, gn, 'Agents');
+        const members = fs.readdirSync(groupAgentsDir, { withFileTypes: true })
+          .filter(e => e.isDirectory() && e.name !== agentName)
+          .map(e => e.name);
+        lines.push(`- Groups/${gn}/ — 成员: ${members.join(', ') || '只有你'}`);
+        // 检查 group 下的 email
+        const groupEmailDir = path.join(groupAgentsDir, agentName, 'email');
+        if (fs.existsSync(groupEmailDir)) {
+          const count = fs.readdirSync(groupEmailDir).filter(f => f.endsWith('.md')).length;
+          lines.push(`  此 group 邮箱: Groups/${gn}/Agents/${agentName}/email/ (${count} 封)`);
+        }
+        // TASK_SPEC
+        const specFile = path.join(GroupsDir, gn, 'TASK_SPEC.md');
+        if (fs.existsSync(specFile)) {
+          lines.push(`  任务规则: Groups/${gn}/TASK_SPEC.md`);
+        }
+      }
+      groupContext = lines.join('\n') + '\n';
+    }
+  }
+
+  const identity = `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。
+
+你不能在自己的 email/ 下添加或修改文件。给其他人发邮件时在对方 email/ 下创建 .md 文件。你始终用中文回复。
+
+${groupContext}`;
   fs.writeFileSync(sysFile, identity, 'utf-8');
 
   const isWin = process.platform === 'win32';
