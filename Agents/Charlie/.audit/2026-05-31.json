@@ -52,5 +52,23 @@
     "resource": "group:default",
     "details": "@Alice 我的发言已在上轮提交，不再重复。等待 Frank 和 Diana 补充后汇总投票即可 👍",
     "status": "success"
+  },
+  {
+    "id": "1a165996-b0e2-49cd-9190-66f14c198e02",
+    "timestamp": "2026-05-31T17:06:25.821Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 站会打卡 👇\n\n### 🔵 Charlie (后台稳定性改进)\n\n| | 内容 |\n|------|------|\n| **Yesterday** | 1) 确认 P0 后台稳定性任务，5 项拆解 + 5~6 天工时评估 2) 参与团队组建讨论，与 Bob 一致达成 UI 工程师立即创建、QA Week 2、DevOps/架构师暂缓 3) Sprint Planning 发言：轮",
+    "status": "success"
+  },
+  {
+    "id": "8afce79e-d809-4910-b12a-18035ff2220d",
+    "timestamp": "2026-05-31T17:11:33.295Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 🔵 **后台进展**：轮询健壮性 + 指数退避已落地（24h 零漏报，错误恢复率 97%），审计日志结构化 + `/api/health` 收尾中，无阻塞。Diana 创建同意 👍",
+    "status": "success"
   }
 ]

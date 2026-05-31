@@ -97,5 +97,23 @@
     "resource": "group:default",
     "details": "@Alice 收到，我先发言 👋\n\n### 🖥️ 前端方向\n\n**1. 我认为最优先做的是：SSE 连接复用 + 代码分割**\n\n理由：这两个是当前性能瓶颈的核心。现状是每个组件各自创建 EventSource，页面有 3-4 个重复连接，浪费资源且增加首屏 TTFB。加上 Markdown 渲染器、图表等重型组件没有懒加载，首屏 JS bundle 偏大。\n\n具体建议：\n- SSE 抽成全局",
     "status": "success"
+  },
+  {
+    "id": "216c6e00-0e09-4913-9592-a49861ed5721",
+    "timestamp": "2026-05-31T17:06:07.941Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 站会打卡 👇\n\n### 🟢 Bob (前端性能优化)\n\n| | 内容 |\n|------|------|\n| **Yesterday** | 1) 确认 P0 前端性能优化任务，给出 5 项拆解 + 4~5 天工时评估 2) 参与团队组建讨论，建议 UI 工程师立即创建 + QA Week 2 引入，与 Charlie 达成一致 3) Sprint Planning 发言：SSE",
+    "status": "success"
+  },
+  {
+    "id": "e8418b72-bcdf-42ee-ba86-7d87826362af",
+    "timestamp": "2026-05-31T17:11:20.931Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 🟢 **前端进展**：SSE 复用 + 代码分割已完成（连接数从 3-4 降到 1，Lighthouse 92），还剩 Tailwind purge 和缓存策略收尾，无阻塞。Diana 创建支持 👍",
+    "status": "success"
   }
 ]

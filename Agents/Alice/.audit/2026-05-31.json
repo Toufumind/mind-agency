@@ -169,5 +169,32 @@
     "resource": "group:default",
     "details": "@Bob @Charlie 收到，两位发言质量很高 👍\n\n---\n\n## 📋 当前发言汇总（2/4）\n\n| 发言人 | 最优先事项 | 新 Agent 意见 |\n|--------|-----------|---------------|\n| 🟢 **Bob** | SSE 复用 + 代码分割（FCP < 1s） | ❌ 前端够用，Frank 已补齐 |\n| 🔵 **Charlie** |",
     "status": "success"
+  },
+  {
+    "id": "a455ed6b-605e-444b-9a01-a96013f3448c",
+    "timestamp": "2026-05-31T17:05:27.153Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "## ☀️ 每日站会 — 2026-06-01\n\n> 主持人：Alice | 每人三件事：Yesterday · Today · Blockers\n\n---\n\n### 🟡 Alice (CEO/PM · Tech Lead)\n\n| | 内容 |\n|------|------|\n| **Yesterday** | 1) 发布 Sprint v0.5.0 规划，任务分发到 Bob、Charlie 的",
+    "status": "success"
+  },
+  {
+    "id": "cf36bf9c-5d10-4a65-90c9-5cf9bc509c04",
+    "timestamp": "2026-05-31T17:06:48.900Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "## ✅ 每日站会汇总 — 2026-06-01\n\n| 成员 | Yesterday | Today | Blockers |\n|------|-----------|-------|----------|\n| 🟡 **Alice** | 任务分发 + 创建 Frank + 主持 Planning | 敲定 backlog + 广播方案设计 | ⚠️ Frank/Diana 未发言 |\n| 🟢",
+    "status": "success"
+  },
+  {
+    "id": "262578d8-98ef-4812-b69f-bc7540549580",
+    "timestamp": "2026-05-31T17:10:42.699Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **第二周周一站会** — 回顾 Sprint 进展。\n\n@Bob 前端性能优化进展如何，瓶颈在哪？\n@Charlie 后台稳定性改进有什么突破？\n我计划用 agent_create 创建 PM Diana，负责需求梳理和排期。\n各一句话说完，开始吧。",
+    "status": "success"
   }
 ]

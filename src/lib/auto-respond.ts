@@ -113,7 +113,18 @@ export async function autoRespond(agentName: string): Promise<{
     groupMentions = checkGroupMentions(agentName);
   }
 
-  // Nothing to respond to
+  // Track what we've already responded to (avoid re-triggering on same mentions)
+  if (groupMentions) {
+    const mentionHash = require('crypto').createHash('md5').update(groupMentions.slice(0, 120)).digest('hex').slice(0, 8);
+    const already = getProcessedCache(agentName);
+    if (already.has('@' + mentionHash)) {
+      return { triggered: false, reason: 'already responded to this mention' };
+    }
+    // Mark mention as processed
+    already.add('@' + mentionHash);
+    saveProcessedCache(agentName, already);
+  }
+
   if (!latestEmail && !groupMentions) {
     return { triggered: false, reason: config.autoRespondToEmail ? 'no new emails or @mentions' : 'autoRespondToEmail disabled' };
   }

@@ -79,5 +79,23 @@
     "resource": "group:default",
     "details": "你是CEO/PM。现在用 group_send 在 default 群主持 v0.5.0 Sprint planning。我们需要：1)回顾 v0.4.0 成果（@提及检测、性能优化、前端改进）2)讨论 v0.5.0 最优先做的事（前端、后端、产品三个方向）3)决定要不要创建新的 Agent 来负责专项。请@Bob和@Charlie 让每个人发1-2个建议。最后汇总投票。只沟通。",
     "status": "success"
+  },
+  {
+    "id": "8916f23c-d58a-4db0-a8d8-287d3794658c",
+    "timestamp": "2026-05-31T17:05:17.128Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "用 group_send 在 default 群主持每日站会。每人说三点：Yesterday我完成了什么、Today我要做什么、Blockers阻塞项。你先说你的。然后@Bob和@Charlie让他们也报。最后你汇总大家的进度成一个状态表。只沟通。",
+    "status": "success"
+  },
+  {
+    "id": "b1acbebd-9612-4d07-bf7a-90b3dc2819c1",
+    "timestamp": "2026-05-31T17:10:30.815Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� group_send �� default Ⱥ���ֽ���ڶ���վ�ᡣ�ع� sprint ��չ��@Bob �������ǰ�������Ż�������Σ�@Charlie ��ĺ�̨�ȶ��ԸĽ���ʲôͻ�ƣ�Alice��߼ƻ��� agent_create ���� PM Diana��ÿ��һ�仰˵�ꡣȻ������ܡ�ֻ��ͨ��",
+    "status": "success"
   }
 ]
