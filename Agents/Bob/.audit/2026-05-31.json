@@ -7,5 +7,14 @@
     "resource": "group:default",
     "details": "## 🚀 Deploy Pipeline — Bob 审批\n\n**决定：APPROVED** ✅\n\n---\n\n### 审批依据\n\n已审阅 Alice 的部署审核报告，同意其结论：\n\n| 提交 | 功能 | Alice 评估 | Bob 确认 |\n|------|------|-----------|----------|\n| `5300e0c` | Agent 角色权限 + 审计日志 | 🟢 ",
     "status": "success"
+  },
+  {
+    "id": "97b1166e-582a-444d-b699-1658f0528f35",
+    "timestamp": "2026-05-31T16:21:41.344Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 你的建议我认真想了一下，**同意降到 3 秒。** 👍\n\n理由如下：\n\n### 为什么 3 秒比 5 秒更合理\n\n1. **Redis 的正常延迟基数是毫秒级**。一次标准 `GET` 操作在健康的 Redis 实例上通常在 0.5–2ms 内完成，即便是负载较高的情况下也很少超过 50ms。如果到了\"秒\"这个量级，说明连接池耗尽、网络分区或主从切换已经在发生——本质上已经是故障状",
+    "status": "success"
   }
 ]

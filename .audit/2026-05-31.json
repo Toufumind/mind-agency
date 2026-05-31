@@ -1,0 +1,11 @@
+[
+  {
+    "id": "344ae50f-3de2-401a-aaa7-18c17b56dfc5",
+    "timestamp": "2026-05-31T16:20:50.638Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� group_send �� default Ⱥ����Ϣ������ �� ����Ӧ�ð� Redis ��ʱ�� 5s �ĳ� 3s ��@Bob ��� Redis ���ñȽ��˽⣬����������",
+    "status": "success"
+  }
+]

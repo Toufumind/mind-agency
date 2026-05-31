@@ -18,7 +18,6 @@ function getConfig(agentName: string): AgentConfig {
   catch { return { autoRespondToEmail: false, autoProcessGroupInvites: false, notifyOnEmail: true, notifyOnGroupMention: true }; }
 }
 
-// Persist processed email set per agent to disk (survives restarts)
 function getProcessedCache(agentName: string): Set<string> {
   const cacheFile = path.join(AGENTS_DIR, agentName, '.auto-respond-cache.json');
   try {
@@ -32,7 +31,6 @@ function getProcessedCache(agentName: string): Set<string> {
 
 function saveProcessedCache(agentName: string, set: Set<string>) {
   const cacheFile = path.join(AGENTS_DIR, agentName, '.auto-respond-cache.json');
-  // Keep only last 50 entries
   const arr = [...set].slice(-50);
   fs.writeFileSync(cacheFile, JSON.stringify({ processed: arr, updated: new Date().toISOString() }), 'utf-8');
 }
@@ -42,7 +40,6 @@ async function getUnprocessedEmails(agentName: string): Promise<{ filename: stri
   if (!fs.existsSync(emailDir)) return [];
   const files = fs.readdirSync(emailDir).filter(f => f.endsWith('.md')).sort();
   const emails: any[] = [];
-
   for (const f of files.slice(-5)) {
     try {
       const raw = fs.readFileSync(path.join(emailDir, f), 'utf-8');
@@ -53,61 +50,83 @@ async function getUnprocessedEmails(agentName: string): Promise<{ filename: stri
   return emails;
 }
 
+/** 扫描群聊里是否有 @agent 的消息 */
+function checkGroupMentions(agentName: string): string {
+  const parts: string[] = [];
+  const groupsDir = path.join(process.cwd(), 'Groups');
+  if (!fs.existsSync(groupsDir)) return '';
+
+  for (const g of fs.readdirSync(groupsDir, { withFileTypes: true })) {
+    if (!g.isDirectory() || g.name.startsWith('.')) continue;
+    const agentDir = path.join(groupsDir, g.name, 'Agents', agentName);
+    if (!fs.existsSync(agentDir)) continue;
+    const chatDir = path.join(groupsDir, g.name, 'chat');
+    if (!fs.existsSync(chatDir)) continue;
+
+    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort().slice(-2);
+    for (const f of files) {
+      try {
+        const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
+        const lastBlock = raw.split(/\n(?=---\nfrom:)/).pop() || '';
+        if (lastBlock.includes('@' + agentName) || lastBlock.includes(agentName)) {
+          const from = (lastBlock.match(/from:\s*(.+)/)?.[1] || '').trim();
+          const body = (lastBlock.split('\n---\n\n')[1] || lastBlock).slice(0, 200);
+          parts.push(`${g.name}群 ${from}: ${body}`);
+        }
+      } catch {}
+    }
+  }
+  return parts.join('\n');
+}
+
 export async function autoRespond(agentName: string): Promise<{
-  triggered: boolean;
-  reply?: string;
-  reason?: string;
-  emailFrom?: string;
-  emailSubject?: string;
+  triggered: boolean; reply?: string; reason?: string; emailFrom?: string; emailSubject?: string;
 }> {
   const config = getConfig(agentName);
-  if (!config.autoRespondToEmail) {
-    return { triggered: false, reason: 'autoRespondToEmail disabled' };
-  }
 
+  // Check emails
   const emails = await getUnprocessedEmails(agentName);
-  if (emails.length === 0) {
-    return { triggered: false, reason: 'no emails' };
-  }
-
   const processedEmails = getProcessedCache(agentName);
-
-  // Skip system-generated emails
   const skipSenders = ['system', 'monitoring'];
-  let latest = null;
+
+  let latestEmail = null;
   for (const e of emails) {
     if (skipSenders.includes(e.from.toLowerCase())) continue;
-    const key = e.filename;
-    if (!processedEmails.has(key)) {
-      latest = e;
-      processedEmails.add(key);
+    if (!processedEmails.has(e.filename)) {
+      latestEmail = e;
+      processedEmails.add(e.filename);
       saveProcessedCache(agentName, processedEmails);
       break;
     }
   }
 
-  if (!latest) {
-    return { triggered: false, reason: 'all emails processed' };
+  // Check group mentions — only active if autoRespondToEmail is on (reuse the toggle)
+  let groupMentions = '';
+  if (config.autoRespondToEmail) {
+    groupMentions = checkGroupMentions(agentName);
   }
 
-  const prompt = `## 新邮件通知（自动处理）
+  // Nothing to respond to
+  if (!latestEmail && !groupMentions) {
+    return { triggered: false, reason: config.autoRespondToEmail ? 'no new emails or @mentions' : 'autoRespondToEmail disabled' };
+  }
 
-收到新邮件：
-发件人: ${latest.from} | 主题: ${latest.subject}
+  const prompt = `自动轮询触发。
 
-${latest.body}
+${latestEmail ? `新邮件 — 发件人: ${latestEmail.from}, 主题: ${latestEmail.subject}\n${latestEmail.body.slice(0, 500)}` : '暂无新邮件。'}
+${groupMentions ? `群聊@你：${groupMentions}` : ''}
 
-请：
-1. 阅读邮件内容
-2. 执行邮件中要求的操作（回复邮件、用 group_send 通知群聊等）
-3. 如需要通知下一个人，务必发邮件或群聊消息
-4. 除非邮件明确要求你改代码，否则用沟通方式（邮件/群聊）处理
-
-用中文回复。`;
+如果邮件或群聊要求你做某事，就去做（回复、发群消息、发邮件）。
+如果只是通知不需要行动，回复"无行动项"。
+只用沟通方式，不写代码。用中文。`;
 
   try {
     const { reply } = await chatOnce(agentName, prompt);
-    return { triggered: true, reply, emailFrom: latest.from, emailSubject: latest.subject };
+    return {
+      triggered: true, reply,
+      emailFrom: latestEmail?.from || 'group-mention',
+      emailSubject: latestEmail?.subject || 'group chat',
+    };
   } catch (e: any) {
     return { triggered: false, reason: e.message };
   }

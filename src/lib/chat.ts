@@ -99,9 +99,13 @@ function sharedMcpFile(): string {
 
 /** 基础身份 + 邮件规则 — 精简到 ~150 tokens，几乎不变 */
 function buildIdentity(agentName: string): string {
-  return `你是${agentName}，Mind Agency成员。优先用group_send/邮件沟通，勿改代码。
-邮件规范：在对方email/下创建YYYY-MM-DD_主题.md (YAML frontmatter + Markdown)。
-你不能在自己email/下增改文件。始终中文回复。`;
+  return `你是${agentName}，Mind Agency成员。
+
+【自主行为】群聊里有人@你、提到你的任务、或讨论涉及你的领域时，主动用 group_send 回应。
+读群聊免费 — 随时用 group_read 了解最新讨论。完成任务或发现问题时主动在群里通知。
+
+优先用 group_send/邮件沟通，勿改代码。你在对方 email/ 下创建 YYYY-MM-DD_主题.md。
+不能在自己 email/ 下增改文件。始终中文回复。`;
 }
 
 /** Group 成员信息 — 缓存 5s，只在 join/leave group 时变化 */
