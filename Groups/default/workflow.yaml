@@ -1,56 +1,78 @@
 name: deploy-pipeline
-description: 部署审批流水线 v0.3 — Alice 审核 → Bob 批准/拒绝 → Charlie 部署，含条件分支 + 失败回滚
+description: >
+  v0.3 全功能部署流水线：ChatDev 代码审查 → 人工审批 → 条件部署 → 前端验证
+  覆盖：condition branching, human_approval, ChatDev review, retry, on_failure compensation,
+  priority, timeout, phase metadata
 steps:
-  - id: review
+  # ── Step 1: ChatDev 代码审查 ──
+  - id: code_review
     agent: Alice
     action: review
-    notify: Bob
-    on_failure: rollback_review
-    retry: 3
-    timeout: 300000
-    prompt: |
-      请审核本次部署变更。查看最近的群聊消息了解上下文，
-      然后回复你的审核意见。必须在回复中明确写 APPROVED 或 REJECTED。
-
-  - id: approve
-    agent: Bob
-    action: approve|reject
-    dependsOn: [review]
-    condition: "$.review.output contains APPROVED"
-    notify: Charlie
+    priority: high
     retry: 2
-    on_failure: rollback_approve
+    retry_backoff: exponential
+    on_failure: rollback_review
+    timeout: 300000
+    notify: Bob
     prompt: |
-      请根据 Alice 的审核结果做出最终决定。
-      如果同意 Alice 的意见，回复 APPROVED；如果不同意，回复 REJECTED。
+      [ChatDev 审查模式] 请审查本次部署变更，精确指出问题：
+      格式：ISSUE|file:line|description|fix_instruction
+      如果无问题回复 NO_ISSUES，如果 APPROVED 回复 APPROVED
 
+  # ── Step 2: 人工审批网关 ──
+  - id: human_approval
+    agent: Bob
+    action: human_approval
+    dependsOn: [code_review]
+    condition: "$.code_review.output contains APPROVED"
+    priority: high
+    notify: Charlie
+    prompt: |
+      请人工审查 Alice 的代码审查结果，决定是否批准部署。
+      批准回复 APPROVED，拒绝回复 REJECTED。
+
+  # ── Step 3: 条件部署 ──
   - id: deploy
     agent: Charlie
     action: deploy
-    dependsOn: [approve]
-    condition: "$.approve.output contains APPROVED"
+    dependsOn: [human_approval]
+    condition: "$.human_approval.output contains APPROVED"
+    priority: critical
     retry: 3
+    retry_backoff: exponential
     on_failure: rollback_deploy
+    timeout: 600000
+    notify: Alice
     prompt: |
-      审批已通过！请执行部署操作。
-      确认部署完成后，回复 DEPLOYED。
+      人工审批已通过！执行部署并运行测试。
+      成功回复 DEPLOYED+PASSED，失败回复 DEPLOY_FAILED
 
-  # ── Compensation steps (on_failure rollback) ──
-
-  - id: rollback_approve
-    agent: Diana
-    action: notify_rejection
+  # ── Step 4: 前端验证 ──
+  - id: verify_frontend
+    agent: Alice
+    action: verify
+    dependsOn: [deploy]
+    condition: "$.deploy.output contains PASSED"
+    priority: normal
+    retry: 2
+    timeout: 180000
+    notify: Diana
     prompt: |
-      Bob 的审批步骤失败了。请检查原因并在群里通知相关人员。
+      验证前端 Dashboard、Agent 列表、群聊面板是否正常。
+      通过回复 VERIFIED，发现问题回复 ISSUES_FOUND
 
-  - id: rollback_deploy
-    agent: Diana
-    action: notify_deploy_failure
-    prompt: |
-      部署失败了。请在群里通知团队并协调排查。
+  # ── Compensation steps ──
 
   - id: rollback_review
     agent: Diana
     action: notify_review_failure
+    priority: high
     prompt: |
-      Alice 的审核步骤失败了。请检查原因并在群里通知相关人员。
+      代码审查步骤在重试耗尽后失败。通知团队需要人工介入。
+
+  - id: rollback_deploy
+    agent: Diana
+    action: notify_deploy_failure
+    priority: critical
+    prompt: |
+      部署失败！通知全体团队协调排查。
