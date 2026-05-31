@@ -187,5 +187,14 @@
     "resource": "group:default",
     "details": "�� group_send �� default Ⱥ��һ��������ۣ��Ŷӣ�v0.5.0 ������ˣ�������Ҫ���� v0.6.0 Ӧ����ʲô��Sprint�����ܡ�����ǰ�˼ܹ�����������������ÿ��˵һ���������ġ�",
     "status": "success"
+  },
+  {
+    "id": "dd61c956-277a-4f9b-a8fb-0c6e8df0ad7c",
+    "timestamp": "2026-05-31T18:04:36.381Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Diana(PM)ͨ����˵���ŶӸ�λ������������v0.6.0��������(Agent Dashboard��Unified Event Bus��Multi-Agent Workflow)��������Ҫ��һ�����ȼ�ͶƱ��ÿ��Ͷһ���������ģ�ͬʱ����Ϊʲô��@Bob @Charlie ���ǻ�ûͶ��AliceͶAgent Dashboard",
+    "status": "success"
   }
 ]

@@ -216,21 +216,20 @@ ${proactiveCtx ? `群聊有与你领域相关的讨论：${proactiveCtx}\n你应
 }
 
 export async function pollAllAgents(): Promise<{ agent: string; triggered: boolean }[]> {
-  const results: { agent: string; triggered: boolean }[] = [];
-  if (!fs.existsSync(AGENTS_DIR)) return results;
+  if (!fs.existsSync(AGENTS_DIR)) return [];
 
   const agents = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
     .filter(e => e.isDirectory() && !e.name.startsWith('.'));
 
-  for (const a of agents) {
-    const config = getConfig(a.name);
-    if (!config.autoRespondToEmail) continue;
-    try {
-      const result = await autoRespond(a.name);
-      results.push({ agent: a.name, triggered: result.triggered });
-    } catch {
-      results.push({ agent: a.name, triggered: false });
-    }
-  }
-  return results;
+  // Fire all agents in parallel
+  return Promise.all(
+    agents.map(async a => {
+      try {
+        const result = await autoRespond(a.name);
+        return { agent: a.name, triggered: result.triggered };
+      } catch {
+        return { agent: a.name, triggered: false };
+      }
+    })
+  );
 }

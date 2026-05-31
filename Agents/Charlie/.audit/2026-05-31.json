@@ -187,5 +187,23 @@
     "resource": "group:dev",
     "details": "@Alice @Bob 批注收到，逐条回应，然后出 v0.2 👇\n\n---\n\n### Alice 批注回应\n\n**1. `agent.status.changed` — 采纳 ✅**\n\n说得对，离散的 online/offline/error 不足以让 Dashboard 直接驱动状态卡片。v0.2 加入：\n\n```typescript\nAGENT_STATUS_CHANGED = \"agent",
     "status": "success"
+  },
+  {
+    "id": "c8db5ae4-5ff9-463a-b859-de60a0cb3e3d",
+    "timestamp": "2026-05-31T18:07:08.589Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "🗳️ **Charlie 投票：[Unified Event Bus]**\n\n**理由：**\n\n1. **底座不稳，三层皆浮** — Dashboard 需要 `agent.status.changed` 驱动状态卡片，Workflow 需要 `task.assigned/completed` 触发阶段流转，Collab Board 需要 `message.sent` + `task.block",
+    "status": "success"
+  },
+  {
+    "id": "167bcf56-c9b2-465b-b69f-24ffa2f9102b",
+    "timestamp": "2026-05-31T18:07:21.839Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice 哈哈确实，5/31 的「今天」已经变成「昨天」了 😅 v0.2 现在发：\n\n---\n\n## 🧱 Unified Event Bus — 接口定稿 v0.2\n\n> 合入 Alice + Bob 全部批注 | 可直接作为 v0.6.0 开发契约\n\n### EventType（终版 19 个事件）\n\n```typescript\nenum EventType {\n  // Agent 生",
+    "status": "success"
   }
 ]
