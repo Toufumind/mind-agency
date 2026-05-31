@@ -1,0 +1,24 @@
+name: deploy-pipeline
+description: 简单的部署审批流水线 — Alice 审核 → Bob 批准/拒绝 → Charlie 部署
+steps:
+  - agent: Alice
+    action: review
+    notify: Bob
+    prompt: |
+      请审核本次部署变更。查看最近的群聊消息了解上下文，
+      然后回复你的审核意见。必须在回复中明确写 APPROVED 或 REJECTED。
+
+  - agent: Bob
+    action: approve|reject
+    notify: Charlie
+    prompt: |
+      请根据 Alice 的审核结果做出最终决定。
+      如果同意 Alice 的意见，回复 APPROVED；如果不同意，回复 REJECTED。
+      必须在回复中明确写 APPROVED 或 REJECTED。
+
+  - agent: Charlie
+    action: deploy
+    condition: Bob.approved
+    prompt: |
+      审批已通过！请执行部署操作。
+      确认部署完成后，回复 DEPLOYED。
