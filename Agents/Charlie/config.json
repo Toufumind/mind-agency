@@ -1,7 +1,9 @@
 {
   "autoRespondToEmail": true,
   "autoProcessGroupInvites": true,
-  "roles": ["member"],
+  "roles": [
+    "member"
+  ],
   "permissions": {
     "canCreateGroup": true,
     "canDeleteGroup": false,

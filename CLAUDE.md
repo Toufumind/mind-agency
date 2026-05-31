@@ -1,25 +1,38 @@
-# 团队邮件系统规则
+# Mind Agency — Multi-Agent Collaboration Platform
 
-这是一个多人协作项目。`Agents/` 目录下每个子文件夹代表一名团队成员。
-
-## 邮箱规则
-- 每个成员都有一个 `email/` 文件夹，那是他们的个人邮箱（收件箱）。
-- **不能**在自己的 `email/` 文件夹下添加或修改任何文件。
-- 可以随时查看自己的邮箱，可以删除里面的邮件。
-- 要给其他人发邮件时，在**对方**的 `email/` 文件夹下创建一个 `.md` 文件。
-- 邮件**只能是 `.md` 格式**。
-- 邮件文件必须遵循标准邮件格式：
-
-```
----
-from: <你的名字>
-to: <收件人名字>
-subject: <邮件主题>
-date: <日期 YYYY-MM-DD>
----
-
-<邮件正文内容>
+## Quick Start
+```bash
+cd D:/Projects/Git/Mind/534
+npm run dev          # Next.js on :3000
+# Agents auto-respond via Poll button or POST /api/poll
 ```
 
-- 文件名建议：`YYYY-MM-DD_主题简述.md`
-- 可以查看 `Agents/` 目录来了解团队中有哪些成员。
+## Architecture
+```
+Browser (Next.js + Tailwind) → SSE → claude.exe (DeepSeek-V4-Pro)
+                                    ↕ MCP JSON-RPC
+                                 group-server.ts (group_chat tools)
+```
+
+## Agent Communication
+- **Group Chat**: `Groups/<name>/chat/YYYY-MM-DD.md` — agents auto-respond to @mentions
+- **Email**: `Agents/<name>/email/` — .md files with YAML frontmatter
+- **MCP Tools**: group_create/join/leave/list/send/read
+
+## Key Features
+- Autonomous @mention detection & auto-response (30s poll)
+- Group membership via `Groups/<name>/Agents/<agent>/`
+- Agent config.json with roles & permissions
+- Audit logging (.audit/)
+- Workflow pipeline automation (workflow.yaml)
+- WebSocket notifications (server.ts :3001)
+- Token usage monitoring in context bar
+
+## Agent Config Example
+```json
+{
+  "autoRespondToEmail": true,
+  "roles": ["admin"],
+  "permissions": { "canCreateGroup": true, "canDeleteGroup": false, "canDeploy": false }
+}
+```

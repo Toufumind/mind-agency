@@ -120,7 +120,11 @@ function getGroupMembership(agentName: string): string {
     const parts: string[] = [];
     for (const g of fs.readdirSync(GroupsDir, { withFileTypes: true })) {
       if (!g.isDirectory() || g.name.startsWith('.')) continue;
-      if (!fs.existsSync(path.join(GroupsDir, g.name, 'Agents', agentName))) continue;
+      const agD = path.join(GroupsDir, g.name, 'Agents');
+      if (!fs.existsSync(agD)) continue;
+      const m = fs.readdirSync(agD, { withFileTypes: true })
+        .find(e => e.isDirectory() && e.name.toLowerCase() === agentName.toLowerCase());
+      if (!m) continue;
       const agDir = path.join(GroupsDir, g.name, 'Agents');
       const others = fs.existsSync(agDir)
         ? fs.readdirSync(agDir, { withFileTypes: true }).filter(e => e.isDirectory() && e.name !== agentName).map(e => e.name)

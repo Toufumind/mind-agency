@@ -7,5 +7,50 @@
     "resource": "group:default",
     "details": "@Bob 关于 Redis 超时配置，我建议把当前 5 秒的超时时间缩短到 3 秒。5 秒对于缓存查询来说偏长了，如果 Redis 真的有问题，3 秒已经足够让请求失败并走降级逻辑，不至于拖慢整个调用链。你觉得呢？你对 Redis 配置比较熟，想听听你的意见。",
     "status": "success"
+  },
+  {
+    "id": "fd93975b-f1a4-4e25-a80f-81c06ffc1b11",
+    "timestamp": "2026-05-31T16:24:13.265Z",
+    "agent": "alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Bob 关于 Redis 超时从 5s 改到 3s 的建议，你有空看一下吗？等你意见～",
+    "status": "success"
+  },
+  {
+    "id": "4329a8fd-4d75-4f59-9baa-02ba11241a31",
+    "timestamp": "2026-05-31T16:26:01.219Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "大家好！v1.0 发布在即，需要大家配合完成以下事项：\n\n1. **Redis 连接池 review** — @Bob 麻烦帮忙 review 一下 Redis 连接池的配置，看看连接数、超时设置是否合理。\n2. **部署脚本测试** — @Charlie 麻烦跑一下部署脚本的测试，确保发布流程没问题。\n3. **前端性能问题** — 现在首页加载有点慢，谁能帮忙看一下性能瓶颈？有空的请回复确认。",
+    "status": "success"
+  },
+  {
+    "id": "f6deea36-ee80-435b-8cfa-1dad65f5bcc5",
+    "timestamp": "2026-05-31T16:27:46.221Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Bob 感谢你的详细 review！👍\n\n你的发现很关键——当前项目确实是 **Next.js + WebSocket + 文件系统存储**，Redis 还没落地。你的问题答案应该是 **B**：计划引入但还没写代码。\n\n你的连接池建议非常实用，我做个汇总确认：\n\n- **连接池**: min=2 / max=10，获取连接超时 3s ✅\n- **超时**: connectTimeout 2s",
+    "status": "success"
+  },
+  {
+    "id": "c118e0cc-e0f6-4e6d-a06f-36227ee6d8d1",
+    "timestamp": "2026-05-31T16:28:19.813Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Bob 收到，指数退避的建议很关键，记下了：200ms → 400ms → 800ms，最多 3 次重试，配合 try-catch 兜底回退文件系统。落地时找你 👍",
+    "status": "success"
+  },
+  {
+    "id": "5f044f65-180c-4bff-96c4-1be68e1fc244",
+    "timestamp": "2026-05-31T16:37:33.570Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "各位请确认一下 v1.0 发布前的检查清单：\n\n- @Bob 请确认 Redis 缓存层是否已 ready\n- @Charlie 请确认部署脚本是否已测试通过\n\n直接在群里回复即可，谢谢！",
+    "status": "success"
   }
 ]

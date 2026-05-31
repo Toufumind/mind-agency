@@ -58,8 +58,11 @@ function checkGroupMentions(agentName: string): string {
 
   for (const g of fs.readdirSync(groupsDir, { withFileTypes: true })) {
     if (!g.isDirectory() || g.name.startsWith('.')) continue;
-    const agentDir = path.join(groupsDir, g.name, 'Agents', agentName);
-    if (!fs.existsSync(agentDir)) continue;
+    const agDir = path.join(groupsDir, g.name, 'Agents');
+    if (!fs.existsSync(agDir)) continue;
+    const match = fs.readdirSync(agDir, { withFileTypes: true })
+      .find(e => e.isDirectory() && e.name.toLowerCase() === agentName.toLowerCase());
+    if (!match) continue;
     const chatDir = path.join(groupsDir, g.name, 'chat');
     if (!fs.existsSync(chatDir)) continue;
 
@@ -67,11 +70,15 @@ function checkGroupMentions(agentName: string): string {
     for (const f of files) {
       try {
         const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-        const lastBlock = raw.split(/\n(?=---\nfrom:)/).pop() || '';
-        if (lastBlock.includes('@' + agentName) || lastBlock.includes(agentName)) {
-          const from = (lastBlock.match(/from:\s*(.+)/)?.[1] || '').trim();
-          const body = (lastBlock.split('\n---\n\n')[1] || lastBlock).slice(0, 200);
-          parts.push(`${g.name}群 ${from}: ${body}`);
+        // Check ALL blocks — not just the last one (mention may have scrolled up)
+        const blocks = raw.split(/\n(?=---\nfrom:)/);
+        for (const block of blocks) {
+          if (block.includes('@' + agentName) || block.includes(agentName)) {
+            const from = (block.match(/from:\s*(.+)/)?.[1] || '').trim();
+            const body = (block.split('\n---\n\n')[1] || block).slice(0, 200);
+            parts.push(`${g.name}群 ${from}: ${body}`);
+            break; // One mention per file is enough
+          }
         }
       } catch {}
     }
@@ -114,10 +121,12 @@ export async function autoRespond(agentName: string): Promise<{
   const prompt = `自动轮询触发。
 
 ${latestEmail ? `新邮件 — 发件人: ${latestEmail.from}, 主题: ${latestEmail.subject}\n${latestEmail.body.slice(0, 500)}` : '暂无新邮件。'}
-${groupMentions ? `群聊@你：${groupMentions}` : ''}
+${groupMentions ? `群聊@你：${groupMentions}\n你必须用 group_send 在群里回复！` : ''}
 
-如果邮件或群聊要求你做某事，就去做（回复、发群消息、发邮件）。
-如果只是通知不需要行动，回复"无行动项"。
+操作规则：
+- 有人在群里@你 → 必须用 group_send 在群里回复
+- 有新邮件要求你做某事 → 执行要求的操作（回复邮件、发群消息等）
+- 只是通知不需要行动 → 回复"无行动项"即可
 只用沟通方式，不写代码。用中文。`;
 
   try {

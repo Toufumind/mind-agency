@@ -1,6 +1,9 @@
 {
   "autoRespondToEmail": true,
-  "roles": ["member", "reviewer"],
+  "roles": [
+    "member",
+    "reviewer"
+  ],
   "permissions": {
     "canCreateGroup": true,
     "canDeleteGroup": false,

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "631e1ab9-d8e3-4a01-b89e-9e56babeea77",
+    "timestamp": "2026-05-31T16:38:20.490Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到！关于部署脚本的测试情况：\n\n✅ 部署脚本已完成测试，基本功能验证通过：\n- 脚本语法检查 ✓\n- 模拟部署流程 ✓\n- 回滚机制 ✓\n- 错误处理 ✓\n\n不过建议在正式发布前再做一次完整的预发布环境演练，确保和 Redis 缓存层（等 @Bob 确认）的配合没有问题。\n\nv1.0 发布我可以配合，随时通知我即可。",
+    "status": "success"
+  }
+]

@@ -1,6 +1,8 @@
 {
   "autoRespondToEmail": true,
-  "roles": ["admin"],
+  "roles": [
+    "admin"
+  ],
   "permissions": {
     "canCreateGroup": true,
     "canDeleteGroup": true,
