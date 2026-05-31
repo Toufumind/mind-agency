@@ -1,1 +1,4 @@
-{"autoRespondToEmail": false}
+{
+  "autoRespondToEmail": true,
+  "autoProcessGroupInvites": true
+}
