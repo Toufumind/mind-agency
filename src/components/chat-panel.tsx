@@ -10,13 +10,101 @@ interface ChatEvent { type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | '
 interface Msg { role: 'user' | 'assistant' | 'system'; content: string; events: ChatEvent[]; timestamp: string; }
 interface AgentInfo { name: string; emailCount: number; }
 
-// Slash commands that the web can handle locally (no Claude Code shell needed)
+// All Claude Code slash commands with descriptions.
+// LOCAL commands are handled in-browser (no AI involved).
+// The rest are passed through to the AI as messages.
 const COMMANDS: { cmd: string; desc: string; handler?: (agentName: string) => Promise<string> | string }[] = [
-  { cmd: '/clear', desc: 'Clear chat history', handler: () => '' },
+  // ── Session & Context (LOCAL) ──
+  { cmd: '/clear', desc: 'Reset conversation', handler: () => '' },
   { cmd: '/memory', desc: 'Show loaded rules and session info', handler: memoryCmd },
+  { cmd: '/context', desc: 'Show message/token stats', handler: contextCmd },
   { cmd: '/help', desc: 'Show available commands', handler: helpCmd },
-  { cmd: '/version', desc: 'Show version info', handler: () => '**Mind Agency** v0.2.0 · Claude Code CLI 2.1.158 · DeepSeek-V4-Pro' },
+  { cmd: '/version', desc: 'Show version info', handler: () => '**Mind Agency** v0.2.0 · Claude Code CLI 2.1.158 · DeepSeek-V4-Pro · Next.js 15' },
+  { cmd: '/status', desc: 'Show session state', handler: statusCmd },
+  { cmd: '/rename', desc: 'Name the current session' },
+
+  // ── Code & Git ──
+  { cmd: '/review', desc: 'Review current changes' },
+  { cmd: '/commit', desc: 'Stage and commit with AI-generated message' },
+  { cmd: '/diff', desc: 'Show git diff' },
+  { cmd: '/init', desc: 'Initialize or improve CLAUDE.md' },
+  { cmd: '/security-review', desc: 'Security audit of pending changes' },
+
+  // ── Workflow & Automation ──
+  { cmd: '/compact', desc: 'Compress long context to save tokens' },
+  { cmd: '/plan', desc: 'Enter plan mode' },
+  { cmd: '/tasks', desc: 'Monitor background tasks' },
+  { cmd: '/batch', desc: 'Parallel worktree refactors' },
+  { cmd: '/loop', desc: 'Run a command on repeat interval' },
+  { cmd: '/goal', desc: 'Set or review session goals' },
+  { cmd: '/insights', desc: 'Usage analytics and optimization report' },
+
+  // ── Code Quality ──
+  { cmd: '/code-review', desc: 'Code review the current diff' },
+  { cmd: '/simplify', desc: 'Detect and fix over-engineering' },
+  { cmd: '/debug', desc: 'Start debug logging' },
+  { cmd: '/verify', desc: 'Verify a change works correctly' },
+  { cmd: '/run', desc: 'Launch and test the app' },
+
+  // ── System & Config ──
+  { cmd: '/doctor', desc: 'Installation health check' },
+  { cmd: '/permissions', desc: 'View allow/deny rules' },
+  { cmd: '/agents', desc: 'List configured sub-agents' },
+  { cmd: '/hooks', desc: 'View active hook configs' },
+  { cmd: '/mcp', desc: 'Manage MCP server connections' },
+  { cmd: '/skills', desc: 'List available skills' },
+  { cmd: '/usage', desc: 'Show token usage and cost' },
+
+  // ── Tool-specific ──
+  { cmd: '/update-config', desc: 'Update Claude Code settings' },
+  { cmd: '/keybindings-help', desc: 'Show keyboard shortcuts' },
+  { cmd: '/fewer-permission-prompts', desc: 'Reduce permission dialogs' },
+  { cmd: '/security-check', desc: 'Quick environment security scan' },
+
+  // ── Claude skills ──
+  { cmd: '/deep-research', desc: 'Deep multi-source research' },
+  { cmd: '/claude-api', desc: 'Build/debug Claude API apps' },
+  { cmd: '/unity-mcp-skill', desc: 'Unity Editor MCP orchestration' },
+  { cmd: '/team-onboarding', desc: 'Team setup guide' },
+  { cmd: '/workflows', desc: 'View running workflows' },
 ];
+
+async function statusCmd(agentName: string) {
+  const parts: string[] = ['## /status'];
+  try {
+    const [agentsRes, chatRes, groupsRes] = await Promise.all([
+      fetch('/api/agents'),
+      fetch(`/api/agents/${agentName}/chat`),
+      fetch(`/api/groups/scan?agent=${agentName}`),
+    ]);
+    const agents = await agentsRes.json();
+    const chat = await chatRes.json();
+    const groups = await groupsRes.json();
+    const agent = (agents.agents || []).find((a: any) => a.name === agentName);
+    if (agent) {
+      parts.push(`\n**Agent:** ${agent.name}`);
+      parts.push(`**Emails:** ${agent.emailCount}`);
+      parts.push(`**Messages:** ${chat.messages?.length || 0}`);
+      parts.push(`**Groups:** ${(groups.groups || []).join(', ') || 'none'}`);
+    }
+  } catch { parts.push('(unable to fetch)'); }
+  return parts.join('\n');
+}
+
+async function contextCmd(_agentName: string) {
+  const parts: string[] = ['## /context\n'];
+  try {
+    const r = await fetch('/api/agents');
+    const d = await r.json();
+    let total = 0;
+    for (const a of d.agents || []) total += a.emailCount;
+    parts.push(`**Agents:** ${d.agents?.length || 0}`);
+    parts.push(`**Total emails:** ${total}`);
+    parts.push(`**Model:** DeepSeek-V4-Pro`);
+    parts.push(`\n\`\`\`\nSystem prompt: ~1.5k tokens\nTools: ~17k tokens\nMessages: session-dependent\n\`\`\``);
+  } catch { parts.push('(unable to fetch)'); }
+  return parts.join('\n');
+}
 
 async function memoryCmd(agentName: string) {
   const parts: string[] = ['## /memory'];
@@ -129,6 +217,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
     const m = t.match(/^(\/\w+)/);
     if (m) {
       const cmd = COMMANDS.find(c => c.cmd === m[1]);
+      // Commands with handlers run locally in browser
       if (cmd?.handler) {
         if (cmd.cmd === '/clear') {
           await fetch(`/api/agents/${agentName}/chat`, { method: 'DELETE' });
@@ -142,6 +231,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
         ]);
         return;
       }
+      // Commands without handlers: pass through to AI
     }
 
     setBusy(true);
