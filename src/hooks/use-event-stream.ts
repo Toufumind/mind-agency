@@ -23,7 +23,7 @@ export function useEventStream(opts?: {
   const [lastEvent, setLastEvent] = useState<LiveEvent | null>(null);
   const handlersRef = useRef<EventHandler[]>([]);
 
-  const wsUrl = opts?.wsUrl || `ws://localhost:${typeof window !== 'undefined' ? '3003' : '3001'}`;
+  const wsUrl = opts?.wsUrl || 'ws://localhost:3003';
 
   const onEvent = useCallback((handler: EventHandler) => {
     handlersRef.current.push(handler);

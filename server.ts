@@ -30,7 +30,7 @@ import { EventBus, EventType, EventBusError, createEvent, WorkflowEngine, parseW
 import type { EventMessage, WorkflowRunRecord } from './src/lib/event-bus.js';
 import { startScheduler, stopScheduler, getSchedulerStats } from './src/lib/scheduler.js';
 
-const PORT = parseInt(process.env.WS_PORT || '3001', 10);
+const PORT = parseInt(process.env.WS_PORT || '3003', 10);
 
 // ── EventBus singleton ───────────────────────────────────────────────────
 
