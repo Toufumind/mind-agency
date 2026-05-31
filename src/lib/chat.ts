@@ -6,6 +6,27 @@ import { randomUUID, createHash } from 'crypto';
 
 const AGENTS_DIR = path.join(process.cwd(), 'Agents');
 
+// ── Performance caches ──
+
+/** Cache session-id per agent — avoid disk read on every request within 60s window */
+const sessionIdCache = new Map<string, { sessionId: string | null; ts: number }>();
+const SESSION_CACHE_TTL = 60_000;
+
+/** Cache group membership string per agent — avoid fs walk on every request, refresh every 5s */
+const membershipCache = new Map<string, { data: string; ts: number }>();
+const MEMBERSHIP_CACHE_TTL = 5_000;
+
+function getCachedSessionId(agentName: string): string | null {
+  const now = Date.now();
+  const entry = sessionIdCache.get(agentName);
+  if (entry && (now - entry.ts) < SESSION_CACHE_TTL) {
+    return entry.sessionId;
+  }
+  const history = getChatHistory(agentName);
+  sessionIdCache.set(agentName, { sessionId: history.sessionId, ts: now });
+  return history.sessionId;
+}
+
 export interface ChatEvent {
   type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error';
   content?: string;
@@ -31,11 +52,16 @@ function saveChatHistory(agentName: string, data: ChatHistory) {
   const dir = path.join(AGENTS_DIR, agentName, 'chat');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(sessionFile(agentName), JSON.stringify(data, null, 2), 'utf-8');
+  // Update cache so next request sees the latest session-id without waiting for TTL
+  sessionIdCache.set(agentName, { sessionId: data.sessionId, ts: Date.now() });
 }
 
 export function clearChat(agentName: string) {
   const file = sessionFile(agentName);
   if (fs.existsSync(file)) fs.unlinkSync(file);
+  // Invalidate caches so next request picks up fresh state
+  sessionIdCache.delete(agentName);
+  membershipCache.delete(agentName);
 }
 
 function sessionFile(agentName: string) {
@@ -71,77 +97,56 @@ function sharedMcpFile(): string {
 
 // ── Build system prompt components ──
 
-/** 基础身份 + 邮件规则 — 几乎不变，放在稳定文件里 */
+/** 基础身份 + 邮件规则 — 精简到 ~150 tokens，几乎不变 */
 function buildIdentity(agentName: string): string {
-  return `你的名字是 ${agentName}。你是 Mind Agency 团队的一员。
-
-【重要】除非用户明确要求你修改文件或执行代码，否则优先使用群聊 (group_send) 和邮件来与其他 Agent 沟通。
-不要主动创建或修改项目代码文件。你是一个协作者，不是自动化脚本。
-
-你不能在自己的 email/ 下添加或修改文件。
-给其他人发邮件时在对方 email/ 下创建 .md 文件（YAML frontmatter + Markdown）。
-邮件文件名格式: YYYY-MM-DD_主题.md
-你始终用中文回复。`;
+  return `你是${agentName}，Mind Agency成员。优先用group_send/邮件沟通，勿改代码。
+邮件规范：在对方email/下创建YYYY-MM-DD_主题.md (YAML frontmatter + Markdown)。
+你不能在自己email/下增改文件。始终中文回复。`;
 }
 
-/** Group 成员信息 — 只在 join/leave group 时变化 */
-function buildGroupMembership(agentName: string): string {
+/** Group 成员信息 — 缓存 5s，只在 join/leave group 时变化 */
+function getGroupMembership(agentName: string): string {
+  const now = Date.now();
+  const cached = membershipCache.get(agentName);
+  if (cached && (now - cached.ts) < MEMBERSHIP_CACHE_TTL) return cached.data;
+
   const GroupsDir = path.join(process.cwd(), 'Groups');
-  if (!fs.existsSync(GroupsDir)) return '';
-
-  const myGroups: string[] = [];
-  for (const g of fs.readdirSync(GroupsDir, { withFileTypes: true })) {
-    if (!g.isDirectory() || g.name.startsWith('.')) continue;
-    if (fs.existsSync(path.join(GroupsDir, g.name, 'Agents', agentName))) {
-      myGroups.push(g.name);
+  let result = '';
+  if (fs.existsSync(GroupsDir)) {
+    const parts: string[] = [];
+    for (const g of fs.readdirSync(GroupsDir, { withFileTypes: true })) {
+      if (!g.isDirectory() || g.name.startsWith('.')) continue;
+      if (!fs.existsSync(path.join(GroupsDir, g.name, 'Agents', agentName))) continue;
+      const agDir = path.join(GroupsDir, g.name, 'Agents');
+      const others = fs.existsSync(agDir)
+        ? fs.readdirSync(agDir, { withFileTypes: true }).filter(e => e.isDirectory() && e.name !== agentName).map(e => e.name)
+        : [];
+      const emailDir = path.join(agDir, agentName, 'email');
+      const ec = fs.existsSync(emailDir) ? fs.readdirSync(emailDir).filter(f => f.endsWith('.md')).length : 0;
+      const spec = fs.existsSync(path.join(GroupsDir, g.name, 'TASK_SPEC.md')) ? ' [有任务规则]' : '';
+      parts.push(`- ${g.name}: 成员${others.join(',') || '无'} | 邮箱${ec}封${spec}`);
     }
+    if (parts.length > 0) result = '\nGroups: ' + parts.join('; ');
   }
-  if (myGroups.length === 0) return '';
-
-  const lines: string[] = ['\n## 你所属的 Groups'];
-  for (const gn of myGroups) {
-    const agDir = path.join(GroupsDir, gn, 'Agents');
-    const members = fs.existsSync(agDir)
-      ? fs.readdirSync(agDir, { withFileTypes: true }).filter(e => e.isDirectory() && e.name !== agentName).map(e => e.name)
-      : [];
-    const emailDir = path.join(agDir, agentName, 'email');
-    const emailCount = fs.existsSync(emailDir)
-      ? fs.readdirSync(emailDir).filter(f => f.endsWith('.md')).length
-      : 0;
-    lines.push(`- Groups/${gn}/ — 成员: ${members.join(', ') || '只有你'}`);
-    lines.push(`  Group 邮箱: Groups/${gn}/Agents/${agentName}/email/ (${emailCount} 封)`);
-    const spec = path.join(GroupsDir, gn, 'TASK_SPEC.md');
-    if (fs.existsSync(spec)) lines.push(`  任务流转规则: Groups/${gn}/TASK_SPEC.md`);
-  }
-  return lines.join('\n') + '\n';
+  membershipCache.set(agentName, { data: result, ts: now });
+  return result;
 }
 
-/** 群聊上下文 — 从 Groups/<name>/chat/ 下日期 .md 文件读取 */
+/** 群聊上下文 — 只取最新 1 个文件，截断至 1500 字符 */
 function buildGroupChatContext(agentName: string, groupName?: string): string {
   if (!groupName) return '';
   const chatDir = path.join(process.cwd(), 'Groups', groupName, 'chat');
-  if (!fs.existsSync(chatDir)) {
-    return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。用 group_send 发言。`;
-  }
+  if (!fs.existsSync(chatDir)) return `\n群聊${groupName}:暂无消息,用group_send发言.`;
   try {
-    // Read last 3 days of chat files
-    const files = fs.readdirSync(chatDir)
-      .filter(f => f.endsWith('.md'))
-      .sort()
-      .slice(-3);
-    if (files.length === 0) {
-      return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。用 group_send 发言。`;
-    }
-    const parts: string[] = [];
-    for (const f of files) {
-      const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-      parts.push(`### ${f.replace('.md', '')}\n${raw}`);
-    }
-    const text = parts.join('\n\n');
-    const ctx = text.length > 6000 ? '...(earlier omitted)\n\n' + text.slice(-6000) : text;
-    return `\n\n## 你正在 ${groupName} 群聊中。最近消息：\n\n${ctx}\n\n用 group_send 工具发言。`;
+    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort();
+    if (files.length === 0) return `\n群聊${groupName}:暂无消息,用group_send发言.`;
+    // Only the latest file, max 1500 chars
+    const latest = files[files.length - 1];
+    const raw = fs.readFileSync(path.join(chatDir, latest), 'utf-8');
+    const ctx = raw.length > 1500 ? raw.slice(-1500) : raw;
+    return `\n群聊${groupName}最近(${latest.replace('.md','')}):\n${ctx}`;
   } catch {
-    return `\n\n## 你正在 ${groupName} 群聊中。暂无消息。`;
+    return `\n群聊${groupName}:读取失败.`;
   }
 }
 
@@ -153,9 +158,10 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
     return quickError(`Agent "${agentName}" not found`);
   }
 
-  const history = getChatHistory(agentName);
-  const isNew = !history.sessionId;
-  const sessionId = history.sessionId || randomUUID();
+  // Use cached session-id (60s TTL) to avoid disk read on rapid-fire messages
+  const cachedSid = getCachedSessionId(agentName);
+  const isNew = !cachedSid;
+  const sessionId = cachedSid || randomUUID();
 
   // ── KV Cache Optimization ─────────────────────────────
   // 原则：文件路径稳定 → content hash 不变不重写 → mtime 不变 → cache hit
@@ -171,7 +177,7 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
 
   // 1. 身份 + Group 成员 — 只在 join/leave group 时变化
   const identity = buildIdentity(agentName);
-  const membership = buildGroupMembership(agentName);
+  const membership = getGroupMembership(agentName);
   const groupChat = buildGroupChatContext(agentName, groupName);
   // Stable part (identity + membership): cached, rarely changes
   // Group chat context: always appended, changes per message
@@ -291,10 +297,11 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
         if (code !== 0 && !allEvents.length) {
           ctrl.enqueue({ type: 'error', content: stderrOut || `CLI exit ${code}`, timestamp: ts() });
         }
-        history.messages.push({ role: 'user', content: userMessage, timestamp: ts() });
-        history.messages.push({ role: 'assistant', content: fullReply, events: allEvents, timestamp: ts() });
-        history.sessionId = sessionId;
-        saveChatHistory(agentName, history);
+        const hist = getChatHistory(agentName);
+        hist.messages.push({ role: 'user', content: userMessage, timestamp: ts() });
+        hist.messages.push({ role: 'assistant', content: fullReply, events: allEvents, timestamp: ts() });
+        hist.sessionId = sessionId;
+        saveChatHistory(agentName, hist);
         ctrl.enqueue({ type: 'done', content: '', timestamp: ts() });
         ctrl.close();
       });

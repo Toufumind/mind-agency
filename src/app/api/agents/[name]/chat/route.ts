@@ -1,7 +1,41 @@
 import { NextRequest } from 'next/server';
 import { createChatStream, getChatHistory, clearChat } from '@/lib/chat';
+import { writeAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
+
+// ── Idempotency cache: same agent + same message within 10s → replay cached SSE ──
+const sseCache = new Map<string, { chunks: string[]; ts: number }>();
+const SSE_CACHE_TTL = 10_000;
+
+/** Periodically purge expired cache entries */
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of sseCache) {
+    if (now - v.ts > SSE_CACHE_TTL) sseCache.delete(k);
+  }
+}, 15_000).unref?.();
+
+const sseHeaders = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive',
+  'X-Accel-Buffering': 'no',
+};
+
+function replaySSE(chunks: string[]): Response {
+  let i = 0;
+  const body = new ReadableStream({
+    pull(ctrl) {
+      if (i < chunks.length) {
+        ctrl.enqueue(new TextEncoder().encode(chunks[i++]));
+      } else {
+        ctrl.close();
+      }
+    },
+  });
+  return new Response(body, { headers: sseHeaders });
+}
 
 export async function POST(
   request: NextRequest,
@@ -26,8 +60,26 @@ export async function POST(
     return new Response(JSON.stringify({ error: 'Empty message' }), { status: 400 });
   }
 
+  // ── Idempotency check ──
+  const cacheKey = `${name}::${group}::${message}`;
+  const cached = sseCache.get(cacheKey);
+  if (cached && (Date.now() - cached.ts) < SSE_CACHE_TTL) {
+    return replaySSE(cached.chunks);
+  }
+
+  // Audit log
+  writeAudit({
+    agent: name,
+    action: 'chat.message',
+    resource: group ? `group:${group}` : `agent:${name}`,
+    details: message.slice(0, 200),
+  });
+
   // SSE stream — pass group for context injection
   const stream = createChatStream(name, message, group || undefined);
+
+  // Buffer SSE chunks for caching (lazily, only if the stream completes)
+  const chunks: string[] = [];
 
   const sseStream = new ReadableStream({
     async start(controller) {
@@ -37,25 +89,24 @@ export async function POST(
           const { done, value } = await reader.read();
           if (done) break;
           const line = `data: ${JSON.stringify(value)}\n\n`;
+          chunks.push(line);
           controller.enqueue(new TextEncoder().encode(line));
         }
       } catch (err) {
         const errEvt = JSON.stringify({ type: 'error', content: String(err), timestamp: new Date().toISOString() });
+        chunks.push(`data: ${errEvt}\n\n`);
         controller.enqueue(new TextEncoder().encode(`data: ${errEvt}\n\n`));
       }
-      controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
+      const doneLine = `data: [DONE]\n\n`;
+      chunks.push(doneLine);
+      controller.enqueue(new TextEncoder().encode(doneLine));
       controller.close();
+      // Cache completed response for idempotent replay
+      sseCache.set(cacheKey, { chunks, ts: Date.now() });
     }
   });
 
-  return new Response(sseStream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    },
-  });
+  return new Response(sseStream, { headers: sseHeaders });
 }
 
 export async function GET(
