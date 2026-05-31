@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp } from 'lucide-react';
 
 interface ChatEvent {
@@ -42,8 +44,6 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
     setBusy(true);
 
     setMsgs(p => [...p, { role: 'user', content: t, events: [], timestamp: new Date().toISOString() }]);
-    // placeholder
-    const aiIdx = msgs.length + 1;
     setMsgs(p => [...p, { role: 'assistant', content: '', events: [], timestamp: new Date().toISOString() }]);
 
     try {
@@ -124,8 +124,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
         )}
 
         {msgs.map((msg, i) => {
-          const isUser = msg.role === 'user';
-          if (isUser) {
+          if (msg.role === 'user') {
             return (
               <div key={i} className="flex justify-end">
                 <div className="max-w-[70%] bg-[#1f2937] text-[#e6edf3] rounded-xl px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap">
@@ -141,12 +140,12 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
                 if (evt.type === 'thinking') return <Think key={j} text={evt.content || ''} />;
                 if (evt.type === 'tool_use') return <Tool key={j} name={evt.toolName || ''} input={evt.toolInput || ''} />;
                 if (evt.type === 'tool_result') return <Result key={j} output={evt.toolOutput || ''} />;
-                if (evt.type === 'text') return <Text key={j} text={evt.content || ''} />;
+                if (evt.type === 'text') return <MdText key={j} text={evt.content || ''} />;
                 if (evt.type === 'error') return <Err key={j} text={evt.content || ''} />;
                 return null;
               })}
               {!msg.events.some(e => e.type === 'text') && msg.content && (
-                <Text text={msg.content} />
+                <MdText text={msg.content} />
               )}
             </div>
           );
@@ -183,6 +182,47 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Markdown text block ──
+const mdComponents = {
+  code({ node, className, children, ...props }: any) {
+    const isInline = !className;
+    if (isInline) {
+      return <code className="bg-[#21262d] text-[#e6edf3] px-1.5 py-0.5 rounded text-[12px]" {...props}>{children}</code>;
+    }
+    return (
+      <pre className="bg-[#161b22] border border-[#21262d] rounded-lg p-3 my-2 overflow-x-auto text-[12px] leading-relaxed">
+        <code className={className} {...props}>{children}</code>
+      </pre>
+    );
+  },
+  p({ children }: any) { return <p className="my-1.5 leading-relaxed">{children}</p>; },
+  ul({ children }: any) { return <ul className="list-disc pl-5 my-1.5 space-y-0.5">{children}</ul>; },
+  ol({ children }: any) { return <ol className="list-decimal pl-5 my-1.5 space-y-0.5">{children}</ol>; },
+  li({ children }: any) { return <li className="text-[14px] text-[#e6edf3]">{children}</li>; },
+  a({ children, href }: any) { return <a href={href} className="text-[#58a6ff] hover:underline" target="_blank">{children}</a>; },
+  blockquote({ children }: any) { return <blockquote className="border-l-2 border-[#30363d] pl-3 my-2 text-[#8b949e] italic">{children}</blockquote>; },
+  h1({ children }: any) { return <h1 className="text-[16px] font-semibold text-[#e6edf3] mt-3 mb-1">{children}</h1>; },
+  h2({ children }: any) { return <h2 className="text-[15px] font-semibold text-[#e6edf3] mt-3 mb-1">{children}</h2>; },
+  h3({ children }: any) { return <h3 className="text-[14px] font-semibold text-[#e6edf3] mt-2 mb-1">{children}</h3>; },
+  table({ children }: any) { return <div className="overflow-x-auto my-2"><table className="min-w-full border-collapse text-[13px]">{children}</table></div>; },
+  thead({ children }: any) { return <thead className="border-b border-[#21262d]">{children}</thead>; },
+  th({ children }: any) { return <th className="text-left px-2 py-1 text-[#8b949e] font-medium">{children}</th>; },
+  td({ children }: any) { return <td className="px-2 py-1 border-t border-[#21262d] text-[#e6edf3]">{children}</td>; },
+  hr() { return <hr className="border-[#21262d] my-3" />; },
+  strong({ children }: any) { return <strong className="font-semibold text-[#e6edf3]">{children}</strong>; },
+  em({ children }: any) { return <em className="italic text-[#e6edf3]">{children}</em>; },
+};
+
+function MdText({ text }: { text: string }) {
+  return (
+    <div className="text-[14px] text-[#e6edf3] leading-relaxed">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -231,10 +271,6 @@ function Result({ output }: { output: string }) {
       {on && <pre className="mt-1 ml-6 pl-3 border-l-2 border-[#1f3a3f] text-[11px] text-[#8b949e] whitespace-pre-wrap max-h-[200px] overflow-y-auto">{output}</pre>}
     </div>
   );
-}
-
-function Text({ text }: { text: string }) {
-  return <div className="text-[14px] text-[#e6edf3] leading-relaxed whitespace-pre-wrap pl-0">{text}</div>;
 }
 
 function Err({ text }: { text: string }) {
