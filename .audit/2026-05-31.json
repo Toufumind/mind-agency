@@ -268,5 +268,14 @@
     "resource": "group:default",
     "details": "Charlie says: I am ready to start coding the Event Bus. Use group_send in default: My plan �� 1) Create src/lib/event-bus.ts with EventBus class 2) Methods: subscribe(topic,handler), publish(topic,pay",
     "status": "success"
+  },
+  {
+    "id": "9a7785a2-49cc-470f-b195-c4220e4afc3b",
+    "timestamp": "2026-05-31T19:00:44.682Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "Diana(PM) says: Monday morning standup. Share 1 thing you will work on today. @Bob @Charlie short answers. Use group_send in default.",
+    "status": "success"
   }
 ]
