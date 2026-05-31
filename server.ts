@@ -28,7 +28,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'crypto';
 import { EventBus, EventType, EventBusError, createEvent, WorkflowEngine, parseWorkflowYaml } from './src/lib/event-bus.js';
 import type { EventMessage, WorkflowRunRecord } from './src/lib/event-bus.js';
-import { startScheduler, stopScheduler } from './src/lib/scheduler.js';
+import { startScheduler, stopScheduler, getSchedulerStats } from './src/lib/scheduler.js';
 
 const PORT = parseInt(process.env.WS_PORT || '3001', 10);
 
@@ -201,6 +201,16 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const stats = bus.getOutboxStats();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(stats, null, 2));
+    return;
+  }
+
+  // ── GET /events/load ──────────────────────────────────────────────
+
+  if (req.method === 'GET' && req.url === '/events/load') {
+    const load = workflowEngine.getSystemLoad();
+    const dagStats = getSchedulerStats();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ...load, scheduler: dagStats }, null, 2));
     return;
   }
 

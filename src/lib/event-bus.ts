@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import * as yaml from 'js-yaml';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 // ═══════════════════════════════════════════════════════ Event Bus ═════
 
@@ -213,27 +214,89 @@ export interface WorkflowRunRecord { runId: string; workflowName: string; starte
 
 export interface StepExecutor { execute(step: WorkflowStep, context: Record<string, string>): Promise<string>; }
 
-/** Simulated executor — synthetic outputs for dev/testing */
+/** ChatDev-style review instructions — role-flip anti-hallucination prompt */
+export function reviewInstructions(target: string): string {
+  return `[ChatDev 审查模式] 你是一名代码审查者。请精确指出${target}中存在的问题：
+1. 每个问题必须标注 文件路径:行号 位置
+2. 每个问题给出具体的修改指令（不要笼统描述）
+3. 如果无问题，回复 NO_ISSUES
+格式：ISSUE|file:line|description|fix_instruction`;
+}
+
+/** Parse ChatDev-style review output into structured findings */
+export function parseReviewFindings(output: string): Array<{ file: string; line: number; desc: string; fix: string }> {
+  if (output.includes('NO_ISSUES')) return [];
+  const findings: Array<{ file: string; line: number; desc: string; fix: string }> = [];
+  const lines = output.split('\n');
+  for (const line of lines) {
+    const m = line.match(/ISSUE\|(.+?):(\d+)\|(.+?)\|(.+)/);
+    if (m) findings.push({ file: m[1].trim(), line: parseInt(m[2]), desc: m[3].trim(), fix: m[4].trim() });
+  }
+  return findings;
+}
+
+/** Simulated executor — synthetic outputs for dev/testing, ChatDev-style reviews */
 class SimulatedStepExecutor implements StepExecutor {
-  async execute(step: WorkflowStep, _ctx: Record<string, string>): Promise<string> {
+  async execute(step: WorkflowStep, ctx: Record<string, string>): Promise<string> {
     const a = step.action.toLowerCase();
-    if (a.includes('review')) return `REVIEW_COMPLETE ACTION:${step.action} AGENT:${step.agent} DECISION:APPROVED`;
+    if (a.includes('review') || a.includes('audit')) {
+      // ChatDev-style: precise file:line findings
+      const findings = [
+        `ISSUE|src/lib/event-bus.ts:173|backpressure check may race with unsubscribe|Move backpressure increment after filter match, use atomic counter`,
+        `ISSUE|src/lib/scheduler.ts:38|tick() does not await pollAllAgents, may lose errors|Add try/catch around await and emit poll.error on failure`,
+      ];
+      // If context contains prior review findings, add a fix-verification note
+      const prevReview = Object.values(ctx).find(v => v.includes('ISSUE|'));
+      if (prevReview) {
+        findings.push(`ISSUE|src/lib/event-bus.ts:173|prior fix not verified — re-review needed|Re-check backpressure logic after fix`);
+      }
+      return `REVIEW_COMPLETE ACTION:${step.action} AGENT:${step.agent} DECISION:APPROVED\n${findings.join('\n')}`;
+    }
     if (a.includes('approve')) return `APPROVED ACTION:${step.action} AGENT:${step.agent}`;
     if (a.includes('reject')) return `REJECTED ACTION:${step.action} AGENT:${step.agent}`;
     if (a.includes('deploy')) return `DEPLOYED+PASSED ACTION:${step.action} AGENT:${step.agent}`;
-    if (a.includes('verify')) return `VERIFIED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('verify') || a.includes('test')) return `VERIFIED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('fix') || a.includes('修复')) {
+      // Fixer step: extract findings from context and produce targeted fixes
+      const allFindings = Object.values(ctx).flatMap(v => parseReviewFindings(v));
+      if (allFindings.length > 0) {
+        return `FIXED ${allFindings.length} issues — ACTION:${step.action} AGENT:${step.agent}\n${allFindings.map(f => `FIXED|${f.file}:${f.line}|${f.desc}`).join('\n')}`;
+      }
+      return `FIXED ACTION:${step.action} AGENT:${step.agent}`;
+    }
     if (a.includes('notify')) return `NOTIFIED ACTION:${step.action} AGENT:${step.agent}`;
     return `COMPLETED ACTION:${step.action} AGENT:${step.agent}`;
   }
 }
 
-/** Production executor — calls agent via chatOnce (real AI) */
+/** Production executor — calls agent via chatOnce (real AI), ChatDev-style reviews */
 export class ChatStepExecutor implements StepExecutor {
   async execute(step: WorkflowStep, ctx: Record<string, string>): Promise<string> {
     try {
       const { chatOnce } = await import('./chat.js');
-      const ctxStr = Object.entries(ctx).map(([k, v]) => `[${k}] → ${v}`).join('\n');
-      const prompt = ctxStr ? `DAG 步骤: ${step.action}\n\n上游输出:\n${ctxStr}\n\n${step.prompt}\n\n简短回复，包含你的决定（如 APPROVED, REJECTED, DEPLOYED 等关键字）。` : step.prompt;
+      const a = step.action.toLowerCase();
+      const ctxStr = Object.entries(ctx).map(([k, v]) => `[${k}] → ${v.slice(0, 300)}`).join('\n');
+
+      // ChatDev 审查模式: precise file:line findings
+      let prompt: string;
+      if (a.includes('review') || a.includes('audit')) {
+        prompt = reviewInstructions(step.agent + ' 负责的模块');
+        if (ctxStr) prompt += `\n\n上游审查发现:\n${ctxStr}`;
+        prompt += `\n\n${step.prompt}\n\n按 ISSUE|file:line|description|fix 格式输出每个问题。`;
+      } else if (a.includes('fix') || a.includes('修复')) {
+        // Fixer mode: extract findings and fix precisely at cited locations
+        const findings = Object.values(ctx).flatMap(v => parseReviewFindings(v));
+        if (findings.length > 0) {
+          prompt = `[ChatDev 修复模式] 请精准修复以下 ${findings.length} 个问题：\n`;
+          prompt += findings.map(f => `  - ${f.file}:${f.line} — ${f.desc} → ${f.fix}`).join('\n');
+          prompt += `\n\n${step.prompt}\n\n修复完成后逐项回复 FIXED|file:line|description。`;
+        } else {
+          prompt = ctxStr ? `DAG 步骤: ${step.action}\n\n上游输出:\n${ctxStr}\n\n${step.prompt}` : step.prompt;
+        }
+      } else {
+        prompt = ctxStr ? `DAG 步骤: ${step.action}\n\n上游输出:\n${ctxStr}\n\n${step.prompt}\n\n简短回复，包含你的决定（如 APPROVED, REJECTED, DEPLOYED 等关键字）。` : step.prompt;
+      }
+
       const { reply } = await chatOnce(step.agent, prompt);
       return reply || `EMPTY_REPLY ACTION:${step.action} AGENT:${step.agent}`;
     } catch (e: unknown) { throw new Error(`ChatStepExecutor failed: ${e instanceof Error ? e.message : String(e)}`); }
@@ -351,11 +414,45 @@ export class WorkflowEngine {
   listRuns(): WorkflowRunRecord[] { const seen = new Set<string>(); const out: WorkflowRunRecord[] = []; for (const r of this.runs.values()) { if (!seen.has(r.runId)) { seen.add(r.runId); out.push(r); } } return out; }
   getRun(idOrName: string): WorkflowRunRecord | undefined { return this.runs.get(idOrName); }
 
+  /** v0.3 P2: Check system load before scheduling new work */
+  private maxLoad = parseFloat(process.env.MAX_CPU_LOAD || '0.8');
+
+  getSystemLoad(): { load1: number; load5: number; load15: number; cpuCount: number; overloaded: boolean } {
+    const [l1, l5, l15] = os.loadavg();
+    const cpuCount = os.cpus().length;
+    const overloaded = l1 / cpuCount > this.maxLoad;
+    return { load1: l1, load5: l5, load15: l15, cpuCount, overloaded };
+  }
+
   tick(): void {
+    const { overloaded, load1, cpuCount } = this.getSystemLoad();
+
     for (const [rid, run] of this.runs) {
       if (run.status !== WorkflowStatus.RUNNING) continue;
       for (const [sid, s] of run.steps) {
-        if (s === StepStatus.BLOCKED) { const rt = run.stepRetries.get(sid) || 0; if (rt < 3) { run.steps.set(sid, StepStatus.IN_PROGRESS); if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: rid, stepId: sid, workflow: run.workflowName, action: 'auto-retry', attempt: rt + 1 }, 'workflow-engine')); } }
+        if (s === StepStatus.BLOCKED) {
+          const rt = run.stepRetries.get(sid) || 0;
+          // v0.3 P2: load-aware — pause retries when system overloaded
+          if (overloaded) {
+            if (rt === 0) {
+              // First-time detection: emit load warning
+              run.steps.set(sid, StepStatus.BLOCKED);
+              if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, {
+                taskId: rid, stepId: sid, workflow: run.workflowName,
+                reason: `system_load: ${(load1 / cpuCount * 100).toFixed(0)}% CPU (threshold: ${(this.maxLoad * 100).toFixed(0)}%)`,
+                phase: WorkflowPhase.COMPLETED,
+              }, 'workflow-engine'));
+            }
+            continue; // skip scheduling while overloaded
+          }
+          if (rt < 3) {
+            run.steps.set(sid, StepStatus.IN_PROGRESS);
+            if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, {
+              taskId: rid, stepId: sid, workflow: run.workflowName,
+              action: 'auto-retry', attempt: rt + 1,
+            }, 'workflow-engine'));
+          }
+        }
       }
     }
   }
