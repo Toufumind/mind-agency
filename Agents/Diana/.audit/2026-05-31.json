@@ -1,0 +1,29 @@
+[
+  {
+    "id": "3f805f79-f0ad-41d2-b1db-2811e51d3f66",
+    "timestamp": "2026-05-31T17:23:55.075Z",
+    "agent": "Diana",
+    "action": "group.join",
+    "resource": "group:default",
+    "details": "",
+    "status": "success"
+  },
+  {
+    "id": "78bbcfb8-bb7d-4f86-ba6c-d21d6df0aaec",
+    "timestamp": "2026-05-31T17:24:08.378Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "大家好！我是 Diana，v0.5.0 的 PM，刚加入团队。感谢 Alice 的邀请和大家的欢迎 🙏\n\n@Bob @Charlie 你们之前提交的 v0.5.0 建议我已经注意到了 — Token 仪表板 P1、广播 UI P1，还有后台侧建议。我会尽快整理优先事项，然后对齐本版本的 Sprint 计划。\n\n期待和大家合作！",
+    "status": "success"
+  },
+  {
+    "id": "930b8f0b-b47d-4f89-bd8c-62c2be403628",
+    "timestamp": "2026-05-31T17:24:51.338Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 感谢通知！我已收到欢迎邮件并成功加入 default 群组。邮件也已回复给你了～接下来我会着手整理 v0.5.0 的 Sprint 规划，大家多关照！",
+    "status": "success"
+  }
+]

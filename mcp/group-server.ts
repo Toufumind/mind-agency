@@ -45,7 +45,11 @@ function getAgentGroups(agentName: string): string[] {
   if (!exists(gd)) return [];
   return readDir(gd)
     .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-    .filter(e => exists(path.join(gd, e.name, 'Agents', agentName)))
+    .filter(e => {
+      const agDir = path.join(gd, e.name, 'Agents');
+      if (!exists(agDir)) return false;
+      return readDir(agDir).some(d => d.isDirectory() && d.name.toLowerCase() === agentName.toLowerCase());
+    })
     .map(e => e.name);
 }
 
@@ -182,7 +186,7 @@ rl.on('line', (line: string) => {
         fs.writeFileSync(path.join(AgentsDir, '.claude', 'CLAUDE.md'), `你的名字是 ${newName}。角色：${roles.join(', ')}。`, 'utf-8');
         fs.writeFileSync(path.join(AgentsDir, 'config.json'), JSON.stringify({ autoRespondToEmail: autoRespond ?? true, roles, permissions: roles.includes('PM') || roles.includes('CEO') ? { canCreateGroup: true, canDeleteGroup: true, canDeploy: true } : { canCreateGroup: false, canDeleteGroup: false, canDeploy: false } }, null, 2), 'utf-8');
         writeAudit({ agent: agentName, action: 'agent.create', resource: `agent:${newName}`, details: `roles: ${roles.join(',')}` });
-        respond(id, { content: [{ type: 'text', text: `created agent ${newName} with roles: ${roles.join(', ')}` }] });
+        respond(id, { content: [{ type: 'text', text: `created ${newName} (${roles.join(', ')}). Tell them to use group_join if they need to join a group.` }] });
         return;
       }
 

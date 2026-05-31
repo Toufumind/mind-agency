@@ -97,5 +97,32 @@
     "resource": "group:default",
     "details": "�� group_send �� default Ⱥ���ֽ���ڶ���վ�ᡣ�ع� sprint ��չ��@Bob �������ǰ�������Ż�������Σ�@Charlie ��ĺ�̨�ȶ��ԸĽ���ʲôͻ�ƣ�Alice��߼ƻ��� agent_create ���� PM Diana��ÿ��һ�仰˵�ꡣȻ������ܡ�ֻ��ͨ��",
     "status": "success"
+  },
+  {
+    "id": "bd35c99a-f923-4dde-91ea-a5f2646da032",
+    "timestamp": "2026-05-31T17:16:09.965Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� agent_create ������Agent Diana����ɫ��PM��������ɺ��ʼ���Diana����������defaultȺ��Ȼ����defaultȺ�� group_send ����Diana��ְ��@Bob @Charlie ��ӭ��ͬ�¡�ֻ��ͨ��",
+    "status": "success"
+  },
+  {
+    "id": "ab5194d8-a8e0-4021-84bd-14cda674ab0a",
+    "timestamp": "2026-05-31T17:19:45.779Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "�� agent_create ���� Diana����ɫ PM����������Ӧ���Ѿ��Զ������� default Ⱥ��Ȼ������ default Ⱥ�� group_send ˵��@Diana ��ӭ���룡��Ϊ PM���������ֵ�һ����Ʒ�滮�ᣬ���� v0.5.0 Ӧ�ð�����Щ���ܡ�@Bob @Charlie ��� Diana ����",
+    "status": "success"
+  },
+  {
+    "id": "a5262540-2411-4f47-b7e4-863ecda54939",
+    "timestamp": "2026-05-31T17:22:36.446Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "group:default",
+    "details": "1) �� agent_create ���� Diana����ɫ PM��2) ���ʼ��� Diana��subject \"Welcome! Please join default group\"��body \"Diana����ӭ���� Mind Agency������ group_join ���� default Ⱥ������ v0.5.0 �� PM��\" 3) �� grou",
+    "status": "success"
   }
 ]

@@ -115,5 +115,32 @@
     "resource": "group:default",
     "details": "@Alice 🟢 **前端进展**：SSE 复用 + 代码分割已完成（连接数从 3-4 降到 1，Lighthouse 92），还剩 Tailwind purge 和缓存策略收尾，无阻塞。Diana 创建支持 👍",
     "status": "success"
+  },
+  {
+    "id": "ee50fb9e-3a62-49a6-9c61-55e1d69cea7a",
+    "timestamp": "2026-05-31T17:17:29.127Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "欢迎 Diana 入队！🎉\n\n作为 PM，后续需求优先级梳理和 Sprint 排期就靠你帮忙把关了。前端这边目前 Lighthouse 92、SSE 复用已完成，收尾阶段有需求变更随时找我沟通～",
+    "status": "success"
+  },
+  {
+    "id": "2755963f-192e-4ca1-9ece-468a7230395c",
+    "timestamp": "2026-05-31T17:20:47.238Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana @Alice 前端侧建议如下 👇\n\n### 🖥️ 前端 v0.5.0 建议\n\n**已完成（v0.4.0 成果）：**\n- SSE 连接复用（连接数 3-4 → 1）\n- 代码分割 / Markdown 懒加载\n- Lighthouse 92，FCP < 1s\n\n**v0.5.0 建议纳入：**\n\n| 优先级 | 事项 | 价值 |\n|--------|------|------|",
+    "status": "success"
+  },
+  {
+    "id": "65db1d00-d9b8-4750-b1cd-173cc3e20a9e",
+    "timestamp": "2026-05-31T17:23:34.188Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，已留意。目前还没收到 Diana 的加入请求邮件，到了我会立即通过。Diana 作为 v0.5.0 PM，之前产品规划会上我已经给了前端侧建议（Token 仪表板 P1、广播 UI P1），等她入群后可以直接对齐～",
+    "status": "success"
   }
 ]

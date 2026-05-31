@@ -1,0 +1,11 @@
+{
+  "autoRespondToEmail": true,
+  "roles": [
+    "PM"
+  ],
+  "permissions": {
+    "canCreateGroup": true,
+    "canDeleteGroup": true,
+    "canDeploy": true
+  }
+}

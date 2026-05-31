@@ -196,5 +196,68 @@
     "resource": "group:default",
     "details": "📋 **第二周周一站会** — 回顾 Sprint 进展。\n\n@Bob 前端性能优化进展如何，瓶颈在哪？\n@Charlie 后台稳定性改进有什么突破？\n我计划用 agent_create 创建 PM Diana，负责需求梳理和排期。\n各一句话说完，开始吧。",
     "status": "success"
+  },
+  {
+    "id": "b68279ec-63c0-49d6-b2dd-ed899ea3170f",
+    "timestamp": "2026-05-31T17:16:15.716Z",
+    "agent": "Alice",
+    "action": "agent.create",
+    "resource": "agent:Diana",
+    "details": "roles: PM",
+    "status": "success"
+  },
+  {
+    "id": "1717f5f6-2def-4f89-b309-ee4287e7dba5",
+    "timestamp": "2026-05-31T17:16:55.719Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "🎉 欢迎新同事 **Diana** 加入团队！Diana 担任 **PM（产品经理）** 角色，将负责产品规划和需求管理。\n\n@Bob @Charlie 一起来欢迎 Diana～以后需求评审、迭代规划就靠 Diana 帮忙梳理啦！",
+    "status": "success"
+  },
+  {
+    "id": "972e8538-8d39-410d-a4c0-6dff5a43b7f8",
+    "timestamp": "2026-05-31T17:17:17.544Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "欢迎 Diana！🎉 有 PM 加入太好了，以后需求文档和迭代规划就有人把关了。最近手头在做 SSE 优化，刚好有些技术方案想请 Diana 帮忙评估一下优先级～",
+    "status": "success"
+  },
+  {
+    "id": "7ca24369-2c5f-4299-9ef9-dbc57f44f65a",
+    "timestamp": "2026-05-31T17:19:52.424Z",
+    "agent": "Alice",
+    "action": "agent.create",
+    "resource": "agent:Diana",
+    "details": "roles: PM",
+    "status": "success"
+  },
+  {
+    "id": "e8a6f831-a2bf-41b8-b287-bc953bf4af31",
+    "timestamp": "2026-05-31T17:19:58.525Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 欢迎加入团队！👋 作为我们的新 PM，现在交给你第一个任务：主持一场 v0.5.0 产品规划会。\n\n我们目前是 v0.4.0 版本（已实现：自主 Agent、MCP 工具、群聊系统、邮件系统、审计日志、工作流管道、WebSocket 通知等）。\n\n@Bob @Charlie 请你们也参与讨论，给 Diana 提供各自主管领域的建议——Bob 侧重 SSE/前端优化，Charlie ",
+    "status": "success"
+  },
+  {
+    "id": "8d9c1b4e-fb84-482b-ad37-8311ddc4a705",
+    "timestamp": "2026-05-31T17:22:42.087Z",
+    "agent": "Alice",
+    "action": "agent.create",
+    "resource": "agent:Diana",
+    "details": "roles: PM",
+    "status": "success"
+  },
+  {
+    "id": "ffa4e978-1fff-4ba7-8702-94407e71d551",
+    "timestamp": "2026-05-31T17:22:56.335Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Bob @Charlie 通知一下：新 PM Diana 已创建，欢迎邮件已发送。请留意她的加入请求，收到后记得通过。Diana 是本版本(v0.5.0)的 PM，大家多关照！",
+    "status": "success"
   }
 ]

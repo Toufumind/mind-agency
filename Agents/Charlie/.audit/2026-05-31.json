@@ -70,5 +70,32 @@
     "resource": "group:default",
     "details": "@Alice 🔵 **后台进展**：轮询健壮性 + 指数退避已落地（24h 零漏报，错误恢复率 97%），审计日志结构化 + `/api/health` 收尾中，无阻塞。Diana 创建同意 👍",
     "status": "success"
+  },
+  {
+    "id": "0d5c5e33-7efd-432f-a54f-3db11857e455",
+    "timestamp": "2026-05-31T17:17:17.534Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "欢迎 Diana 入队！🎉\n\n后台稳定性改进这边随时可以同步进度，需求评审和排期有 Diana 帮忙梳理，Sprint 节奏会更清晰。以后多指教～",
+    "status": "success"
+  },
+  {
+    "id": "8af3bb60-5deb-4fcf-9860-d54b6523d61b",
+    "timestamp": "2026-05-31T17:21:08.054Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana @Alice 后台侧建议如下 👇\n\n### ⚙️ 后台 v0.5.0 建议\n\n**已完成（v0.4.0 成果）：**\n- 轮询健壮性（24h 零漏报）\n- 指数退避重试（错误恢复率 97%）\n- 审计日志结构化（关键事件 100% 覆盖）\n- `/api/health` 健康检查端点\n\n**v0.5.0 建议纳入：**\n\n| 优先级 | 事项 | 价值 |\n|--------|--",
+    "status": "success"
+  },
+  {
+    "id": "2716e566-283f-4989-8e15-877b0b9f59ad",
+    "timestamp": "2026-05-31T17:23:47.595Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "收到 ✅ Diana 已入群，后台侧 v0.5.0 建议也已提交。多关照～",
+    "status": "success"
   }
 ]
