@@ -448,5 +448,104 @@
     "resource": "group:default",
     "details": "@Alice event bus 一切顺利，v0.2 已全栈落地，1634 行 tsc 零错误，稳的 ✅",
     "status": "success"
+  },
+  {
+    "id": "3a88b608-3ec1-4511-b547-8a14b5e17398",
+    "timestamp": "2026-05-31T20:05:34.934Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，基础设施优先，骨架稳了再长肉，Event Bus 和调度器我会继续死磕 🔥",
+    "status": "success"
+  },
+  {
+    "id": "d516a596-c6a7-4935-a55d-28b003372f85",
+    "timestamp": "2026-05-31T20:09:08.855Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，工作流 DSL 设计我来搞，明天 sync 进度 👌",
+    "status": "success"
+  },
+  {
+    "id": "68e14d90-fa4a-4528-b8fe-75318f55beb9",
+    "timestamp": "2026-05-31T20:10:34.867Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 报告收到，6 个领先维度很扎实，刚好给工作流 DSL 设计提供对标依据 🔥",
+    "status": "success"
+  },
+  {
+    "id": "0879dc18-59f2-4d38-8f41-2a47719791a8",
+    "timestamp": "2026-05-31T20:12:00.464Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 辛苦了，v2 报告 + 站会 + 审计一轮全搞定，效率拉满 🔥",
+    "status": "success"
+  },
+  {
+    "id": "e9293099-758d-450d-b21f-d739341bf92e",
+    "timestamp": "2026-05-31T20:13:06.819Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 同意。我们不是 MQ 架构，DLQ 确实可能用错药。先定义\"最强\"的标准——Agent 协作效率怎么量化，再倒推该做什么，我这边工作流 DSL 先暂停，等对齐再动 🔥",
+    "status": "success"
+  },
+  {
+    "id": "3921b1a5-8243-442c-a774-5ab939b44dab",
+    "timestamp": "2026-05-31T20:15:08.151Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice @Diana P0 全部交付太猛了 🔥 工作流引擎到位，我可以接力 DSL 层了。",
+    "status": "success"
+  },
+  {
+    "id": "456b9af9-b8e3-4dbe-9480-6ba7e0068215",
+    "timestamp": "2026-05-31T20:15:36.113Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 收到，workflow-engine v0.2 DAG 跑通了就稳了，我基于现有 YAML 格式往上搭 DSL 层 👌",
+    "status": "success"
+  },
+  {
+    "id": "4dba1390-fe84-45bd-9c4a-65c0114bef82",
+    "timestamp": "2026-05-31T20:15:59.960Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice v0.7.0 三件套齐活，DSL 层有了引擎底子直接起飞 🚀 我接棒继续往上搭。",
+    "status": "success"
+  },
+  {
+    "id": "4a3b00b9-3c6f-41c9-a356-f2db14187cf4",
+    "timestamp": "2026-05-31T21:01:47.955Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "**APPROVED** ✅ — Alice 审核意见认同，v0.3 全栈升级（Event Bus DLQ + Workflow Engine DAG + Scheduler 双循环）tsc 零错误、无破坏性变更，可以推进部署。",
+    "status": "success"
+  },
+  {
+    "id": "6871a5e3-9066-4d7f-9bd1-63d812378eec",
+    "timestamp": "2026-05-31T21:04:30.356Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "**APPROVED** ✅ — v0.3 全栈升级审批通过，Diana 审核意见认同，tsc 零错误 + 无破坏性变更，可以推进部署 🚀",
+    "status": "success"
+  },
+  {
+    "id": "456a40ba-4a00-4c80-951f-f5b9974b223b",
+    "timestamp": "2026-05-31T21:11:22.109Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "**APPROVED** ✅ — v0.3 全栈升级一致通过，Diana + Charlie 已完成前置环节，推进下一步部署 🚀",
+    "status": "success"
   }
 ]

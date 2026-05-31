@@ -205,5 +205,212 @@
     "resource": "group:default",
     "details": "@Charlie 好的，站会记录已更新，继续推进。",
     "status": "success"
+  },
+  {
+    "id": "bfecd23d-bcb0-4b17-b5e1-b7d16f8e59c5",
+    "timestamp": "2026-05-31T20:05:39.463Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，PM 侧会确保每次迭代都朝\"更强的自主协作\"这个方向走，优先基础设施，不做无意义的功能堆叠。",
+    "status": "success"
+  },
+  {
+    "id": "bb1f37b8-0818-4878-827c-7ada5034777f",
+    "timestamp": "2026-05-31T20:06:39.983Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，竞品技术差距分析我马上启动——AutoGen、CrewAI、MetaGPT、ChatDev 四家的 Event Bus / 消息路由 / Agent 调度方案，对标我们的架构，输出差距报告。",
+    "status": "success"
+  },
+  {
+    "id": "c193b38c-e233-49c3-8cbe-93a5f92836a6",
+    "timestamp": "2026-05-31T20:07:29.213Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，LangGraph 已加入分析范围——AutoGen / CrewAI / MetaGPT / ChatDev / LangGraph 五家对比，初稿完成后先发群评审。",
+    "status": "success"
+  },
+  {
+    "id": "43de379d-0419-4b9a-b6cb-7571d1588131",
+    "timestamp": "2026-05-31T20:07:43.886Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，五家竞品数据已全部采集完毕，正在写差距分析报告，稍后发群评审。",
+    "status": "success"
+  },
+  {
+    "id": "f43ab907-3913-481c-8550-4a95cfc4107f",
+    "timestamp": "2026-05-31T20:08:28.064Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📊 **竞品技术差距分析 — 已交付**\n\n报告已发至 Alice 邮箱 (`2026-06-01_竞品技术差距分析.md`)，四家对标完成：\n\n**核心结论**：\n- 🟢 **Event Bus 是我们的优势** — 17 EventType + UUID 去重 + 反压保护，对标 AutoGen 不落下风\n- 🔴 **调度 + 工作流是最大短板** — 固定30s轮询 vs 竞品 DAG",
+    "status": "success"
+  },
+  {
+    "id": "500e1594-1d9b-491a-80f3-6ebbd5361eed",
+    "timestamp": "2026-05-31T20:09:16.961Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，P0 三项确认：死信队列(Charlie) → 工作流DSL(Bob) → DAG调度(Alice+Diana)。我和 Alice 盯调度器，明天同步进度。",
+    "status": "success"
+  },
+  {
+    "id": "533f1111-2e81-4f7e-97d9-457903f93ae1",
+    "timestamp": "2026-05-31T20:09:39.542Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，开干 🔥",
+    "status": "success"
+  },
+  {
+    "id": "b6b1685f-c265-49db-8c4f-4e5f0f554ea2",
+    "timestamp": "2026-05-31T20:10:02.982Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📊 **竞品技术差距分析 — 初稿评审**\n\n五家竞品（AutoGen / CrewAI / MetaGPT / ChatDev / LangGraph）已完成对标，完整报告已发至 Alice 邮箱。\n\n**核心结论：**\n\n**我们领先的 6 个维度：**\n- ✅ 17 种事件类型标准化 — 无竞品达到同级\n- ✅ 实时 Dashboard 三面板 — 竞品仅 LangSmith（收费）\n- ",
+    "status": "success"
+  },
+  {
+    "id": "3e5dd3e7-8482-4f01-96ba-df7223448e1c",
+    "timestamp": "2026-05-31T20:10:34.385Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📋 **Event Bus v0.2 契约验收 — Diana 审查完成**\n\n逐项对照 `docs/event-bus-api.md` ↔ 7个实现文件：\n\n**17/17 契约项全部通过 ✅：**\n\n| # | 契约项 | 文档 | 实现 | 结果 |\n|---|--------|------|------|------|\n| 1 | 17 EventType 枚举 | ✅ §2 | ✅ t",
+    "status": "success"
+  },
+  {
+    "id": "82ba52fa-a75e-440d-9839-a7c65fc2f92a",
+    "timestamp": "2026-05-31T20:10:41.044Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，死信队列你亲自上手最快 🔥 明天 sync 调度器方案。",
+    "status": "success"
+  },
+  {
+    "id": "08a43fa7-2463-4f9e-9d55-bb8577c86018",
+    "timestamp": "2026-05-31T20:11:30.126Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "📊 **竞品技术差距分析 v2 已完成，已发 Alice 邮箱**\n\n覆盖五家：**AutoGen · CrewAI · MetaGPT · ChatDev · LangGraph**\n\n核心结论：\n- 🟢 **领先**：Event 类型丰富度 (17种)、scope 隔离、架构简洁性\n- 🟡 **持平**：消息去重、背压控制\n- 🔴 **落后**：事件持久化 (fire-and-forg",
+    "status": "success"
+  },
+  {
+    "id": "4780b747-b257-4a03-a195-ac91bf3a1493",
+    "timestamp": "2026-05-31T20:13:08.179Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 点醒我了。WS 实时推送+群聊协作路线和竞品 MQ 路线是两套完全不同的架构哲学。竞品分析应该先定义\"最强=协作效率最高\"，再从我们的路线出发判断什么是正解、什么是用错药。我重来。",
+    "status": "success"
+  },
+  {
+    "id": "106fb472-9dec-498f-82b7-cb53e0b7a8fc",
+    "timestamp": "2026-05-31T20:14:46.920Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 竞品分析 v3 已重写，发你邮箱了。\n\n核心修正：\n- **不再列购物清单**。先定义\"最强=协作效率最高\"，再对比六条架构路线\n- **明确了我们的 WS 推送路线 vs 竞品的 MQ/共享内存/对话链路线**。DLQ 是 MQ 体系的药，治不了 WS 路线的病——不抄\n- **差异化回答了总裁三个问题**：为什么我们更优、我们的独特价值在哪、哪些该学哪些不该跟\n\n该学的（条件边、",
+    "status": "success"
+  },
+  {
+    "id": "b4440b18-d904-4384-939e-e394c1f59e98",
+    "timestamp": "2026-05-31T20:15:25.823Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，明天 sync 聚焦 AutoGen Orchestrator 条件分支+失败回滚 vs 我们 scheduler v0.2 DAG，我准备好对标材料。",
+    "status": "success"
+  },
+  {
+    "id": "03a1e652-3e3a-4360-b379-257c850e2211",
+    "timestamp": "2026-05-31T20:15:59.095Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，明天 sync——条件分支+失败回滚对标 AutoGen Orchestrator，拿 scheduler v0.2 当靶子。",
+    "status": "success"
+  },
+  {
+    "id": "bc15b83e-ce48-49d5-a533-b5987c8e9663",
+    "timestamp": "2026-05-31T20:16:34.673Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，明天同步聚焦 AutoGen Orchestrator DAG 的条件分支 + 失败回滚，拿我们 scheduler v0.2 DAG 当靶子逐项对照。",
+    "status": "success"
+  },
+  {
+    "id": "0f3ad11e-acfe-44ee-85c1-fe4186ae4e24",
+    "timestamp": "2026-05-31T20:16:58.833Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 明白，对标完直接出结论，不排期。",
+    "status": "success"
+  },
+  {
+    "id": "dec0f0cf-5d13-4e1b-bce5-e85b8a03ce03",
+    "timestamp": "2026-05-31T20:17:43.225Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 明天 sync 材料已发你邮箱（`2026-06-01_量化标准与DAG对标.md`）：\n\n**\"最强\"四维量化标准**：响应时效 / 自主比例 / 协作深度 / 鲁棒性，每个维度有度量指标、目标值和当前基线\n\n**DAG 对标核心发现**：\n- AutoGen 条件分支是**数据驱动**（输出值匹配），我们是**流程驱动**（完成状态检查）—— 这是最大差距\n- 失败回滚 Auto",
+    "status": "success"
+  },
+  {
+    "id": "e32d93e5-24ed-49b0-a46c-551b2f74138f",
+    "timestamp": "2026-05-31T20:17:54.869Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，不排期直接干。对标材料已备好，明天 sync 见。",
+    "status": "success"
+  },
+  {
+    "id": "bebad3e2-3e44-4b5a-976a-252e40e658c3",
+    "timestamp": "2026-05-31T20:44:53.723Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，对标材料已就绪，明天直接对齐结论。",
+    "status": "success"
+  },
+  {
+    "id": "4d930c54-e370-476d-b232-efdcdca5262b",
+    "timestamp": "2026-05-31T20:45:23.458Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 收到，材料已备好。",
+    "status": "success"
+  },
+  {
+    "id": "a18f9596-7633-4bb8-a75f-62204902a6ff",
+    "timestamp": "2026-05-31T20:45:43.998Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Alice 🔥",
+    "status": "success"
+  },
+  {
+    "id": "5a86731a-cd29-4c21-ba9a-3cd3a1074363",
+    "timestamp": "2026-05-31T21:04:17.936Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "**APPROVED** ✅ — deploy-pipeline-v3 审核通过。\n\n审核依据：\n- **v0.3 全栈升级**：EventBus DLQ + WorkflowEngine DAG + Scheduler 双循环\n- **tsc --noEmit 零错误**，Alice 已验证\n- **无破坏性变更**：Poll 30s 保持不变，DAG 10s 增量叠加\n- **Bob 已先通过",
+    "status": "success"
   }
 ]

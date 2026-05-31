@@ -236,7 +236,7 @@ export function parseReviewFindings(output: string): Array<{ file: string; line:
 }
 
 /** Simulated executor — synthetic outputs for dev/testing, ChatDev-style reviews */
-class SimulatedStepExecutor implements StepExecutor {
+export class SimulatedStepExecutor implements StepExecutor {
   async execute(step: WorkflowStep, ctx: Record<string, string>): Promise<string> {
     const a = step.action.toLowerCase();
     if (a.includes('review') || a.includes('audit')) {

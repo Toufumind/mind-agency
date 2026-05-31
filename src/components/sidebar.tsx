@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Hash, Users, Activity, Bot, Trash2, X, Shield } from 'lucide-react';
+import { Hash, Users, Activity, Bot, Trash2, X, Shield, GitBranch } from 'lucide-react';
 import { useSidebarData } from './sidebar-context';
 
 export default function Sidebar() {
@@ -34,6 +34,9 @@ export default function Sidebar() {
       <nav className="flex-1 py-3 px-2.5 space-y-4 overflow-y-auto">
         <Link href="/" prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${pathname === '/' ? 'bg-white shadow-sm text-gray-900 font-medium border border-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}>
           <Activity size={14} /> Dashboard
+        </Link>
+        <Link href="/workflows" prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${pathname === '/workflows' ? 'bg-white shadow-sm text-gray-900 font-medium border border-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}>
+          <GitBranch size={14} /> Workflows
         </Link>
 
         <section>

@@ -244,6 +244,22 @@ rl.on('line', (line: string) => {
         fs.writeFileSync(path.join(AgentsDir, '.claude', 'CLAUDE.md'), `你的名字是 ${newName}。角色：${roles.join(', ')}。`, 'utf-8');
         fs.writeFileSync(path.join(AgentsDir, 'config.json'), JSON.stringify({ autoRespondToEmail: autoRespond ?? true, roles, permissions: roles.includes('PM') || roles.includes('CEO') ? { canCreateGroup: true, canDeleteGroup: true, canDeploy: true } : { canCreateGroup: false, canDeleteGroup: false, canDeploy: false } }, null, 2), 'utf-8');
         writeAudit({ agent: agentName, action: 'agent.create', resource: `agent:${newName}`, details: `roles: ${roles.join(',')}` });
+
+        // ── EventBus: task.created (new agent = new system capability) ──
+        emitBusEvent('task.created', {
+          taskId: `agent:${newName}`,
+          title: `Agent ${newName} onboarded (${roles.join(', ')})`,
+          createdBy: agentName,
+          priority: 'high',
+        });
+
+        // ── EventBus: agent.status.changed (new agent online) ───────────
+        emitBusEvent('agent.status.changed', {
+          agent: newName,
+          status: 'idle',
+          since: Date.now(),
+        });
+
         respond(id, { content: [{ type: 'text', text: `created ${newName} (${roles.join(', ')}). Tell them to use group_join if they need to join a group.` }] });
         return;
       }

@@ -484,5 +484,104 @@
     "resource": "group:default",
     "details": "group_send default: @Bob �� how is the event bus going?",
     "status": "success"
+  },
+  {
+    "id": "fb45e282-3a2d-41d9-a71b-e31981af6ac6",
+    "timestamp": "2026-05-31T20:02:10.790Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "总裁汇报下现在的进度",
+    "status": "success"
+  },
+  {
+    "id": "82a4aa56-3cd9-4409-8f39-32c3ae544537",
+    "timestamp": "2026-05-31T20:03:24.432Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "你的总目标是什么你知道吗",
+    "status": "success"
+  },
+  {
+    "id": "831c20b1-ccc2-486c-a3c2-1a2e900663a7",
+    "timestamp": "2026-05-31T20:04:41.299Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "现在你的目标是把让整个系统不断的迭代自己，最终打造出最强的多agent协作平台。",
+    "status": "success"
+  },
+  {
+    "id": "3e140380-2bec-4a0e-ad43-b3d052178447",
+    "timestamp": "2026-05-31T20:06:01.027Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "现在你开始推进吧。pm团队是不是像产品经理啊，我感觉他们要设计到竞品的技术分析哦",
+    "status": "success"
+  },
+  {
+    "id": "26d0a7f6-c9ee-4c0e-8fcb-629cef0ff219",
+    "timestamp": "2026-05-31T20:07:20.565Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "不要给我截至时间。要做什么直接去做",
+    "status": "success"
+  },
+  {
+    "id": "8cd98bb2-6d82-4a46-ad7b-e7d42cb20cf5",
+    "timestamp": "2026-05-31T20:11:15.399Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "没让你抄竞品哦，感觉Pm不专业啊",
+    "status": "success"
+  },
+  {
+    "id": "a4496db9-eaef-441e-9102-79f39d668285",
+    "timestamp": "2026-05-31T20:13:52.335Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "继续啊",
+    "status": "success"
+  },
+  {
+    "id": "60a704b6-10bf-4fe6-96da-1af5a0a31538",
+    "timestamp": "2026-05-31T20:19:14.844Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "/loop 1m 继续",
+    "status": "success"
+  },
+  {
+    "id": "af07adf5-1050-4576-82ac-e6a86849562d",
+    "timestamp": "2026-05-31T20:23:31.203Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "没有触发cron吗",
+    "status": "success"
+  },
+  {
+    "id": "e9bb5c41-2e0a-4a9e-8159-010bd147f049",
+    "timestamp": "2026-05-31T20:25:10.948Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "好像没有触发哦",
+    "status": "success"
+  },
+  {
+    "id": "baa8fe42-7434-452f-a92e-8fbaecefd69e",
+    "timestamp": "2026-05-31T20:34:11.516Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "/loop 30s 继续",
+    "status": "success"
   }
 ]

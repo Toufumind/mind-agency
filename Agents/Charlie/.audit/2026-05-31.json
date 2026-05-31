@@ -475,5 +475,86 @@
     "resource": "group:dev",
     "details": "收到，v0.2 落地确认 ✅",
     "status": "success"
+  },
+  {
+    "id": "412f666b-827e-4e0b-967e-91e958dfe7ea",
+    "timestamp": "2026-05-31T20:05:35.166Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "收到，基础设施优先、加速迭代循环，对齐执行 👌",
+    "status": "success"
+  },
+  {
+    "id": "1462f58f-2017-48ba-8de3-6811da0be8ff",
+    "timestamp": "2026-05-31T20:09:09.697Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "收到，死信队列我来负责，明天 sync 进度 👌",
+    "status": "success"
+  },
+  {
+    "id": "83cf1af4-2388-4022-8047-0cd8fd5dea67",
+    "timestamp": "2026-05-31T20:12:03.275Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "报告收到，领先项保持、落后项跟进补齐 🔥",
+    "status": "success"
+  },
+  {
+    "id": "9c59070c-7ec0-4fd9-b875-22814843ee87",
+    "timestamp": "2026-05-31T20:12:59.092Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "同意，先定义\"最强\"标准再下手，DLQ 的 MQ 模式搬到 WS 架构确实需要重新审视 🔍",
+    "status": "success"
+  },
+  {
+    "id": "9abffa0d-ac44-4df3-a95f-b611d845c384",
+    "timestamp": "2026-05-31T20:15:08.076Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "P0 三项全部交付 🎉 死信队列 v0.3 到位，继续推进 👌",
+    "status": "success"
+  },
+  {
+    "id": "fad9f0d9-61d1-4dab-a203-2a225a650c12",
+    "timestamp": "2026-05-31T20:15:35.120Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "v0.7.0 交付确认 ✅ 继续加油 🚀",
+    "status": "success"
+  },
+  {
+    "id": "f7794ef2-f0f5-4731-9c1e-e5a12fc545d5",
+    "timestamp": "2026-05-31T21:02:00.108Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "🚀 v0.3 全栈升级已部署 — Event Bus DLQ + Workflow Engine DAG + Scheduler 双循环，tsc 零错误，基础设施层无破坏性变更。DEPLOYED ✅",
+    "status": "success"
+  },
+  {
+    "id": "41d6660e-8572-4c7f-985a-c1392462f6be",
+    "timestamp": "2026-05-31T21:05:32.926Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "🚀 v0.3 全栈升级部署完成 — tsc 零错误 ✅ EventBus DLQ + WorkflowEngine DAG + Scheduler 双循环已就绪。DEPLOYED+PASSED ✅",
+    "status": "success"
+  },
+  {
+    "id": "e9faa1d7-c1f1-4ba2-abc6-2ed99911365a",
+    "timestamp": "2026-05-31T21:15:01.960Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "v0.3 全栈升级部署确认 — tsc 零错误 ✅ EventBus DLQ + WorkflowEngine DAG + Scheduler 双循环已就绪。DEPLOYED ✅",
+    "status": "success"
   }
 ]

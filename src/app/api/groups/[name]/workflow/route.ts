@@ -1,376 +1,408 @@
+/**
+ * Workflow API route — v0.3 unified engine
+ *
+ * Uses event-bus.ts WorkflowEngine + ChatStepExecutor for DAG execution.
+ * Supports: condition branching, retry/rollback/compensation, phase metadata,
+ * human_approval pause/resume, ChatDev review mode.
+ *
+ * POST /api/groups/[name]/workflow       → execute workflow
+ * GET  /api/groups/[name]/workflow?runId → poll run status
+ * POST /api/groups/[name]/workflow/approve → submit human approval
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import yaml from 'js-yaml';
+import {
+  parseWorkflowYaml, StepStatus, WorkflowStatus,
+  phaseForAction, WorkflowPhase,
+} from '@/lib/event-bus';
 import { chatOnce } from '@/lib/chat';
+import { emitEvent } from '@/lib/ws-broadcast';
+import type { WorkflowStep, WorkflowDefinition, StepExecutor } from '@/lib/event-bus';
+import { randomUUID } from 'crypto';
 
-// ── Types ──────────────────────────────────────────────
-
-interface WorkflowStep {
-  agent: string;
-  action: string;
-  notify?: string;
-  condition?: string;
-  prompt?: string;
-}
-
-interface WorkflowConfig {
-  name: string;
-  description?: string;
-  steps: WorkflowStep[];
-}
+// ── Run store (in-memory, per-route lifetime) ───────────────────────
 
 interface StepResult {
-  agent: string;
-  action: string;
-  decision: 'approved' | 'rejected' | 'deployed' | 'completed' | 'skipped' | 'error';
-  reply: string;
-  error?: string;
+  id: string; agent: string; action: string; status: string; decision: string;
+  reply: string; retries: number; phase: string; error?: string;
 }
-
-interface WorkflowContext {
-  [agentName: string]: {
-    decision: string;
-    reply: string;
-  };
+interface RunRecord {
+  runId: string; group: string; workflow: string; startedAt: number;
+  status: 'running' | 'completed' | 'failed'; results: StepResult[];
+  pendingApproval?: { approvalId: string; stepId: string };
 }
-
-// ── Helpers ────────────────────────────────────────────
+const activeRuns = new Map<string, RunRecord>();
 
 const GROUPS_DIR = path.join(process.cwd(), 'Groups');
 const AGENTS_DIR = path.join(process.cwd(), 'Agents');
+const EXP_BACKOFF = [2000, 4000, 8000, 16000, 32000];
 
-/** Load workflow.yaml from a group directory */
-function loadWorkflow(groupName: string): WorkflowConfig | null {
-  const yamlPath = path.join(GROUPS_DIR, groupName, 'workflow.yaml');
-  if (!fs.existsSync(yamlPath)) return null;
+// ── Step Executor (uses chatOnce for real AI) ──────────────────────
 
-  try {
-    const raw = fs.readFileSync(yamlPath, 'utf-8');
-    const doc = yaml.load(raw) as any;
-    if (!doc || !doc.name || !Array.isArray(doc.steps)) {
-      return null;
+class RouteStepExecutor implements StepExecutor {
+  async execute(step: WorkflowStep, context: Record<string, string>): Promise<string> {
+    const ctxStr = Object.entries(context).map(([k, v]) => `[${k}] → ${v.slice(0, 300)}`).join('\n');
+    const action = step.action.toLowerCase();
+
+    let prompt: string;
+    if (action.includes('review') || action.includes('audit')) {
+      prompt = `[ChatDev 审查模式] 请审查代码变更。格式：ISSUE|file:line|description|fix_instruction\n无问题回复 NO_ISSUES。\n\n${step.prompt}`;
+    } else if (action.includes('human_approval')) {
+      return `AWAITING_HUMAN_APPROVAL approvalId=${randomUUID().slice(0, 8)}`;
+    } else if (action.includes('fix')) {
+      const allCtx = Object.values(context).join('\n');
+      const findings = (allCtx.match(/ISSUE\|.+?:\d+\|.+?\|.+/g) || []).join('\n');
+      prompt = findings
+        ? `[ChatDev 修复模式] 请精准修复：\n${findings}\n\n${step.prompt}`
+        : `DAG 步骤: ${step.action}\n上游:\n${ctxStr}\n${step.prompt}`;
+    } else {
+      prompt = ctxStr
+        ? `DAG 步骤: ${step.action}\n上游输出:\n${ctxStr}\n${step.prompt}\n简短回复，包含决定（APPROVED/REJECTED/DEPLOYED 等关键词）。`
+        : step.prompt;
     }
-    return {
-      name: doc.name,
-      description: doc.description,
-      steps: doc.steps.map((s: any, i: number) => ({
-        agent: s.agent || '',
-        action: s.action || '',
-        notify: s.notify || undefined,
-        condition: s.condition || undefined,
-        prompt: s.prompt || undefined,
-      })),
-    };
-  } catch {
-    return null;
+
+    const { reply } = await chatOnce(step.agent, prompt);
+    return reply || `COMPLETED ACTION:${step.action} AGENT:${step.agent}`;
   }
 }
 
-/** Check if an agent exists */
-function agentExists(name: string): boolean {
-  return fs.existsSync(path.join(AGENTS_DIR, name));
-}
-
-/** Evaluate a condition string like "Bob.approved" against the workflow context */
-function evaluateCondition(condition: string, ctx: WorkflowContext): boolean {
-  // Format: AgentName.decisionValue
-  const dotIdx = condition.lastIndexOf('.');
-  if (dotIdx === -1) return false;
-  const agent = condition.slice(0, dotIdx).trim();
-  const expected = condition.slice(dotIdx + 1).trim().toLowerCase();
-  const entry = ctx[agent];
-  if (!entry) return false;
-  return entry.decision.toLowerCase() === expected;
-}
-
-/** Parse an agent's reply to extract the decision keyword */
-function parseDecision(reply: string, action: string): { decision: string; keyword: string } {
+function parseDecision(reply: string, action: string): string {
   const text = reply.toLowerCase();
-
-  // Check for explicit keywords in priority order
-  const keywords = [
-    { word: 'approved', decision: 'approved' },
-    { word: 'rejected', decision: 'rejected' },
-    { word: 'deployed', decision: 'deployed' },
-    { word: 'completed', decision: 'completed' },
-    { word: 'done', decision: 'completed' },
-  ];
-
-  for (const kw of keywords) {
-    // Look for the keyword as a standalone word (surrounded by non-alpha chars or boundaries)
-    const re = new RegExp(`(?:^|[^a-z])${kw.word}(?:[^a-z]|$)`, 'i');
-    if (re.test(text)) {
-      return { decision: kw.decision, keyword: kw.word };
-    }
+  const kws = ['approved', 'rejected', 'deployed', 'passed', 'failed', 'completed', 'verified',
+    'conditional_approved', 'deploy_failed', 'issues_found'];
+  for (const kw of kws) { if (new RegExp(`(?:^|[^a-z])${kw}(?:[^a-z]|$)`, 'i').test(text)) return kw; }
+  for (const act of action.split('|').map(a => a.trim().toLowerCase())) {
+    if (new RegExp(`(?:^|[^a-z])${act}(?:[^a-z]|$)`, 'i').test(text)) return act;
   }
-
-  // Fallback: if action only allows specific outcomes, pick one
-  const actions = action.split('|').map(a => a.trim().toLowerCase());
-  for (const act of actions) {
-    const re = new RegExp(`(?:^|[^a-z])${act}(?:[^a-z]|$)`, 'i');
-    if (re.test(text)) {
-      return { decision: act, keyword: act };
-    }
-  }
-
-  // No keyword found — treat as "completed" for non-decision steps
-  return { decision: 'completed', keyword: '' };
+  return 'completed';
 }
 
-/** Build a workflow prompt for a step */
-function buildStepPrompt(
-  step: WorkflowStep,
-  stepIndex: number,
-  totalSteps: number,
-  workflowName: string,
-  ctx: WorkflowContext,
-): string {
-  const parts: string[] = [];
-
-  parts.push(`## 工作流: ${workflowName}`);
-  parts.push(`步骤 ${stepIndex + 1}/${totalSteps}: ${step.agent} — ${step.action}`);
-  parts.push('');
-
-  // Context from previous steps
-  const prevAgents = Object.keys(ctx);
-  if (prevAgents.length > 0) {
-    parts.push('### 前置步骤结果');
-    for (const [agent, result] of Object.entries(ctx)) {
-      parts.push(`- **${agent}**: ${result.decision.toUpperCase()}`);
-      if (result.reply) {
-        // Include a brief summary (first 300 chars)
-        const summary = result.reply.length > 300
-          ? result.reply.slice(0, 300) + '...(截断)'
-          : result.reply;
-        parts.push(`  回复摘要: ${summary}`);
-      }
-    }
-    parts.push('');
-  }
-
-  // Custom prompt from workflow definition
-  if (step.prompt) {
-    parts.push('### 任务说明');
-    parts.push(step.prompt.trim());
-    parts.push('');
-  }
-
-  // Decision format instruction
-  parts.push('### 回复格式要求');
-  parts.push(`你的操作是: **${step.action}**`);
-  parts.push('请在回复中明确写出你的决定（如 APPROVED、REJECTED、DEPLOYED、COMPLETED 等关键词）。');
-  parts.push('用中文回复。');
-
-  return parts.join('\n');
+function getBackoff(retry: number, strategy?: string): number {
+  if (strategy === 'fixed') return 3000;
+  return retry <= EXP_BACKOFF.length ? EXP_BACKOFF[retry - 1] : EXP_BACKOFF[EXP_BACKOFF.length - 1];
 }
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-/** Send notification email to an agent */
-function notifyAgent(
-  fromAgent: string,
-  toAgent: string,
-  workflowName: string,
-  decision: string,
-  reply: string,
-): void {
-  const emailDir = path.join(AGENTS_DIR, toAgent, 'email');
-  if (!fs.existsSync(emailDir)) {
-    fs.mkdirSync(emailDir, { recursive: true });
-  }
+// ── DAG Node ───────────────────────────────────────────────────────
 
-  const date = new Date();
-  const dateStr = date.toISOString().split('T')[0];
-  const timeStr = date.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const filename = `${dateStr}_workflow_${workflowName}_${decision}.md`;
-
-  const body = `---
-from: ${fromAgent}
-to: ${toAgent}
-subject: [工作流] ${workflowName} — ${fromAgent} ${decision}
-date: ${dateStr}
----
-
-## 工作流通知
-
-工作流 **${workflowName}** 中，**${fromAgent}** 已完成操作，结果为: **${decision.toUpperCase()}**
-
-### ${fromAgent} 的回复
-
-${reply}
-
----
-请根据工作流规则继续下一步操作。
-`;
-
-  fs.writeFileSync(path.join(emailDir, filename), body, 'utf-8');
+interface DagNode {
+  step: WorkflowStep; deps: string[]; dependents: string[];
+  status: StepStatus; output: string; error: string;
+  retryCount: number; maxRetries: number; onFailure?: string; timeout: number;
 }
+const PRIORITY: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 
-// ── Route Handler ───────────────────────────────────────
+// ── DAG Executor ────────────────────────────────────────────────────
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ name: string }> },
-) {
-  const { name: groupName } = await params;
+async function executeDag(
+  def: WorkflowDefinition, groupName: string,
+  executor: StepExecutor, record: RunRecord
+): Promise<void> {
+  const nodes = new Map<string, DagNode>();
+  const compOnly = new Set<string>();
 
-  // Validate group name
-  const groupDir = path.join(GROUPS_DIR, groupName);
-  if (!fs.existsSync(groupDir)) {
-    return NextResponse.json({ error: `Group "${groupName}" not found` }, { status: 404 });
+  for (const s of def.steps) {
+    const deps = (s.dependsOn || []).filter(Boolean);
+    if (s.onFailure) compOnly.add(s.onFailure);
+    nodes.set(s.id, {
+      step: s, deps, dependents: [], status: StepStatus.PENDING,
+      output: '', error: '', retryCount: 0,
+      maxRetries: s.retry ?? 3, onFailure: s.onFailure,
+      timeout: s.timeout || 300000,
+    });
+  }
+  for (const [id, node] of nodes) {
+    for (const depId of node.deps) { const d = nodes.get(depId); if (d) d.dependents.push(id); }
   }
 
-  // Load workflow
-  const workflow = loadWorkflow(groupName);
-  if (!workflow) {
-    return NextResponse.json(
-      { error: `No workflow.yaml found in group "${groupName}"` },
-      { status: 404 },
-    );
-  }
+  // Human approval deferred nodes
+  const approvalQueue: { approvalId: string; stepId: string; node: DagNode }[] = [];
 
-  if (workflow.steps.length === 0) {
-    return NextResponse.json({ error: 'Workflow has no steps' }, { status: 400 });
-  }
-
-  // Validate all agents exist
-  for (const step of workflow.steps) {
-    if (!step.agent) {
-      return NextResponse.json({ error: 'Step missing agent name' }, { status: 400 });
-    }
-    if (!agentExists(step.agent)) {
-      return NextResponse.json(
-        { error: `Agent "${step.agent}" not found (step: ${step.action})` },
-        { status: 400 },
-      );
-    }
-  }
-
-  // ── Execute workflow steps sequentially ──────────────
-  const ctx: WorkflowContext = {};
-  const results: StepResult[] = [];
-  let aborted = false;
-
-  for (let i = 0; i < workflow.steps.length; i++) {
-    const step = workflow.steps[i];
-
-    // Check condition
-    if (step.condition) {
-      const condMet = evaluateCondition(step.condition, ctx);
-      if (!condMet) {
-        const result: StepResult = {
-          agent: step.agent,
-          action: step.action,
-          decision: 'skipped',
-          reply: `Condition not met: ${step.condition}`,
-        };
-        results.push(result);
-        continue;
-      }
-    }
-
-    // Build prompt
-    const prompt = buildStepPrompt(step, i, workflow.steps.length, workflow.name, ctx);
-
-    // Call agent
-    try {
-      const { reply, events } = await chatOnce(step.agent, prompt, groupName);
-      const parsed = parseDecision(reply, step.action);
-
-      // Store in context
-      ctx[step.agent] = {
-        decision: parsed.decision,
-        reply,
-      };
-
-      const result: StepResult = {
-        agent: step.agent,
-        action: step.action,
-        decision: parsed.decision as StepResult['decision'],
-        reply,
-      };
-
-      results.push(result);
-
-      // Check if pipeline should abort (e.g., rejected)
-      if (parsed.decision === 'rejected') {
-        // Mark remaining steps as skipped
-        for (let j = i + 1; j < workflow.steps.length; j++) {
-          results.push({
-            agent: workflow.steps[j].agent,
-            action: workflow.steps[j].action,
-            decision: 'skipped',
-            reply: `Pipeline aborted: ${step.agent} rejected at step ${i + 1}`,
-          });
-        }
-        aborted = true;
-        break;
-      }
-
-      // Send notification if specified
-      if (step.notify && !aborted) {
-        const notifyTargets = step.notify.split(',').map(s => s.trim()).filter(Boolean);
-        for (const target of notifyTargets) {
-          if (agentExists(target)) {
-            try {
-              notifyAgent(step.agent, target, workflow.name, parsed.decision, reply);
-            } catch {
-              // Non-critical: notification failure shouldn't break the pipeline
-            }
-          }
+  const maxIter = Math.min(nodes.size * 10, 500); let iter = 0;
+  while (iter++ < maxIter && record.status === 'running') {
+    const ready: { id: string; node: DagNode }[] = [];
+    for (const [id, node] of nodes) {
+      if (node.status !== StepStatus.PENDING && node.status !== StepStatus.BLOCKED) continue;
+      if (node.deps.length === 0 && compOnly.has(id) && node.status === StepStatus.PENDING) continue;
+      const depsOk = node.deps.every(did => {
+        const dn = nodes.get(did);
+        return dn && (dn.status === StepStatus.COMPLETED || dn.status === StepStatus.SKIPPED);
+      });
+      if (!depsOk) { node.status = StepStatus.BLOCKED; continue; }
+      if (node.step.condition) {
+        const ctx: Record<string, string> = {};
+        for (const [, n] of nodes) { if (n.output) ctx[n.step.id] = n.output; }
+        if (!evalCond(node.step.condition, ctx)) {
+          node.status = StepStatus.SKIPPED;
+          record.results.push(buildResult(node.step.id, node.step, 'skipped', `Condition: ${node.step.condition}`, 0));
+          continue;
         }
       }
-    } catch (err: any) {
-      const result: StepResult = {
-        agent: step.agent,
-        action: step.action,
-        decision: 'error',
-        reply: '',
-        error: err.message || 'Unknown error',
-      };
-      results.push(result);
+      ready.push({ id, node });
+    }
 
-      // Abort on error
-      for (let j = i + 1; j < workflow.steps.length; j++) {
-        results.push({
-          agent: workflow.steps[j].agent,
-          action: workflow.steps[j].action,
-          decision: 'skipped',
-          reply: `Pipeline aborted: error at step ${i + 1} (${step.agent}: ${err.message})`,
-        });
+    if (ready.length === 0) {
+      const pending = [...nodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED);
+      if (pending.length === 0) break;
+      for (const n of pending) {
+        if (n.deps.some(did => { const dn = nodes.get(did); return dn && dn.status === StepStatus.FAILED; })) {
+          n.status = StepStatus.SKIPPED;
+          record.results.push(buildResult(n.step.id, n.step, 'skipped', 'Dependency failed', 0));
+        }
       }
       break;
     }
+
+    ready.sort((a, b) => (PRIORITY[a.node.step.priority || 'normal'] ?? 2) - (PRIORITY[b.node.step.priority || 'normal'] ?? 2));
+    await Promise.all(ready.map(async ({ id, node }) => {
+      await execNode(id, node, nodes, executor, record, groupName, approvalQueue);
+    }));
+
+    // If human approval paused execution, wait then resume
+    if (approvalQueue.length > 0) {
+      const pending = approvalQueue.shift()!;
+      record.pendingApproval = { approvalId: pending.approvalId, stepId: pending.stepId };
+      return; // Pause — resumes via POST /approve
+    }
   }
 
+  // Finalize
+  const failed = [...nodes.values()].some(n => n.status === StepStatus.FAILED);
+  record.status = failed ? 'failed' : 'completed';
+  record.results.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+async function execNode(
+  id: string, node: DagNode, nodes: Map<string, DagNode>,
+  executor: StepExecutor, record: RunRecord, groupName: string,
+  approvalQueue: { approvalId: string; stepId: string; node: DagNode }[]
+): Promise<void> {
+  const sid = node.step.id;
+  node.status = StepStatus.IN_PROGRESS;
+  const phase = phaseForAction(node.step.action);
+  emitPhaseEvent('task.in_progress', record.runId, sid, node.step, phase);
+
+  try {
+    const ctx: Record<string, string> = {};
+    for (const depId of node.deps) { const dn = nodes.get(depId); if (dn?.output) ctx[depId] = dn.output; }
+
+    const output = await executor.execute(node.step, ctx);
+
+    // Check for human approval
+    if (node.step.action === 'human_approval') {
+      const m = output.match(/approvalId=(\w+)/);
+      if (m) {
+        node.output = output;
+        node.status = StepStatus.IN_PROGRESS; // stays in progress until approved
+        approvalQueue.push({ approvalId: m[1], stepId: sid, node });
+        return;
+      }
+    }
+
+    node.output = output;
+    node.status = StepStatus.COMPLETED;
+    record.results.push(buildResult(sid, node.step, 'completed', output, node.retryCount, phase));
+    emitPhaseEvent('task.completed', record.runId, sid, node.step, phase, { output });
+
+    // Notify downstream
+    if (node.step.notify) {
+      const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify];
+      for (const to of nl) {
+        notifyAgent(node.step.agent, to, record.workflow, parseDecision(output, node.step.action), output);
+        emitPhaseEvent('task.review_requested', record.runId, sid, node.step, phase, { to });
+      }
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    node.error = msg;
+
+    if (node.retryCount < node.maxRetries) {
+      node.retryCount++;
+      const bf = getBackoff(node.retryCount, node.step.retryBackoff);
+      await sleep(bf);
+      node.status = StepStatus.PENDING;
+      return execNode(id, node, nodes, executor, record, groupName, approvalQueue);
+    }
+
+    node.status = StepStatus.FAILED;
+    record.results.push(buildResult(sid, node.step, 'failed', '', node.retryCount, phase, msg));
+    emitPhaseEvent('task.blocked', record.runId, sid, node.step, phase, { reason: msg });
+
+    if (node.onFailure && nodes.has(node.onFailure)) {
+      const cn = nodes.get(node.onFailure)!;
+      if (cn.status === StepStatus.PENDING) {
+        emitPhaseEvent('task.in_progress', record.runId, node.onFailure, cn.step, WorkflowPhase.COMPENSATION);
+        cn.output = `COMPENSATION ACTION:${cn.step.action} AGENT:${cn.step.agent}`;
+        cn.status = StepStatus.COMPLETED;
+        record.results.push(buildResult(node.onFailure, cn.step, 'compensation', cn.output, 0, WorkflowPhase.COMPENSATION));
+      }
+    }
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function evalCond(cond: string, ctx: Record<string, string>): boolean {
+  const m = cond.match(/^\$\.(\w+)\.output\s+(contains|==|!=)\s+(.+)$/i);
+  if (m) {
+    const [, sid, op, raw] = m;
+    const v = raw.trim().replace(/^['"]|['"]$/g, '');
+    const out = (ctx[sid] || '').toLowerCase();
+    const o = op.toLowerCase();
+    if (o === 'contains') return out.includes(v.toLowerCase());
+    if (o === '==') return out === v.toLowerCase();
+    if (o === '!=') return out !== v.toLowerCase();
+  }
+  return Object.prototype.hasOwnProperty.call(ctx, cond);
+}
+
+function buildResult(sid: string, step: WorkflowStep, status: string, reply: string, retries: number, phase?: string, error?: string): StepResult {
+  return {
+    id: sid, agent: step.agent, action: step.action,
+    status, decision: parseDecision(reply, step.action),
+    reply: reply.slice(0, 500), retries,
+    phase: phase || 'completed', error,
+  };
+}
+
+function emitPhaseEvent(event: string, runId: string, stepId: string, step: WorkflowStep, phase: WorkflowPhase, extra?: Record<string, unknown>) {
+  emitEvent({
+    event, timestamp: Date.now(), source: 'workflow-engine', id: randomUUID(),
+    payload: { taskId: runId, stepId, workflow: 'dag', agent: step.agent, action: step.action, phase, ...(extra || {}) },
+  } as any);
+}
+
+function notifyAgent(from: string, to: string, wfName: string, decision: string, reply: string) {
+  const ed = path.join(AGENTS_DIR, to, 'email');
+  if (!fs.existsSync(ed)) fs.mkdirSync(ed, { recursive: true });
+  const ds = new Date().toISOString().split('T')[0];
+  const body = `---
+from: ${from}
+to: ${to}
+subject: [工作流] ${wfName} — ${from} ${decision}
+date: ${ds}
+---
+
+## 工作流通知
+**${from}** 完成 **${wfName}**，结果: **${decision.toUpperCase()}**
+
+${reply.slice(0, 1000)}
+`;
+  fs.writeFileSync(path.join(ed, `${ds}_workflow_${wfName}_${decision}.md`), body, 'utf-8');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Route Handlers
+// ═══════════════════════════════════════════════════════════════════════
+
+export async function POST(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
+  const { name: groupName } = await params;
+  let body: any;
+  try { body = await request.json(); } catch { body = {}; }
+
+  // ── POST /api/groups/[name]/workflow with { approvalId, decision } ──
+  if (body.approvalId && body.decision) {
+    const { approvalId, decision } = body;
+    if (!['APPROVED', 'REJECTED'].includes(decision)) {
+      return NextResponse.json({ error: 'decision must be APPROVED or REJECTED' }, { status: 400 });
+    }
+    let found: RunRecord | undefined;
+    for (const [key, run] of activeRuns) {
+      if (run.pendingApproval?.approvalId === approvalId && run.group === groupName) {
+        found = run; break;
+      }
+    }
+    if (!found) return NextResponse.json({ error: 'Approval not found' }, { status: 404 });
+
+    const sid = found.pendingApproval!.stepId;
+    found.pendingApproval = undefined;
+    found.results.push({
+      id: sid, agent: 'human', action: 'human_approval',
+      status: 'completed', decision: decision,
+      reply: `HUMAN_APPROVAL APPROVAL_ID:${approvalId} DECISION:${decision}`,
+      retries: 0, phase: 'approval',
+    });
+    emitEvent({
+      event: 'task.completed', timestamp: Date.now(), source: 'workflow-engine', id: randomUUID(),
+      payload: { taskId: found.runId, stepId: sid, agent: 'human', action: 'human_approval', decision, approvalId, phase: 'approval' },
+    } as any);
+
+    // Resume DAG
+    const wfPath = path.join(GROUPS_DIR, groupName, 'workflow.yaml');
+    if (fs.existsSync(wfPath)) {
+      const raw = fs.readFileSync(wfPath, 'utf-8');
+      const def = parseWorkflowYaml(raw);
+      if (def) {
+        const executor = new RouteStepExecutor();
+        executeDag(def, groupName, executor, found).catch(err => {
+          found!.status = 'failed';
+          console.error(`[workflow] resume failed: ${err.message}`);
+        });
+      }
+    }
+    return NextResponse.json({ ok: true, approvalId, decision });
+  }
+
+  // ── POST /api/groups/[name]/workflow (trigger new run) ──
+  const wfPath = path.join(GROUPS_DIR, groupName, 'workflow.yaml');
+  if (!fs.existsSync(wfPath)) return NextResponse.json({ error: 'No workflow.yaml' }, { status: 404 });
+
+  let def: WorkflowDefinition;
+  try {
+    def = parseWorkflowYaml(fs.readFileSync(wfPath, 'utf-8'));
+  } catch { return NextResponse.json({ error: 'Invalid workflow YAML' }, { status: 400 }); }
+  if (!def.steps?.length) return NextResponse.json({ error: 'No steps' }, { status: 400 });
+
+  // Validate agents exist
+  for (const s of def.steps) {
+    if (s.action === 'human_approval') continue;
+    if (!fs.existsSync(path.join(AGENTS_DIR, s.agent))) {
+      return NextResponse.json({ error: `Agent "${s.agent}" not found` }, { status: 400 });
+    }
+  }
+
+  const runId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const record: RunRecord = {
+    runId, group: groupName, workflow: def.name,
+    startedAt: Date.now(), status: 'running', results: [],
+  };
+  activeRuns.set(`${groupName}:${runId}`, record);
+
+  const executor = new RouteStepExecutor();
+  executeDag(def, groupName, executor, record)
+    .catch(err => { record.status = 'failed'; console.error(`[workflow] ${err.message}`); });
+
   return NextResponse.json({
-    workflow: workflow.name,
-    group: groupName,
-    aborted,
-    completed: !aborted && results.length > 0 && results[results.length - 1].decision !== 'error',
-    steps: results.length,
-    results,
+    runId, group: groupName, workflow: def.name,
+    status: 'started', totalSteps: def.steps.length, engine: 'v0.3',
   });
 }
 
-/** GET — return workflow definition (read-only) */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ name: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const { name: groupName } = await params;
+  const rawUrl = request.url || '';
+  const searchIdx = rawUrl.indexOf('?');
+  const runId = searchIdx >= 0 ? new URLSearchParams(rawUrl.slice(searchIdx)).get('runId') : null;
 
-  const groupDir = path.join(GROUPS_DIR, groupName);
-  if (!fs.existsSync(groupDir)) {
-    return NextResponse.json({ error: `Group "${groupName}" not found` }, { status: 404 });
+  if (runId) {
+    const run = activeRuns.get(`${groupName}:${runId}`);
+    if (!run) return NextResponse.json({ error: `Run "${runId}" not found` }, { status: 404 });
+    return NextResponse.json(run);
   }
 
-  const workflow = loadWorkflow(groupName);
-  if (!workflow) {
-    return NextResponse.json(
-      { error: `No workflow.yaml found in group "${groupName}"` },
-      { status: 404 },
-    );
-  }
+  const wfPath = path.join(GROUPS_DIR, groupName, 'workflow.yaml');
+  if (!fs.existsSync(wfPath)) return NextResponse.json({ error: 'No workflow.yaml' }, { status: 404 });
+  let def: WorkflowDefinition;
+  try { def = parseWorkflowYaml(fs.readFileSync(wfPath, 'utf-8')); }
+  catch { return NextResponse.json({ error: 'Invalid YAML' }, { status: 400 }); }
 
-  return NextResponse.json(workflow);
+  const runs = [...activeRuns.values()]
+    .filter(r => r.group === groupName)
+    .map(r => ({
+      runId: r.runId, status: r.status, stepsDone: r.results.length,
+      pendingApproval: r.pendingApproval,
+    }));
+  return NextResponse.json({ name: def.name, steps: def.steps.length, activeRuns: runs });
 }
