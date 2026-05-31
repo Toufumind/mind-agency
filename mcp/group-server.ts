@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import { writeAudit, checkPermission } from '../src/lib/audit.js';
+import { writeMemory, readMemory, searchMemory, listMemory, deleteMemory } from '../src/lib/memory.js';
 import { randomUUID } from 'crypto';
 
 const WS_BASE_URL = process.env.WS_BASE_URL || `http://localhost:${process.env.WS_PORT || '3003'}`;
@@ -136,6 +137,7 @@ const tools = [
   { name: 'workflow_trigger', description: '触发群组的工作流（执行 Groups/<group>/workflow.yaml 中的 DAG）。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
   { name: 'workflow_status', description: '查询群组工作流运行状态。', inputSchema: { type: 'object', properties: { group: { type: 'string', description: '群组名，不传则返回所有活跃运行' } }, required: [] } },
   { name: 'workflow_approve', description: '审批工作流中的人工审批节点。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, approvalId: { type: 'string' }, decision: { type: 'string', description: 'APPROVED 或 REJECTED' } }, required: ['group', 'approvalId', 'decision'] } },
+  { name: 'agent_memory', description: '管理长期记忆。读/写/搜索/列出记忆。记忆保存为 .mind/agents/<name>/memory/<key>.md，持久化存储。', inputSchema: { type: 'object', properties: { action: { type: 'string', description: 'write | read | search | list | delete' }, key: { type: 'string', description: '记忆键名（write/read/delete 时需要）' }, value: { type: 'string', description: '记忆内容（write 时需要）' }, query: { type: 'string', description: '搜索查询（search 时需要）' } }, required: ['action'] } },
   { name: 'agent_create', description: '创建新的 AI Agent 并加入团队。需要提供名字和角色（如 "PM"、"Developer"、"QA"）。创建后 Agent 会自动拥有自己的 email 和 CLAUDE.md。Agent 目录在 Agents/<name>/ 下。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Agent 名字（英文名）' }, roles: { type: 'string', description: '角色列表，逗号分隔，如 "PM,Developer"' }, autoRespond: { type: 'boolean', description: '是否启用自动回复，默认 true' } }, required: ['name', 'roles'] } },
 ];
 
@@ -245,6 +247,40 @@ rl.on('line', (line: string) => {
         });
 
         respond(id, { content: [{ type: 'text', text: `left ${group}` }] });
+        return;
+      }
+
+      // ── agent_memory ──
+      if (name === 'agent_memory') {
+        const { action, key, value, query } = a;
+        if (action === 'write' && key && value) {
+          const entry = writeMemory(agentName, key, value);
+          writeAudit({ agent: agentName, action: 'memory.write', resource: `memory:${key}`, details: value.slice(0, 100) });
+          respond(id, { content: [{ type: 'text', text: `记忆已保存: ${entry.key} (${entry.content.length} 字符)` }] });
+          return;
+        }
+        if (action === 'read' && key) {
+          const entry = readMemory(agentName, key);
+          respond(id, { content: [{ type: 'text', text: entry ? `# ${entry.key}\n\n${entry.content}\n\n保存于: ${new Date(entry.created).toISOString()}` : `记忆 "${key}" 未找到` }] });
+          return;
+        }
+        if (action === 'search' && query) {
+          const results = searchMemory(agentName, query);
+          respond(id, { content: [{ type: 'text', text: results.length > 0 ? results.map((r, i) => `${i + 1}. **${r.key}**: ${r.content.slice(0, 150)}`).join('\n') : `未找到与 "${query}" 相关的记忆` }] });
+          return;
+        }
+        if (action === 'list') {
+          const mems = listMemory(agentName);
+          respond(id, { content: [{ type: 'text', text: mems.length > 0 ? mems.map((m, i) => `${i + 1}. **${m.key}** (${new Date(m.updated).toISOString()}): ${m.content.slice(0, 100)}`).join('\n') : '暂无长期记忆' }] });
+          return;
+        }
+        if (action === 'delete' && key) {
+          const ok = deleteMemory(agentName, key);
+          writeAudit({ agent: agentName, action: 'memory.delete', resource: `memory:${key}` });
+          respond(id, { content: [{ type: 'text', text: ok ? `已删除记忆: ${key}` : `记忆 "${key}" 未找到` }] });
+          return;
+        }
+        respond(id, { content: [{ type: 'text', text: '无效操作。支持: write, read, search, list, delete。write 需要 key+value，read/delete 需要 key，search 需要 query。' }], isError: true });
         return;
       }
 

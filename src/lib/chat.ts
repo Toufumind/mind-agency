@@ -1,8 +1,9 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
 import { randomUUID, createHash } from 'crypto';
+import { getMemoryContext, getEntityContext } from './memory.js';
 
 const AGENTS_DIR = path.join(process.cwd(), 'Agents');
 
@@ -189,7 +190,9 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   const groupChat = buildGroupChatContext(agentName, groupName);
   // Stable part (identity + membership): cached, rarely changes
   // Group chat context: always appended, changes per message
-  const content = identity + '\n' + membership + groupChat;
+  const memCtx = getMemoryContext(agentName);
+  const entityCtx = getEntityContext(agentName);
+  const content = identity + '\n' + membership + memCtx + entityCtx + groupChat;
   writeIfChanged(sysFile, content);
 
   // 2. MCP 配置 — 完全不变
