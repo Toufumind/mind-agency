@@ -17,7 +17,7 @@ import http from 'http';
 import { writeAudit, checkPermission } from '../src/lib/audit.js';
 import { randomUUID } from 'crypto';
 
-const WS_BASE_URL = process.env.WS_BASE_URL || 'http://localhost:3001';
+const WS_BASE_URL = process.env.WS_BASE_URL || `http://localhost:${process.env.WS_PORT || '3003'}`;
 const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || `${WS_BASE_URL}/broadcast`;
 const WS_EVENTS_URL = process.env.WS_EVENTS_URL || `${WS_BASE_URL}/events`;
 
@@ -35,6 +35,20 @@ function httpPost(urlStr: string, body: Record<string, unknown>) {
     req.write(data);
     req.end();
   } catch { /* ignore */ }
+}
+
+/** Simple JSON fetch with timeout */
+function fetchJSON(urlStr: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const req = http.get(u, (res) => {
+      let body = '';
+      res.on('data', (c: string) => body += c);
+      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+    });
+    req.on('error', reject);
+    req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')); });
+  });
 }
 
 /** Fire-and-forget broadcast to WebSocket clients (legacy group chat) */
@@ -117,7 +131,11 @@ const tools = [
   { name: 'group_read', description: '读取群组最近的聊天记录。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, limit: { type: 'number' } }, required: ['group'] } },
   { name: 'group_join', description: '加入群组。创建 Groups/<group>/Agents/<you>/email/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
   { name: 'group_create', description: '创建一个新的群组。会在 Groups/<name>/ 下创建完整的目录结构（Agents/<you>/email/ + chat/ + TASK_SPEC.md）。创建者自动加入该群组。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
+  { name: 'group_delete', description: '删除群组（需要 canDeleteGroup 权限）。删除 Groups/<name>/ 整个目录。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
   { name: 'group_leave', description: '退出群组。删除 Groups/<group>/Agents/<you>/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
+  { name: 'workflow_trigger', description: '触发群组的工作流（执行 Groups/<group>/workflow.yaml 中的 DAG）。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
+  { name: 'workflow_status', description: '查询群组工作流运行状态。', inputSchema: { type: 'object', properties: { group: { type: 'string', description: '群组名，不传则返回所有活跃运行' } }, required: [] } },
+  { name: 'workflow_approve', description: '审批工作流中的人工审批节点。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, approvalId: { type: 'string' }, decision: { type: 'string', description: 'APPROVED 或 REJECTED' } }, required: ['group', 'approvalId', 'decision'] } },
   { name: 'agent_create', description: '创建新的 AI Agent 并加入团队。需要提供名字和角色（如 "PM"、"Developer"、"QA"）。创建后 Agent 会自动拥有自己的 email 和 CLAUDE.md。Agent 目录在 Agents/<name>/ 下。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Agent 名字（英文名）' }, roles: { type: 'string', description: '角色列表，逗号分隔，如 "PM,Developer"' }, autoRespond: { type: 'boolean', description: '是否启用自动回复，默认 true' } }, required: ['name', 'roles'] } },
 ];
 
@@ -286,6 +304,64 @@ rl.on('line', (line: string) => {
         fs.appendFileSync(chatFile, `\n---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n${group} 群组已创建。${agentName} 是创建者。\n`, 'utf-8');
         writeAudit({ agent: agentName, action: 'group.create', resource: `group:${group}` });
         respond(id, { content: [{ type: 'text', text: `created group "${group}". You are now a member.` }] });
+        return;
+      }
+
+      // ── group_delete ──
+      if (name === 'group_delete') {
+        const { group } = a;
+        if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
+        if (!checkPermission(agentName, 'canDeleteGroup')) {
+          respond(id, { content: [{ type: 'text', text: 'permission denied: need canDeleteGroup' }], isError: true });
+          writeAudit({ agent: agentName, action: 'group.delete', resource: `group:${group}`, details: 'permission denied', status: 'error' });
+          return;
+        }
+        const gDir = path.join(groupsDir(), group);
+        if (!exists(gDir)) { respond(id, { content: [{ type: 'text', text: `group "${group}" not found` }], isError: true }); return; }
+        fs.rmSync(gDir, { recursive: true, force: true });
+        writeAudit({ agent: agentName, action: 'group.delete', resource: `group:${group}` });
+        emitBusEvent('task.completed', { taskId: `group:${group}`, by: agentName, action: 'group_delete' });
+        respond(id, { content: [{ type: 'text', text: `deleted group "${group}"` }] });
+        return;
+      }
+
+      // ── workflow_trigger ──
+      if (name === 'workflow_trigger') {
+        const { group } = a;
+        if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
+        const wfPath = path.join(groupsDir(), group, 'workflow.yaml');
+        if (!exists(wfPath)) { respond(id, { content: [{ type: 'text', text: `no workflow.yaml in ${group}` }], isError: true }); return; }
+        httpPost(`${WS_BASE_URL}/workflows/run`, { yaml: fs.readFileSync(wfPath, 'utf-8') });
+        emitBusEvent('task.created', { title: `Workflow triggered for ${group}`, agent: agentName, group });
+        respond(id, { content: [{ type: 'text', text: `workflow triggered for group "${group}"` }] });
+        return;
+      }
+
+      // ── workflow_status ──
+      if (name === 'workflow_status') {
+        const { group } = a;
+        httpPost(`${WS_BASE_URL}/workflows/status`, { group });
+        // Read stats from WS server
+        let statsText = 'no active runs';
+        try {
+          const data = await fetchJSON(`${WS_BASE_URL}/workflows/stats`);
+          const runs = (data as any)?.runs || [];
+          const filtered = group ? runs.filter((r: any) => r.workflowName?.includes(group)) : runs;
+          statsText = filtered.length > 0
+            ? JSON.stringify(filtered.map((r: any) => ({ workflow: r.workflowName, status: r.status, steps: r.stepCount, started: new Date(r.startedAt).toISOString() })), null, 2)
+            : 'no active runs';
+        } catch {}
+        respond(id, { content: [{ type: 'text', text: statsText }] });
+        return;
+      }
+
+      // ── workflow_approve ──
+      if (name === 'workflow_approve') {
+        const { group, approvalId, decision } = a;
+        if (!group || !approvalId || !decision) { respond(id, { content: [{ type: 'text', text: 'group, approvalId, decision required' }], isError: true }); return; }
+        httpPost(`${WS_BASE_URL}/workflows/approve`, { approvalId, decision });
+        emitBusEvent('task.completed', { taskId: `workflow:${group}`, by: agentName, decision, approvalId });
+        respond(id, { content: [{ type: 'text', text: `approval ${decision} submitted for ${approvalId}` }] });
         return;
       }
 
