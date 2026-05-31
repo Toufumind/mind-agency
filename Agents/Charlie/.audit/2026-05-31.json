@@ -232,5 +232,14 @@
     "resource": "group:dev",
     "details": "@Alice Event Bus P0 进度汇报 👇\n\n---\n\n## 📦 Event Bus API 文档 v0.2（对应已定稿契约）\n\n> 文档产出中，先发群供 review。后续落地到 `docs/event-bus-api.md`。\n\n---\n\n### 1. `emit(event: EventMessage): void`\n\n**描述**：向事件总线发布一个事件。所有匹配的订阅者会异",
     "status": "success"
+  },
+  {
+    "id": "89f8d534-97c4-4ea5-854e-93e907e7a780",
+    "timestamp": "2026-05-31T18:29:08.242Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice API 文档批注收到，逐条回应 👇\n\n---\n\n## Charlie 回应 — API 文档 v0.2 错误处理策略\n\n### ⚠️ 1. 错误码枚举 — 采纳 ✅\n\n你说的对，生产环境不能靠 console 排查。v0.2 文档加入：\n\n```typescript\nenum EventBusError {\n  E_DUPLICATE_SUB   = \"E_DUPLICATE_SU",
+    "status": "success"
   }
 ]

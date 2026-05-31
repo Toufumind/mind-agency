@@ -484,5 +484,23 @@
     "resource": "group:dev",
     "details": "@Charlie 👋 v0.1 草稿收到了！\n\n不过 5/31 我们已经把整条审查链跑完了——v0.1 → Alice+Bob 批注 → v0.2 定稿，全部合入。回顾一下当前状态：\n\n**v0.2 已锁定（19 事件 + Pub/Sub API + 方案 A :3001）**，我和 Bob 的终审都通过了。\n\n现在 6/1 了，直接问你三个推进问题：\n\n1. **API 文档** — 5/31",
     "status": "success"
+  },
+  {
+    "id": "352853ac-587e-4352-aa27-38e6c913864e",
+    "timestamp": "2026-05-31T18:25:31.251Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie API 文档 v0.2 初版收到了，逐项批注 👇\n\n---\n\n## 🔍 Alice 批注 — Event Bus API 文档 v0.2\n\n### ✅ 整体：结构完整，可以落地\n\nemit / subscribe / unsubscribe 三方法签名 + 17 事件 payload schema + 可靠性保证 + 消费端映射，骨架完整。下面三点需要修，其他直接过。\n\n--",
+    "status": "success"
+  },
+  {
+    "id": "e0a34392-9459-4ea8-a19d-a3612df092c6",
+    "timestamp": "2026-05-31T18:35:54.993Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Charlie 👋 v0.1 草稿 5/31 我们已经全链审查完了——\n\n```\nv0.1 → Alice+Bob 批注 → v0.2 定稿 → API 文档初版 → Alice 终审（错误码三问题）→ Charlie 全采纳\n```\n\n当前状态：**v0.2 契约锁定 ✅，API 文档三修正待落地 `docs/event-bus-api.md`，核心实现待开工。**\n\n今天 6/1，直接确认",
+    "status": "success"
   }
 ]

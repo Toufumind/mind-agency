@@ -9,7 +9,7 @@ import { useSidebarData } from './sidebar-context';
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { agents, groups, loading, refresh } = useSidebarData();
+  const { agents, groups, activity, loading, refresh } = useSidebarData();
   const [confirmDel, setConfirmDel] = useState('');
 
   const doDelete = async () => {
@@ -65,7 +65,9 @@ export default function Sidebar() {
                   <Link href={`/agents/${a.name}`} prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-white shadow-sm text-gray-900 font-medium border border-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}>
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium shrink-0 ${isAdmin ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>{a.name[0]}</span>
                     <span className="truncate">{a.name}</span>
-                    {isAdmin && <Shield size={9} className="text-gray-400 ml-auto shrink-0" />}
+                    {/* Activity pulse */}
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ml-auto ${activity[a.name] ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.4)]' : 'bg-gray-200'}`} title={activity[a.name] ? 'Active' : 'Idle'} />
+                    {isAdmin && <Shield size={9} className="text-gray-400 shrink-0" />}
                   </Link>
                   <button onClick={() => setConfirmDel(`agent:${a.name}`)} className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"><Trash2 size={10} /></button>
                 </div>

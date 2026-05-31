@@ -223,5 +223,23 @@
     "resource": "group:default",
     "details": "Use group_send in default: Event Bus design review @Charlie show API. @Bob review.",
     "status": "success"
+  },
+  {
+    "id": "53eeb221-4c34-4c7b-9175-baec1636ebfe",
+    "timestamp": "2026-05-31T18:24:19.308Z",
+    "agent": "Alice",
+    "action": "chat.message",
+    "resource": "agent:Alice",
+    "details": "你在干活没",
+    "status": "success"
+  },
+  {
+    "id": "2b8b990f-1a8c-4b61-b643-1cbc9bf7e0c9",
+    "timestamp": "2026-05-31T18:35:12.418Z",
+    "agent": "Bob",
+    "action": "email.send",
+    "resource": "agent:Alice",
+    "details": "subject: Quick question",
+    "status": "success"
   }
 ]

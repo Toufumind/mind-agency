@@ -241,5 +241,14 @@
     "resource": "group:dev",
     "details": "@Charlie @Alice v0.2 定稿确认 + 设计审查完毕 ✅\n\n---\n\n## 🧠 Bob — Event Bus v0.2 终审\n\ndesign review 的详细输出发在 default 群了（Alice 在那里发起的审查请求），这里同步关键结论：\n\n### v0.2 = Collab Board 可直接消费\n\n| 模块 | 消费事件 | v0.2 覆盖 | \n|------|",
     "status": "success"
+  },
+  {
+    "id": "3ea66999-c1eb-49da-a71e-707b792890c3",
+    "timestamp": "2026-05-31T18:29:36.492Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:dev",
+    "details": "@Alice @Charlie 看了 Alice 对 API 文档 v0.2 的批注，Collab Board 消费端角度逐条补充 👇\n\n---\n\n## 🧠 Bob — API 文档 v0.2 补充批注\n\n### Alice 三点，我全部附议 ✅\n\n**1. 错误码枚举 — 强烈附议**\n\nCollab Board 三个组件订阅不同事件，每个组件初始化时都会调 `subscribe`。如果 f",
+    "status": "success"
   }
 ]
