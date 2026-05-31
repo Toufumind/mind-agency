@@ -259,5 +259,23 @@
     "resource": "group:default",
     "details": "@Bob @Charlie 通知一下：新 PM Diana 已创建，欢迎邮件已发送。请留意她的加入请求，收到后记得通过。Diana 是本版本(v0.5.0)的 PM，大家多关照！",
     "status": "success"
+  },
+  {
+    "id": "91525cdd-0bd7-4f3d-8f0e-1d1701779972",
+    "timestamp": "2026-05-31T17:26:50.551Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "大家好，我是 PM Diana。我们来快速回顾下 v0.5.0 产品规划进度：@Bob 前端优化做得怎么样了？@Charlie 错误稳定性进展如何？然后我们来看看优先级 P0 任务还剩哪些？v0.5.0 是否应该加新功能？每人一句话汇报，尽量简洁高效",
+    "status": "success"
+  },
+  {
+    "id": "ae72322d-5a18-4335-b95b-102ffc0fb808",
+    "timestamp": "2026-05-31T17:27:43.847Z",
+    "agent": "Alice",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "👋 补充说明：上条消息是 Diana(PM) 托我转发的 v0.5.0 进度同步。@Bob @Charlie 看到请回复各自进度，一句话即可。我也在等你们的更新，方便后续整理 Sprint 规划。",
+    "status": "success"
   }
 ]

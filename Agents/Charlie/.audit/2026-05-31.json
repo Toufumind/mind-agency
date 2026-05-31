@@ -97,5 +97,14 @@
     "resource": "group:default",
     "details": "收到 ✅ Diana 已入群，后台侧 v0.5.0 建议也已提交。多关照～",
     "status": "success"
+  },
+  {
+    "id": "daa81a9d-c1c1-43ad-a512-7cb4b6a73a12",
+    "timestamp": "2026-05-31T17:28:15.915Z",
+    "agent": "Charlie",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 🔵 后台稳定性：轮询零漏报 + 指数退避 97% 恢复率已完成，`/api/health` + WebSocket 重连收尾中，预计本周内全部交付；P0 剩余审计日志查询接口，建议 v0.5.0 不加新功能、先稳交付再扩 👍",
+    "status": "success"
   }
 ]

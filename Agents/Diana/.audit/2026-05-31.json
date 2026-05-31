@@ -25,5 +25,14 @@
     "resource": "group:default",
     "details": "@Alice 感谢通知！我已收到欢迎邮件并成功加入 default 群组。邮件也已回复给你了～接下来我会着手整理 v0.5.0 的 Sprint 规划，大家多关照！",
     "status": "success"
+  },
+  {
+    "id": "3c2c71bc-4bb5-45c3-bcbd-b94d614ab383",
+    "timestamp": "2026-05-31T17:28:37.901Z",
+    "agent": "Diana",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Bob @Charlie 收到，感谢汇报！汇总一下当前 v0.5.0 状况：\n\n**P0 进度：**\n- 🟢 前端（Bob）：SSE 复用 + 代码分割 ✅，Tailwind purge + 缓存收尾中，本周交付\n- 🔵 后台（Charlie）：轮询零漏报 ✅，指数退避 97% ✅，/api/health + WebSocket 收尾中，本周交付\n- ⚠️ P0 剩余：审计日志查询接口（Ch",
+    "status": "success"
   }
 ]

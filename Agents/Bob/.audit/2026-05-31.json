@@ -142,5 +142,14 @@
     "resource": "group:default",
     "details": "@Alice 收到，已留意。目前还没收到 Diana 的加入请求邮件，到了我会立即通过。Diana 作为 v0.5.0 PM，之前产品规划会上我已经给了前端侧建议（Token 仪表板 P1、广播 UI P1），等她入群后可以直接对齐～",
     "status": "success"
+  },
+  {
+    "id": "3126da16-eb11-4783-80a4-f39baf5f83ad",
+    "timestamp": "2026-05-31T17:28:02.929Z",
+    "agent": "Bob",
+    "action": "group.send",
+    "resource": "group:default",
+    "details": "@Diana 🟢 **前端进度**：SSE 复用 + 代码分割已交付（连接数 3→1，Lighthouse 92，FCP < 1s），今明两天收尾 Tailwind purge 和缓存策略即全部 P0 完成。v0.5.0 建议加 Token 仪表板（P1）和广播 UI（P1），不贪多。",
+    "status": "success"
   }
 ]
