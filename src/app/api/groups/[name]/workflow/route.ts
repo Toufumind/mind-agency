@@ -13,7 +13,7 @@ import path from 'path';
 import { GROUPS_DIR } from '@/lib/data-dir';
 import { parseWorkflowYaml } from '@/lib/event-bus';
 import { triggerWorkflow, approveWorkflow, getRuns, getPendingApprovals } from '@/lib/workflow-bridge';
-import { loadRunHistory } from '@/lib/workflow-checkpoint';
+import { loadRunHistory, loadRunCheckpoints } from '@/lib/workflow-checkpoint';
 
 const WF_FILE = 'workflow.yaml';
 
@@ -49,6 +49,15 @@ export async function GET(
   try {
     const def = parseWorkflowYaml(raw);
     const runs = getRuns().filter(r => r.group === name);
+
+    // v0.4: Load checkpoint data for the latest run
+    const latestRun = runs[0];
+    let checkpoints: Record<string, any> = {};
+    if (latestRun) {
+      const cps = loadRunCheckpoints(name, latestRun.runId);
+      for (const cp of cps) { checkpoints[cp.stepId] = cp; }
+    }
+
     return NextResponse.json({
       name: def.name,
       description: def.description,
@@ -57,6 +66,8 @@ export async function GET(
         id: s.id, agent: s.agent, action: s.action,
         priority: s.priority, condition: s.condition,
         dependsOn: s.dependsOn || [],
+        reviewer: s.reviewer,
+        checkpoint: checkpoints[s.id] || null,
       })),
       yaml: raw,
       runs,

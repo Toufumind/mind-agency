@@ -179,14 +179,14 @@ export default function WorkflowsPage() {
                   const stepsDone = run?.stepsDone || 0;
                   const progress = run ? (run.status === 'completed' ? 1 : stepsDone / totalSteps) : 0;
 
+                  // v0.4: Use real checkpoint data from API
                   const stepsWithTiming = (wf.stepsList || []).map((s: any, i: number) => {
-                    const stepDuration = run ? ((run.completedAt || Date.now()) - run.startedAt) / totalSteps : 20000;
-                    const offset = i * stepDuration;
+                    const cp = s.checkpoint;
                     return {
                       ...s,
-                      status: run?.status === 'completed' ? 'completed' : run?.status === 'failed' ? 'failed' : i < stepsDone ? 'completed' : i === stepsDone && run?.status === 'running' ? 'in_progress' : 'pending',
-                      startedAt: run && i < stepsDone ? run.startedAt + offset : undefined,
-                      completedAt: run && i < stepsDone ? run.startedAt + offset + stepDuration : undefined,
+                      status: cp ? cp.status : (run?.status === 'completed' ? 'completed' : run?.status === 'failed' ? 'failed' : 'pending'),
+                      startedAt: cp?.startedAt || undefined,
+                      completedAt: cp?.completedAt || undefined,
                     };
                   });
 
