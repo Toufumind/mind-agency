@@ -43,6 +43,7 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; step: StepData } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  const [, forceUpdate] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -84,33 +85,15 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
     return result;
   }, [steps]);
 
-  // Get card positions from DOM refs
-  const getCardCenter = useCallback((stepId: string): { x: number; y: number } | null => {
+  // Get card positions from DOM refs (reads live DOM, not cached)
+  const getCardRect = (stepId: string) => {
     const el = cardRefs.current.get(stepId);
     const container = containerRef.current;
     if (!el || !container) return null;
     const er = el.getBoundingClientRect();
     const cr = container.getBoundingClientRect();
-    return { x: er.left + er.width / 2 - cr.left, y: er.top + er.height / 2 - cr.top };
-  }, []);
-
-  const getCardRight = useCallback((stepId: string): { x: number; y: number } | null => {
-    const el = cardRefs.current.get(stepId);
-    const container = containerRef.current;
-    if (!el || !container) return null;
-    const er = el.getBoundingClientRect();
-    const cr = container.getBoundingClientRect();
-    return { x: er.right - cr.left, y: er.top + er.height / 2 - cr.top };
-  }, []);
-
-  const getCardLeft = useCallback((stepId: string): { x: number; y: number } | null => {
-    const el = cardRefs.current.get(stepId);
-    const container = containerRef.current;
-    if (!el || !container) return null;
-    const er = el.getBoundingClientRect();
-    const cr = container.getBoundingClientRect();
-    return { x: er.left - cr.left, y: er.top + er.height / 2 - cr.top };
-  }, []);
+    return { left: er.left - cr.left, right: er.right - cr.left, cx: (er.left + er.right) / 2 - cr.left, cy: (er.top + er.height / 2) - cr.top };
+  };
 
   // Drag handlers
   const handleDragStart = (e: React.DragEvent, step: StepData) => {
@@ -128,6 +111,8 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
     if (stepId && onStepMove) onStepMove(stepId, agent);
     setDragging(null);
     setDragOver(null);
+    // Force re-render after DOM updates to recalculate arrow positions
+    requestAnimationFrame(() => forceUpdate(n => n + 1));
   };
   const handleDragEnd = () => { setDragging(null); setDragOver(null); };
 
@@ -204,15 +189,19 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
         {steps.map(s => {
           const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
           if (deps.length === 0) return null;
-          const target = getCardLeft(s.id);
+          const target = getCardRect(s.id);
           if (!target) return null;
-          return deps.map((depId, i) => {
-            const source = getCardRight(depId);
+          return deps.map((depId) => {
+            const source = getCardRect(depId);
             if (!source) return null;
-            const mx = (source.x + target.x) / 2;
+            const x1 = source.right;
+            const y1 = source.cy;
+            const x2 = target.left;
+            const y2 = target.cy;
+            const mx = (x1 + x2) / 2;
             return (
               <path key={`${s.id}-${depId}`}
-                d={`M${source.x},${source.y} C${mx},${source.y} ${mx},${target.y} ${target.x},${target.y}`}
+                d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
                 stroke="#9ca3af" strokeWidth="1.5" fill="none" strokeDasharray="5 3"
                 markerEnd="url(#ah)" />
             );
