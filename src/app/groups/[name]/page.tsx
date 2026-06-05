@@ -5,9 +5,10 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Sidebar from '@/components/sidebar';
 import { Send, Loader2, Play, MessageCircle, GitBranch, Settings, X, RefreshCw, Plus, Crown, Star, Trash2, ArrowRightLeft, Pin, PinOff, Bell, Eye, EyeOff, ArrowRight, Search, Paperclip } from 'lucide-react';
 import { useT } from '@/components/i18n';
+import WorkflowGantt from '@/components/workflow-gantt';
 
 interface ChatMsg { from: string; date: string; body: string; file: string; }
-interface WorkflowStep { id: string; agent: string; action: string; prompt?: string; condition?: string; dependsOn?: string[]; }
+interface WorkflowStep { id: string; agent: string; action: string; prompt?: string; condition?: string; dependsOn?: string[]; status?: string; reviewer?: string; priority?: string; }
 interface WorkflowDef { name: string; description?: string; steps: number; stepsList: WorkflowStep[]; runs?: any[]; pendingApprovals?: any[]; }
 interface WorkflowResult { step: string; agent: string; decision: string; reply: string; success: boolean; }
 interface GroupConfig {
@@ -393,8 +394,12 @@ export default function GroupPage() {
                   </div>
 
                   {showDag ? (
-                    /* ── DAG 看板视图 ── */
-                    <DagViewSafe steps={workflow.stepsList || []} hoveredStep={hoveredStep} setHoveredStep={setHoveredStep} />
+                    /* ── GANTT 视图 ── */
+                    <WorkflowGantt
+                      steps={(workflow.stepsList || []) as any[]}
+                      progress={0}
+                      onStepClick={(s: any) => { setEditSteps([s]); setShowWfEditor(true); }}
+                    />
                   ) : (
                     /* ── 列表视图 ── */
                     <div className="space-y-2">

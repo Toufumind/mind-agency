@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/sidebar';
 import Link from 'next/link';
-import { Play, RefreshCw, CheckCircle, XCircle, GitBranch, ArrowRight, Plus, X, Edit, Trash2, Eye, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Play, RefreshCw, GitBranch, Plus, X, Edit, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import WorkflowGantt from '@/components/workflow-gantt';
 import { useT } from '@/components/i18n';
 
@@ -35,7 +35,6 @@ export default function WorkflowsPage() {
   const [editSteps, setEditSteps] = useState<any[]>([]);
   const [editSaving, setEditSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
-  const [showVisual, setShowVisual] = useState(false);
   const [hoveredStep, setHoveredStep] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -160,17 +159,8 @@ export default function WorkflowsPage() {
             );
           })()}
 
-          {/* Visual overview toggle */}
-          <div className="flex items-center gap-2 mb-6">
-            <button onClick={() => setShowVisual(!showVisual)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${showVisual ? 'bg-surface-alt text-foreground' : 'text-muted hover:text-foreground'}`}>
-              <Eye size={13} /> {showVisual ? t('list_view') : t('dag_view')}
-            </button>
-          </div>
-
           {loading ? <div className="text-center py-20 text-muted-foreground text-[13px]">{t('loading')}</div> :
            workflows.length === 0 ? <div className="text-center py-20 text-muted-foreground text-[13px]">{t('no_workflows')}</div> : (
-            showVisual ? (
               /* ── DAG GANTT VIEW ── */
               <div className="space-y-6">
                 {workflows.map(wf => {
@@ -236,69 +226,6 @@ export default function WorkflowsPage() {
                   );
                 })}
               </div>
-            ) : (
-              /* ── LIST VIEW ── */
-              <div className="space-y-6">
-                {workflows.map(wf => (
-                  <div key={wf.group} className="bg-canvas border border-border rounded-2xl overflow-hidden">
-                    <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center"><GitBranch size={14} className="text-indigo-500"/></div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Link href={`/groups/${wf.group}`} className="text-[11px] text-indigo-500 hover:underline">#{wf.group}</Link>
-                            <span className="text-[14px] font-medium text-foreground">{wf.name}</span>
-                            <span className="text-[11px] text-muted-foreground">{t('workflow_steps', { n: wf.steps })}</span>
-                          </div>
-                          {wf.description && <p className="text-[11px] text-muted-foreground mt-0.5">{wf.description.slice(0, 100)}</p>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={() => openEditor(wf.group)} className="flex items-center gap-1 px-2 py-1.5 text-[11px] text-muted hover:text-foreground hover:bg-surface-alt rounded-lg"><Edit size={11}/></button>
-                        <button onClick={() => setDeleteConfirm(wf.group)} className="flex items-center gap-1 px-2 py-1.5 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg"><Trash2 size={11}/></button>
-                        <button onClick={() => trigger(wf.group)} disabled={triggering === wf.group}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-foreground text-canvas text-[11px] rounded-lg hover:opacity-90 disabled:opacity-50">
-                          <Play size={11}/> {triggering===wf.group?t('running'):t('run')}
-                        </button>
-                      </div>
-                      {/* Run status + approvals */}
-                      {((wf.runs?.length ?? 0) > 0 || (wf.pendingApprovals?.length ?? 0) > 0) && (
-                        <div className="px-6 py-3 border-t border-border bg-surface/30">
-                          {wf.runs?.filter(r => r.status === 'running').map(run => (
-                            <div key={run.runId} className="flex items-center gap-2 text-[11px]">
-                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                              <span className="text-muted">{run.runId.slice(0, 8)}...</span>
-                              <span className="text-muted-foreground">{run.stepsDone}/{run.stepsTotal} steps</span>
-                              {run.pendingApprovals.map(a => (
-                                <div key={a.approvalId} className="ml-auto flex items-center gap-1">
-                                  <span className="text-[10px] text-indigo-500 font-medium">{a.stepId} 待审批</span>
-                                  <button onClick={() => approve(wf.group, a.approvalId, 'APPROVED')}
-                                    className="flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-medium bg-success text-canvas rounded-md hover:bg-success"><ThumbsUp size={9}/> 批准</button>
-                                  <button onClick={() => approve(wf.group, a.approvalId, 'REJECTED')}
-                                    className="flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-medium bg-destructive text-canvas rounded-md hover:bg-destructive"><ThumbsDown size={9}/> 拒绝</button>
-                                </div>
-                              ))}
-                            </div>
-                          ))}
-                          {wf.runs?.filter(r => r.status === 'completed').slice(0, 1).map(run => (
-                            <div key={run.runId} className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                              <CheckCircle size={10} className="text-success" />
-                              <span>{run.runId.slice(0, 8)}... 已完成 ({run.stepsDone}/{run.stepsTotal})</span>
-                            </div>
-                          ))}
-                          {wf.runs?.filter(r => r.status === 'failed').slice(0, 1).map(run => (
-                            <div key={run.runId} className="flex items-center gap-2 text-[11px] text-destructive">
-                              <XCircle size={10} />
-                              <span>{run.runId.slice(0, 8)}... 失败</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
           )}
 
           {/* ── Editor Dialog ── */}

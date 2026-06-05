@@ -6,7 +6,7 @@ interface StepData {
   id: string;
   agent: string;
   action: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped' | 'blocked';
+  status?: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped' | 'blocked';
   startedAt?: number;
   completedAt?: number;
   dependsOn?: string[];
@@ -150,15 +150,15 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
 
         {/* Lanes */}
         {lanes.map(([agent, agentSteps], li) => (
-          <div key={agent} className="absolute left-0 right-0"
-            style={{ top: li * (LANE_H + LANE_GAP) + LANE_GAP, height: LANE_H }}>
+          <div key={agent} className="absolute"
+            style={{ left: 0, right: 0, top: li * (LANE_H + LANE_GAP) + LANE_GAP, height: LANE_H, width: '100%' }}>
             <div className={`absolute inset-0 rounded ${li % 2 === 0 ? 'bg-surface/40' : ''}`} />
             <div className="absolute left-1.5 top-0.5 text-[9px] font-semibold text-muted z-10 select-none">{agent}</div>
 
             {agentSteps.map(s => {
               const p = positions.get(s.id);
               if (!p) return null;
-              const c = COLORS[s.status] || COLORS.pending;
+              const c = COLORS[s.status || 'pending'] || COLORS.pending;
               const hov = hovered === s.id;
               return (
                 <div key={s.id}
@@ -172,7 +172,7 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
                     {/* Status dot */}
                     <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
                       style={{ backgroundColor: c.border, color: '#fff' }}>
-                      {ICONS[s.status]}
+                      {ICONS[s.status || 'pending']}
                     </span>
                     {/* Info */}
                     <div className="flex-1 min-w-0">
@@ -214,12 +214,12 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
       {hovered && (() => {
         const s = steps.find(x => x.id === hovered);
         if (!s) return null;
-        const c = COLORS[s.status];
+        const c = COLORS[s.status || 'pending'];
         return (
           <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl p-3 w-64 pointer-events-none"
             style={{ left: Math.min(tip.x + 16, window.innerWidth - 280), top: tip.y - 8 }}>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: c.border, color: '#fff' }}>{ICONS[s.status]}</span>
+              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: c.border, color: '#fff' }}>{ICONS[s.status || 'pending']}</span>
               <span className="text-[12px] font-semibold text-foreground">{s.id}</span>
             </div>
             <div className="space-y-1 text-[10px] text-muted-foreground">
