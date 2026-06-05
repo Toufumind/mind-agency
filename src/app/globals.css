@@ -406,6 +406,178 @@
 }
 
 
+/* ═══════════════════════════════════════════════════════════
+   主题六：赛博夜 · Tokyo Night
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="tokyo-night"] {
+  --color-canvas:         #1a1b26;
+  --color-surface:        #24283b;
+  --color-surface-alt:    #2f3347;
+  --color-surface-hover:  #3b4261;
+
+  --color-foreground:        #c0caf5;
+  --color-muted:             #787c99;
+  --color-muted-foreground:  #565f89;
+  --color-disabled:          #414868;
+
+  --color-border:        #292e42;
+  --color-border-strong: #3b4261;
+
+  --color-primary:         #7aa2f7;
+  --color-primary-hover:   #5d82e0;
+  --color-primary-muted:   #1a2740;
+  --color-primary-subtle:  #1e2a45;
+
+  --color-success:           #9ece6a;
+  --color-success-muted:     #1a2e1a;
+  --color-warning:           #e0af68;
+  --color-warning-muted:     #2e2a1a;
+  --color-destructive:       #f7768e;
+  --color-destructive-muted: #2e1a1f;
+  --color-info:              #7aa2f7;
+  --color-info-muted:        #1a2740;
+
+  --color-shadow: rgba(0, 0, 0, 0.4);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.5), 0 8px 10px rgba(0, 0, 0, 0.3);
+
+  --sidebar-bg:         #1a1b26;
+  --sidebar-border:     #292e42;
+  --sidebar-item-hover: #24283b;
+  --sidebar-item-active:#2f3347;
+  --card-bg:           #24283b;
+  --card-border:       #292e42;
+  --input-bg:          #1a1b26;
+  --input-border:      #292e42;
+  --input-focus-ring:  #7aa2f7;
+  --btn-primary-bg:    #7aa2f7;
+  --btn-primary-text:  #1a1b26;
+  --btn-secondary-bg:  #2f3347;
+  --btn-secondary-text:#c0caf5;
+  --code-bg:   #2f3347;
+  --code-text: #f7768e;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   主题七：德古拉 · Dracula
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="dracula"] {
+  --color-canvas:         #282a36;
+  --color-surface:        #343746;
+  --color-surface-alt:    #3e4155;
+  --color-surface-hover:  #44475a;
+
+  --color-foreground:        #f8f8f2;
+  --color-muted:             #6272a4;
+  --color-muted-foreground:  #44475a;
+  --color-disabled:          #3e4155;
+
+  --color-border:        #3e4155;
+  --color-border-strong: #44475a;
+
+  --color-primary:         #bd93f9;
+  --color-primary-hover:   #a37be0;
+  --color-primary-muted:   #282a3a;
+  --color-primary-subtle:  #2d2f42;
+
+  --color-success:           #50fa7b;
+  --color-success-muted:     #1a3a20;
+  --color-warning:           #f1fa8c;
+  --color-warning-muted:     #3a3a1a;
+  --color-destructive:       #ff5555;
+  --color-destructive-muted: #3a1a1a;
+  --color-info:              #bd93f9;
+  --color-info-muted:        #282a3a;
+
+  --color-shadow: rgba(0, 0, 0, 0.4);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.5), 0 8px 10px rgba(0, 0, 0, 0.3);
+
+  --sidebar-bg:         #282a36;
+  --sidebar-border:     #3e4155;
+  --sidebar-item-hover: #343746;
+  --sidebar-item-active:#44475a;
+  --card-bg:           #343746;
+  --card-border:       #3e4155;
+  --input-bg:          #282a36;
+  --input-border:      #3e4155;
+  --input-focus-ring:  #bd93f9;
+  --btn-primary-bg:    #bd93f9;
+  --btn-primary-text:  #282a36;
+  --btn-secondary-bg:  #44475a;
+  --btn-secondary-text:#f8f8f2;
+  --code-bg:   #3e4155;
+  --code-text: #ff5555;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   主题八：日光 · Solarized Light
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="solarized-light"] {
+  --color-canvas:         #fdf6e3;
+  --color-surface:        #eee8d5;
+  --color-surface-alt:    #ddd6c1;
+  --color-surface-hover:  #d3cbb8;
+
+  --color-foreground:        #073642;
+  --color-muted:             #586e75;
+  --color-muted-foreground:  #93a1a1;
+  --color-disabled:          #b4c4c9;
+
+  --color-border:        #d3cbb8;
+  --color-border-strong: #c5bdb0;
+
+  --color-primary:         #268bd2;
+  --color-primary-hover:   #1a6ea0;
+  --color-primary-muted:   #d5eaf8;
+  --color-primary-subtle:  #c4e1f4;
+
+  --color-success:           #859900;
+  --color-success-muted:     #ecf4d8;
+  --color-warning:           #b58900;
+  --color-warning-muted:     #f5ecd4;
+  --color-destructive:       #dc322f;
+  --color-destructive-muted: #fce4e3;
+  --color-info:              #268bd2;
+  --color-info-muted:        #d5eaf8;
+
+  --color-shadow: rgba(101, 80, 50, 0.06);
+
+  --shadow-xs: 0 1px 2px rgba(101, 80, 50, 0.04);
+  --shadow-sm: 0 1px 3px rgba(101, 80, 50, 0.06), 0 1px 2px rgba(101, 80, 50, 0.04);
+  --shadow-md: 0 4px 6px rgba(101, 80, 50, 0.06), 0 2px 4px rgba(101, 80, 50, 0.04);
+  --shadow-lg: 0 10px 15px rgba(101, 80, 50, 0.08), 0 4px 6px rgba(101, 80, 50, 0.04);
+  --shadow-xl: 0 20px 25px rgba(101, 80, 50, 0.10), 0 8px 10px rgba(101, 80, 50, 0.04);
+
+  --sidebar-bg:         #eee8d5;
+  --sidebar-border:     #d3cbb8;
+  --sidebar-item-hover: #ddd6c1;
+  --sidebar-item-active:#fdf6e3;
+  --card-bg:           #fdf6e3;
+  --card-border:       #d3cbb8;
+  --input-bg:          #fdf6e3;
+  --input-border:      #d3cbb8;
+  --input-focus-ring:  #268bd2;
+  --btn-primary-bg:    #073642;
+  --btn-primary-text:  #fdf6e3;
+  --btn-secondary-bg:  #eee8d5;
+  --btn-secondary-text:#586e75;
+  --code-bg:   #eee8d5;
+  --code-text: #dc322f;
+}
 
 
 

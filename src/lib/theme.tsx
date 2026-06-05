@@ -7,14 +7,17 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-export type ThemeId = 'minimal-white' | 'notion' | 'warm-wood' | 'deep-space' | 'nord';
+export type ThemeId = 'minimal-white' | 'notion' | 'warm-wood' | 'deep-space' | 'nord' | 'tokyo-night' | 'dracula' | 'solarized-light';
 
 export const THEMES: { id: ThemeId; label: string; labelZh: string }[] = [
   { id: 'notion', label: 'Notion', labelZh: 'Notion' },
   { id: 'minimal-white', label: 'Minimal White', labelZh: '极简白' },
   { id: 'warm-wood', label: 'Warm Wood', labelZh: '暖木' },
+  { id: 'solarized-light', label: 'Solarized Light', labelZh: '日光' },
   { id: 'deep-space', label: 'Deep Space', labelZh: '深空' },
   { id: 'nord', label: 'Nord', labelZh: '北极' },
+  { id: 'tokyo-night', label: 'Tokyo Night', labelZh: '赛博夜' },
+  { id: 'dracula', label: 'Dracula', labelZh: '德古拉' },
 ];
 
 interface ThemeContextType {

@@ -96,15 +96,18 @@ export default function SettingsPage() {
                     <div>
                       <h3 className="text-[13px] font-semibold text-foreground mb-1">{lang==='zh'?'主题':'Theme'}</h3>
                       <p className="text-[11px] text-muted-foreground mb-3">{lang==='zh'?'选择界面风格':'Choose interface style'}</p>
-                      <div className="grid grid-cols-5 gap-2">
+                      <div className="grid grid-cols-4 gap-2">
                         {THEMES.map(th => {
                           const active = theme === th.id;
                           const gradients: Record<string, string> = {
                             'notion': 'linear-gradient(135deg, #ffffff 40%, #f7f6f3 100%)',
                             'minimal-white': 'linear-gradient(135deg, #ffffff 40%, #e9ecef 100%)',
                             'warm-wood': 'linear-gradient(135deg, #faf8f5 40%, #e5dbd0 100%)',
+                            'solarized-light': 'linear-gradient(135deg, #fdf6e3 40%, #eee8d5 100%)',
                             'deep-space': 'linear-gradient(135deg, #0d0d12 40%, #32323f 100%)',
                             'nord': 'linear-gradient(135deg, #2e3440 40%, #4c566a 100%)',
+                            'tokyo-night': 'linear-gradient(135deg, #1a1b26 40%, #2f3347 100%)',
+                            'dracula': 'linear-gradient(135deg, #282a36 40%, #44475a 100%)',
                           };
                           return (
                             <button key={th.id} onClick={() => setTheme(th.id as ThemeId)}
