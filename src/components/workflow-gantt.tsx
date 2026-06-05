@@ -21,6 +21,8 @@ interface Props {
   /** 0-1 progress through the workflow (0 = start, 1 = done) */
   progress: number;
   onStepClick?: (step: StepData) => void;
+  onStepDelete?: (step: StepData) => void;
+  onStepAdd?: (afterStep?: StepData) => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -41,7 +43,7 @@ const STATUS_ICONS: Record<string, string> = {
   blocked: '◐',
 };
 
-export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
+export default function WorkflowGantt({ steps, progress, onStepClick, onStepDelete, onStepAdd }: Props) {
   const [hoveredStep, setHoveredStep] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
@@ -206,11 +208,26 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
                   <div className={`h-full rounded-lg px-2.5 py-1.5 flex flex-col justify-between transition-shadow ${isHovered ? 'shadow-lg' : 'shadow-sm'}`}
                     style={{ backgroundColor: color + '12', borderLeft: `3px solid ${color}` }}>
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold text-foreground truncate max-w-[75%]">{s.id}</span>
-                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
-                        style={{ backgroundColor: color, color: '#fff' }}>
-                        {STATUS_ICONS[s.status]}
-                      </span>
+                      <span className="text-[10px] font-semibold text-foreground truncate max-w-[65%]">{s.id}</span>
+                      <div className="flex items-center gap-1">
+                        {/* Action buttons — visible on hover */}
+                        {isHovered && (
+                          <div className="flex items-center gap-0.5 mr-1">
+                            <button onClick={(e) => { e.stopPropagation(); onStepClick?.(s); }}
+                              className="w-4 h-4 rounded flex items-center justify-center bg-surface hover:bg-surface-alt text-muted-foreground hover:text-foreground text-[8px]" title="编辑">✎</button>
+                            <button onClick={(e) => { e.stopPropagation(); onStepAdd?.(s); }}
+                              className="w-4 h-4 rounded flex items-center justify-center bg-surface hover:bg-surface-alt text-muted-foreground hover:text-foreground text-[8px]" title="添加步骤">+</button>
+                            {onStepDelete && (
+                              <button onClick={(e) => { e.stopPropagation(); onStepDelete(s); }}
+                                className="w-4 h-4 rounded flex items-center justify-center bg-surface hover:bg-destructive-muted text-muted-foreground hover:text-destructive text-[8px]" title="删除">×</button>
+                            )}
+                          </div>
+                        )}
+                        <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
+                          style={{ backgroundColor: color, color: '#fff' }}>
+                          {STATUS_ICONS[s.status]}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground">
                       {s.completedAt && s.startedAt && <span className="bg-surface-alt px-1 rounded">{fmtDur(s.completedAt - s.startedAt)}</span>}

@@ -210,6 +210,27 @@ export default function WorkflowsPage() {
                         steps={stepsWithTiming}
                         progress={progress}
                         onStepClick={(s) => { openEditor(wf.group); }}
+                        onStepDelete={(s) => {
+                          if (confirm(`删除步骤 "${s.id}"？`)) {
+                            fetch(`/api/groups/${wf.group}/workflow`, {
+                              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ steps: (wf.stepsList || []).filter((st: any) => st.id !== s.id) }),
+                            }).then(() => load());
+                          }
+                        }}
+                        onStepAdd={(after) => {
+                          const newStep = { id: `step_${Date.now()}`, agent: '', action: 'execute', prompt: '' };
+                          const steps = [...(wf.stepsList || [])];
+                          if (after) {
+                            const idx = steps.findIndex((s: any) => s.id === after.id);
+                            steps.splice(idx + 1, 0, newStep);
+                          } else {
+                            steps.push(newStep);
+                          }
+                          setEditSteps(steps);
+                          setEditGroup(wf.group);
+                          setShowEditor(true);
+                        }}
                       />
                     </div>
                   );

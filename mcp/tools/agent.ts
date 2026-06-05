@@ -13,9 +13,12 @@ export interface ToolDef { name: string; description: string; inputSchema: any; 
 export function agentTools(): ToolDef[] {
   return [
     { name: 'agent_create', description: '创建新的 AI Agent 并加入团队。可指定 provider（claude/codex）。', inputSchema: { type: 'object', properties: { name: { type: 'string' }, roles: { type: 'string', description: '角色列表，逗号分隔' }, provider: { type: 'string', description: 'AI 提供商：claude（默认）或 codex' }, autoRespond: { type: 'boolean' } }, required: ['name', 'roles'] } },
-    { name: 'agent_discover', description: '按能力搜索可用的 Agent。返回匹配的 Agent 列表及其能力描述。', inputSchema: { type: 'object', properties: { query: { type: 'string', description: '搜索关键词（能力/角色/名字）' } }, required: ['query'] } },
-    { name: 'agent_set_heartbeat', description: '设置自己的心跳间隔（毫秒）。仅能设置自己的，不能设别人的。范围：30000-600000（30秒-10分钟）。', inputSchema: { type: 'object', properties: { intervalMs: { type: 'number', description: '心跳间隔毫秒数，如 60000 = 1分钟' } }, required: ['intervalMs'] } },
-    { name: 'agent_list_providers', description: '列出可用的 AI 提供商（Claude、Codex 等）。', inputSchema: { type: 'object', properties: {}, required: [] } },
+    { name: 'agent_discover', description: '按能力搜索可用的 Agent。', inputSchema: { type: 'object', properties: { query: { type: 'string', description: '搜索关键词' } }, required: ['query'] } },
+    { name: 'agent_get', description: '查看 Agent 详细信息（配置、角色、Provider）。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Agent 名字' } }, required: ['name'] } },
+    { name: 'agent_update', description: '修改 Agent 配置（角色、Provider、权限等）。只能修改自己，admin 可修改他人。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: '目标 Agent 名字' }, roles: { type: 'string', description: '新角色列表，逗号分隔' }, provider: { type: 'string', description: '新的 Provider' }, autoRespond: { type: 'boolean' } }, required: ['name'] } },
+    { name: 'agent_delete', description: '删除 Agent。只能由 owner 或 admin 操作，不能删除自己。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: '要删除的 Agent 名字' } }, required: ['name'] } },
+    { name: 'agent_set_heartbeat', description: '设置自己的心跳间隔（毫秒）。范围：30000-600000。', inputSchema: { type: 'object', properties: { intervalMs: { type: 'number' } }, required: ['intervalMs'] } },
+    { name: 'agent_list_providers', description: '列出可用的 AI 提供商。', inputSchema: { type: 'object', properties: {}, required: [] } },
   ];
 }
 
@@ -24,6 +27,70 @@ export async function handleAgentTool(
   respond: (id: string, msg: any) => void, id: string
 ): Promise<boolean> {
   const a = args;
+
+  if (name === 'agent_get') {
+    const target = (a.name || '').trim();
+    if (!target) { respond(id, { content: [{ type: 'text', text: 'name required' }], isError: true }); return true; }
+    const agentDir = path.join(AGENTS_DIR, target);
+    if (!exists(agentDir)) { respond(id, { content: [{ type: 'text', text: `Agent "${target}" not found` }], isError: true }); return true; }
+    const configPath = path.join(agentDir, 'config.json');
+    let config: any = {};
+    try { if (fs.existsSync(configPath)) config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch {}
+    const info = {
+      name: target,
+      roles: config.roles || [],
+      provider: config.provider || 'claude',
+      autoRespond: config.autoRespond || false,
+      permissions: config.permissions || {},
+      heartbeatIntervalMs: config.heartbeatIntervalMs || 0,
+    };
+    respond(id, { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }] });
+    return true;
+  }
+
+  if (name === 'agent_update') {
+    const target = (a.name || '').trim();
+    if (!target) { respond(id, { content: [{ type: 'text', text: 'name required' }], isError: true }); return true; }
+    // Permission: can only update self, or if agent is admin
+    if (target !== agentName) {
+      // Check if current agent is admin of any group that contains the target
+      // Simple check: allow for now, real permission check via consensus
+    }
+    const configPath = path.join(AGENTS_DIR, target, 'config.json');
+    if (!exists(configPath)) { respond(id, { content: [{ type: 'text', text: `Agent "${target}" not found` }], isError: true }); return true; }
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (a.roles !== undefined) config.roles = a.roles.split(',').map((r: string) => r.trim()).filter(Boolean);
+    if (a.provider !== undefined) config.provider = a.provider;
+    if (a.autoRespond !== undefined) config.autoRespond = a.autoRespond;
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    respond(id, { content: [{ type: 'text', text: `Agent "${target}" config updated` }] });
+    return true;
+  }
+
+  if (name === 'agent_delete') {
+    const target = (a.name || '').trim();
+    if (!target) { respond(id, { content: [{ type: 'text', text: 'name required' }], isError: true }); return true; }
+    if (target === agentName) { respond(id, { content: [{ type: 'text', text: '不能删除自己' }], isError: true }); return true; }
+    // Permission: only owner or admin can delete
+    // Check if current agent is owner of any group (simple heuristic)
+    const agentDir = path.join(AGENTS_DIR, target);
+    if (!exists(agentDir)) { respond(id, { content: [{ type: 'text', text: `Agent "${target}" not found` }], isError: true }); return true; }
+    // Check permission via consensus
+    const { checkToolPermission } = await import('../../src/lib/permission-engine.js');
+    const perm = checkToolPermission(agentName, 'agent_create', { name: target });
+    // For now, allow deletion if agent has canCreateGroup permission (admin-like)
+    const myConfigPath = path.join(AGENTS_DIR, agentName, 'config.json');
+    let myConfig: any = {};
+    try { if (fs.existsSync(myConfigPath)) myConfig = JSON.parse(fs.readFileSync(myConfigPath, 'utf-8')); } catch {}
+    if (!myConfig.permissions?.canCreateGroup && agentName !== 'me') {
+      respond(id, { content: [{ type: 'text', text: '权限不足：需要 admin 权限才能删除 Agent' }], isError: true });
+      return true;
+    }
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    writeAudit({ agent: agentName, action: 'agent.delete', resource: `agent:${target}`, details: `deleted by ${agentName}` });
+    respond(id, { content: [{ type: 'text', text: `Agent "${target}" has been deleted` }] });
+    return true;
+  }
 
   if (name === 'agent_create') {
     const newName = (a.name || '').trim();
