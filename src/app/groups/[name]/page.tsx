@@ -622,10 +622,10 @@ export default function GroupPage() {
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Workflow</p>
                     {isAdmin && (
                       <button onClick={() => {
-                        setEditSteps(workflow.stepsList?.map((s: any) => ({ ...s })) || []);
-                        fetch(`/api/groups/${name}/workflow?action=history`).then(r => r.json()).then(d => setWfRuns(d.history || [])).catch(() => {});
-                        setShowWfEditor(true);
-                      }} className="text-[10px] text-muted-foreground hover:text-muted">管理</button>
+                        setTab('workflow');
+                        fetchWorkflow();
+                        setShowGroupSidebar(false);
+                      }} className="text-[10px] text-muted-foreground hover:text-muted">查看</button>
                     )}
                   </div>
                   <p className="text-[12px] text-muted">{workflow.name} · {workflow.steps} 步</p>
