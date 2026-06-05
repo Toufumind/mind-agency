@@ -1,0 +1,34 @@
+name: code-review-pipeline
+description: 代码审查 → 构建验证 → 部署
+concurrency: 2
+trigger:
+  type: manual
+steps:
+  - id: code_review
+    agent: Alice
+    action: review
+    prompt: |
+      审查 src/lib/event-bus.ts 的代码质量。
+      检查逻辑错误、性能问题、安全隐患。
+      回复: APPROVED 或 REJECTED + 原因
+    reviewer: Bob
+    priority: high
+
+  - id: build_check
+    agent: Bob
+    action: build
+    prompt: |
+      运行 npx tsc --noEmit 检查类型错误。
+      回复: BUILD_PASS 或 BUILD_FAIL + 错误信息
+    dependsOn: [code_review]
+    reviewer: Alice
+
+  - id: deploy
+    agent: Charlie
+    action: deploy
+    prompt: |
+      执行 git add -A && git commit && git push。
+      回复: DEPLOYED + commit hash
+    dependsOn: [build_check]
+    reviewer: Alice
+    priority: critical

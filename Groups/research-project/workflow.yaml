@@ -1,0 +1,52 @@
+name: research-analysis
+description: 并行研究 → 汇总分析 → 生成报告
+concurrency: 3
+trigger:
+  type: manual
+steps:
+  - id: literature_review
+    agent: Alice
+    action: research
+    prompt: |
+      搜索最新的 multi-agent orchestration 论文。
+      总结 3 个关键发现。
+      回复: 发现列表
+    reviewer: Charlie
+
+  - id: code_analysis
+    agent: Bob
+    action: analysis
+    prompt: |
+      分析当前代码库的架构优缺点。
+      列出 3 个改进建议。
+      回复: 分析报告
+    reviewer: Alice
+
+  - id: market_research
+    agent: Charlie
+    action: research
+    prompt: |
+      调研竞品的多 Agent 协作方案。
+      对比 3 个竞品的优劣。
+      回复: 竞品分析
+    reviewer: Bob
+
+  - id: synthesize
+    agent: Alice
+    action: synthesize
+    prompt: |
+      综合以上三个研究结果，生成一份完整的技术报告。
+      包含：现状分析、竞品对比、改进建议。
+      回复: 完整报告
+    dependsOn: [literature_review, code_analysis, market_research]
+    priority: critical
+
+  - id: presentation
+    agent: Bob
+    action: present
+    prompt: |
+      基于技术报告，生成 PPT 大纲。
+      包含：背景、方案、路线图、预期收益。
+      回复: PPT 大纲
+    dependsOn: [synthesize]
+    reviewer: Alice

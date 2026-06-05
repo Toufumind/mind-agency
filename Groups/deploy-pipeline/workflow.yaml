@@ -1,0 +1,50 @@
+name: deploy-pipeline
+description: 完整部署流程：测试 → 构建 → 部署 → 验证 → 通知
+concurrency: 2
+trigger:
+  type: schedule
+  cron: "0 9 * * 1-5"
+steps:
+  - id: test
+    agent: Alice
+    action: test
+    prompt: |
+      运行 npm test 确认所有测试通过。
+      回复: TEST_PASS 或 TEST_FAIL + 失败的测试
+    reviewer: Bob
+
+  - id: build
+    agent: Bob
+    action: build
+    prompt: |
+      运行 npm run build 确认构建成功。
+      回复: BUILD_PASS + 产物大小
+    dependsOn: [test]
+    reviewer: Charlie
+
+  - id: deploy_staging
+    agent: Charlie
+    action: deploy
+    prompt: |
+      部署到 staging 环境。
+      执行 npm run build:exe。
+      回复: STAGING_DEPLOYED
+    dependsOn: [build]
+    priority: high
+
+  - id: verify
+    agent: Alice
+    action: verify
+    prompt: |
+      访问 staging 环境验证功能正常。
+      回复: VERIFIED 或 VERIFY_FAILED
+    dependsOn: [deploy_staging]
+
+  - id: notify
+    agent: Bob
+    action: notify
+    prompt: |
+      在群里通知部署完成。
+      使用 group_send 发送部署报告。
+      回复: NOTIFIED
+    dependsOn: [verify]
