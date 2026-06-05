@@ -174,16 +174,19 @@ export default function WorkflowsPage() {
               /* ── DAG GANTT VIEW ── */
               <div className="space-y-6">
                 {workflows.map(wf => {
+                  const run = wf.runs?.[0];
+                  const totalSteps = wf.stepsList?.length || 1;
+                  const stepsDone = run?.stepsDone || 0;
+                  const progress = run ? (run.status === 'completed' ? 1 : stepsDone / totalSteps) : 0;
+
                   const stepsWithTiming = (wf.stepsList || []).map((s: any, i: number) => {
-                    const run = wf.runs?.[0];
-                    const totalSteps = wf.stepsList?.length || 1;
-                    const stepDuration = run ? ((run.completedAt || Date.now()) - run.startedAt) / totalSteps : 30000;
+                    const stepDuration = run ? ((run.completedAt || Date.now()) - run.startedAt) / totalSteps : 20000;
                     const offset = i * stepDuration;
                     return {
                       ...s,
-                      status: run?.status === 'completed' ? 'completed' : run?.status === 'failed' ? 'failed' : i < (run?.stepsDone || 0) ? 'completed' : 'pending',
-                      startedAt: run ? run.startedAt + offset : undefined,
-                      completedAt: run?.status === 'completed' ? run.startedAt + offset + stepDuration : undefined,
+                      status: run?.status === 'completed' ? 'completed' : run?.status === 'failed' ? 'failed' : i < stepsDone ? 'completed' : i === stepsDone && run?.status === 'running' ? 'in_progress' : 'pending',
+                      startedAt: run && i < stepsDone ? run.startedAt + offset : undefined,
+                      completedAt: run && i < stepsDone ? run.startedAt + offset + stepDuration : undefined,
                     };
                   });
 
@@ -205,7 +208,7 @@ export default function WorkflowsPage() {
                       </div>
                       <WorkflowGantt
                         steps={stepsWithTiming}
-                        runStartedAt={wf.runs?.[0]?.startedAt}
+                        progress={progress}
                         onStepClick={(s) => { openEditor(wf.group); }}
                       />
                     </div>
