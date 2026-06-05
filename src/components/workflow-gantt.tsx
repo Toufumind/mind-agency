@@ -111,8 +111,10 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
     return { l: er.left - br.left, r: er.right - br.left, cy: (er.top + er.height / 2) - br.top };
   };
 
-  // Build edges
-  const edges = useMemo(() => {
+  // Build edges — use state + useEffect to ensure DOM is ready
+  const [edges, setEdges] = useState<Array<{ x1: number; y1: number; x2: number; y2: number }>>([]);
+
+  const calcEdges = useCallback(() => {
     const res: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
     for (const s of steps) {
       const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
@@ -124,8 +126,14 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
         }
       }
     }
-    return res;
-  }, [steps, lanes, rerender]);
+    setEdges(res);
+  }, [steps, measure]);
+
+  // Recalculate edges after every render (DOM update)
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => calcEdges());
+    return () => cancelAnimationFrame(raf);
+  }, [calcEdges, rerender]);
 
   // Drag
   const onDragStart = (e: React.DragEvent, s: StepData) => {
