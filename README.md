@@ -13,6 +13,8 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 [![GitHub stars](https://img.shields.io/github/stars/Toufumind/mind-agency)](https://github.com/Toufumind/mind-agency)
 
+**[📖 中文文档](README.zh.md)**
+
 </div>
 
 ---
