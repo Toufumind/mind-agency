@@ -9,7 +9,6 @@ interface StepData {
   status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped' | 'blocked';
   startedAt?: number;
   completedAt?: number;
-  output?: string;
   dependsOn?: string[];
   reviewer?: string;
   priority?: string;
@@ -18,222 +17,184 @@ interface StepData {
 
 interface Props {
   steps: StepData[];
-  /** 0-1 progress through the workflow (0 = start, 1 = done) */
   progress: number;
   onStepClick?: (step: StepData) => void;
   onStepDelete?: (step: StepData) => void;
   onStepAdd?: (afterStep?: StepData) => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: '#a0aab8',
-  in_progress: '#3b82f6',
-  completed: '#10b981',
-  failed: '#ef4444',
-  skipped: '#d1d5db',
-  blocked: '#f59e0b',
+const COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  pending:     { bg: '#f3f4f6', border: '#d1d5db', text: '#6b7280' },
+  in_progress: { bg: '#eff6ff', border: '#3b82f6', text: '#1d4ed8' },
+  completed:   { bg: '#f0fdf4', border: '#22c55e', text: '#15803d' },
+  failed:      { bg: '#fef2f2', border: '#ef4444', text: '#dc2626' },
+  skipped:     { bg: '#f9fafb', border: '#e5e7eb', text: '#9ca3af' },
+  blocked:     { bg: '#fffbeb', border: '#f59e0b', text: '#d97706' },
 };
 
-const STATUS_ICONS: Record<string, string> = {
-  pending: '○',
-  in_progress: '◉',
-  completed: '✓',
-  failed: '✗',
-  skipped: '–',
-  blocked: '◐',
+const ICONS: Record<string, string> = {
+  pending: '○', in_progress: '◉', completed: '✓', failed: '✗', skipped: '–', blocked: '◐',
 };
+
+const LANE_H = 72;
+const LANE_GAP = 2;
+const CARD_H = 44;
+const CARD_PAD = 12;
 
 export default function WorkflowGantt({ steps, progress, onStepClick, onStepDelete, onStepAdd }: Props) {
-  const [hoveredStep, setHoveredStep] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [tip, setTip] = useState({ x: 0, y: 0 });
 
-  // Group steps by agent
-  const agents = useMemo(() => {
-    const agentMap = new Map<string, StepData[]>();
+  // Group by agent
+  const lanes = useMemo(() => {
+    const m = new Map<string, StepData[]>();
     for (const s of steps) {
-      const lane = agentMap.get(s.agent) || [];
-      lane.push(s);
-      agentMap.set(s.agent, lane);
+      const arr = m.get(s.agent) || [];
+      arr.push(s);
+      m.set(s.agent, arr);
     }
-    return [...agentMap.entries()];
+    return [...m.entries()];
   }, [steps]);
 
-  // Topological sort into layers (parallel groups)
+  // Topological layers
   const layers = useMemo(() => {
     const result: string[][] = [];
     const placed = new Set<string>();
-    const stepMap = new Map(steps.map(s => [s.id, s]));
-    let remaining = steps.map(s => s.id);
-
-    while (remaining.length > 0) {
-      const layer: string[] = [];
-      const next: string[] = [];
-      for (const id of remaining) {
-        const s = stepMap.get(id)!;
-        const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
-        // Only check deps from PREVIOUS layers (not current)
-        if (deps.every(d => placed.has(d)) || deps.length === 0) {
-          layer.push(id);
-        } else {
-          next.push(id);
-        }
+    const map = new Map(steps.map(s => [s.id, s]));
+    let rest = steps.map(s => s.id);
+    while (rest.length > 0) {
+      const layer: string[] = []; const next: string[] = [];
+      for (const id of rest) {
+        const deps = Array.isArray(map.get(id)?.dependsOn) ? map.get(id)!.dependsOn! : [];
+        if (deps.every(d => placed.has(d)) || deps.length === 0) layer.push(id);
+        else next.push(id);
       }
       if (layer.length === 0) break;
-      // Mark all steps in this layer as placed AFTER processing
       for (const id of layer) placed.add(id);
       result.push(layer);
-      remaining = next;
+      rest = next;
     }
     return result;
   }, [steps]);
 
-  // Calculate step positions based on layers
-  const stepPositions = useMemo(() => {
-    const positions = new Map<string, { left: number; width: number }>();
-    if (layers.length === 0) return positions;
-
-    const layerWidth = 100 / layers.length;
-    const stepMap = new Map(steps.map(s => [s.id, s]));
-
-    for (let li = 0; li < layers.length; li++) {
-      const layer = layers[li];
-      const layerLeft = li * layerWidth;
-      const stepWidth = layerWidth * 0.85;
-      const stepLeft = layerLeft + (layerWidth - stepWidth) / 2;
-
-      for (const id of layer) {
-        positions.set(id, { left: stepLeft, width: stepWidth });
+  // Position: layer index → x position
+  const positions = useMemo(() => {
+    const pos = new Map<string, { x: number; w: number }>();
+    if (layers.length === 0) return pos;
+    const lw = 100 / layers.length;
+    for (let i = 0; i < layers.length; i++) {
+      for (const id of layers[i]) {
+        pos.set(id, { x: i * lw + 1, w: lw - 2 });
       }
     }
-    return positions;
-  }, [layers, steps]);
+    return pos;
+  }, [layers]);
 
-  const LANE_H = 80;
-  const LANE_GAP = 6;
-  const totalH = agents.length * (LANE_H + LANE_GAP);
+  const totalH = lanes.length * (LANE_H + LANE_GAP) + LANE_GAP;
+  const playheadX = Math.min(Math.max(progress * 100, 0), 99);
 
-  // Playhead position based on progress (0-1)
-  const playheadX = Math.min(Math.max(progress * 100, 0), 100);
-
-  // Build dependency edges
+  // Edges: from right side of source to left side of target
   const edges = useMemo(() => {
-    const result: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
-    const agentY = new Map(agents.map(([agent], i) => [agent, i * (LANE_H + LANE_GAP) + LANE_H / 2]));
-
+    const res: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+    const agentY = new Map(lanes.map(([a], i) => [a, i * (LANE_H + LANE_GAP) + LANE_H / 2]));
+    const stepMap = new Map(steps.map(s => [s.id, s]));
     for (const s of steps) {
-      const pos = stepPositions.get(s.id);
-      if (!pos) continue;
-      const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
-      for (const depId of deps) {
-        const depPos = stepPositions.get(depId);
-        const dep = steps.find(x => x.id === depId);
-        if (!depPos || !dep) continue;
-        result.push({
-          x1: depPos.left + depPos.width,
-          y1: agentY.get(dep.agent) || 0,
-          x2: pos.left,
-          y2: agentY.get(s.agent) || 0,
-        });
+      const p = positions.get(s.id);
+      if (!p) continue;
+      for (const depId of (Array.isArray(s.dependsOn) ? s.dependsOn : [])) {
+        const dp = positions.get(depId);
+        const dep = stepMap.get(depId);
+        if (!dp || !dep) continue;
+        res.push({ x1: dp.x + dp.w, y1: agentY.get(dep.agent) || 0, x2: p.x, y2: agentY.get(s.agent) || 0 });
       }
     }
-    return result;
-  }, [steps, agents, stepPositions]);
+    return res;
+  }, [steps, lanes, positions]);
 
   return (
-    <div className="bg-surface rounded-xl overflow-hidden relative w-full" style={{ minHeight: totalH + 40 }}>
-      {/* Time axis */}
-      <div className="h-7 bg-surface-alt border-b border-border flex items-center px-3 text-[9px] text-muted-foreground relative">
+    <div className="bg-surface rounded-xl w-full" style={{ minHeight: totalH + 32 }}>
+      {/* Header bar */}
+      <div className="h-8 bg-surface-alt border-b border-border flex items-center px-2 text-[9px] text-muted-foreground relative">
         {layers.map((layer, i) => {
           const left = (i / Math.max(layers.length, 1)) * 100;
-          const width = (1 / Math.max(layers.length, 1)) * 100;
+          const w = (1 / Math.max(layers.length, 1)) * 100;
           return (
-            <span key={i} className="absolute text-center truncate" style={{ left: `${left}%`, width: `${width}%` }}>
-              {layer.length === 1 ? layer[0] : `Layer ${i + 1}`}
+            <span key={i} className="absolute text-center truncate px-1" style={{ left: `${left}%`, width: `${w}%` }}>
+              {layer.length === 1 ? layer[0] : `Phase ${i + 1}`}
             </span>
           );
         })}
       </div>
 
-      {/* Swimlanes + Cards + Edges */}
       <div className="relative" style={{ height: totalH }}>
-        {/* SVG edges — use absolute pixel coords */}
-        <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
+        {/* Dependency arrows */}
+        <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%">
           <defs>
-            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-              <polygon points="0 0, 8 3, 0 6" fill="#9ca3af" />
+            <marker id="ah" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
+              <polygon points="0 0, 6 2, 0 4" fill="#9ca3af" />
             </marker>
           </defs>
           {edges.map((e, i) => {
-            // Convert percentage x to pixels
-            const containerW = 1000; // reference width for calc
-            const x1px = (e.x1 / 100) * containerW;
-            const x2px = (e.x2 / 100) * containerW;
-            const dx = Math.abs(x2px - x1px);
-            const curve = Math.max(dx * 0.4, 20);
+            const w = 1000;
+            const x1 = (e.x1 / 100) * w;
+            const x2 = (e.x2 / 100) * w;
+            const mx = (x1 + x2) / 2;
             return (
               <path key={i}
-                d={`M ${x1px} ${e.y1} C ${x1px + curve} ${e.y1}, ${x2px - curve} ${e.y2}, ${x2px} ${e.y2}`}
-                stroke="#9ca3af" strokeWidth="1.5" fill="none" strokeDasharray="5 3"
-                markerEnd="url(#arrowhead)" />
+                d={`M${x1},${e.y1} C${mx},${e.y1} ${mx},${e.y2} ${x2},${e.y2}`}
+                stroke="#d1d5db" strokeWidth="1.5" fill="none" strokeDasharray="4 3"
+                markerEnd="url(#ah)" />
             );
           })}
         </svg>
 
-        {/* Agent swimlanes */}
-        {agents.map(([agent, agentSteps], laneIdx) => (
-          <div key={agent} className="absolute left-0 right-0" style={{ top: laneIdx * (LANE_H + LANE_GAP), height: LANE_H }}>
-            {/* Lane background */}
-            <div className={`absolute inset-0 ${laneIdx % 2 === 0 ? 'bg-surface/30' : 'bg-transparent'} rounded`} />
-            {/* Agent label */}
-            <div className="absolute left-2 top-1 text-[10px] font-semibold text-muted z-10">{agent}</div>
-            {/* Step cards */}
-            {agentSteps.map(s => {
-              const pos = stepPositions.get(s.id);
-              if (!pos) return null;
-              const color = STATUS_COLORS[s.status] || '#a0aab8';
-              const isHovered = hoveredStep === s.id;
+        {/* Lanes */}
+        {lanes.map(([agent, agentSteps], li) => (
+          <div key={agent} className="absolute left-0 right-0"
+            style={{ top: li * (LANE_H + LANE_GAP) + LANE_GAP, height: LANE_H }}>
+            <div className={`absolute inset-0 rounded ${li % 2 === 0 ? 'bg-surface/40' : ''}`} />
+            <div className="absolute left-1.5 top-0.5 text-[9px] font-semibold text-muted z-10 select-none">{agent}</div>
 
+            {agentSteps.map(s => {
+              const p = positions.get(s.id);
+              if (!p) return null;
+              const c = COLORS[s.status] || COLORS.pending;
+              const hov = hovered === s.id;
               return (
                 <div key={s.id}
-                  className={`absolute cursor-pointer transition-all ${isHovered ? 'z-20 scale-[1.03]' : 'z-10'}`}
-                  style={{
-                    left: `${pos.left}%`,
-                    top: (LANE_H - 48) / 2,
-                    width: `${pos.width}%`,
-                    height: 48,
-                  }}
-                  onMouseEnter={(e) => { setHoveredStep(s.id); setTooltipPos({ x: e.clientX, y: e.clientY }); }}
-                  onMouseLeave={() => setHoveredStep(null)}
+                  className={`absolute transition-all cursor-pointer ${hov ? 'z-20' : 'z-10'}`}
+                  style={{ left: `${p.x}%`, top: (LANE_H - CARD_H) / 2, width: `${p.w}%`, height: CARD_H }}
+                  onMouseEnter={e => { setHovered(s.id); setTip({ x: e.clientX, y: e.clientY }); }}
+                  onMouseLeave={() => setHovered(null)}
                   onClick={() => onStepClick?.(s)}>
-                  <div className={`h-full rounded-lg px-2.5 py-1.5 flex flex-col justify-between transition-shadow ${isHovered ? 'shadow-lg' : 'shadow-sm'}`}
-                    style={{ backgroundColor: color + '12', borderLeft: `3px solid ${color}` }}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold text-foreground truncate max-w-[65%]">{s.id}</span>
-                      <div className="flex items-center gap-1">
-                        {/* Action buttons — visible on hover */}
-                        {isHovered && (
-                          <div className="flex items-center gap-0.5 mr-1">
-                            <button onClick={(e) => { e.stopPropagation(); onStepClick?.(s); }}
-                              className="w-4 h-4 rounded flex items-center justify-center bg-surface hover:bg-surface-alt text-muted-foreground hover:text-foreground text-[8px]" title="编辑">✎</button>
-                            <button onClick={(e) => { e.stopPropagation(); onStepAdd?.(s); }}
-                              className="w-4 h-4 rounded flex items-center justify-center bg-surface hover:bg-surface-alt text-muted-foreground hover:text-foreground text-[8px]" title="添加步骤">+</button>
-                            {onStepDelete && (
-                              <button onClick={(e) => { e.stopPropagation(); onStepDelete(s); }}
-                                className="w-4 h-4 rounded flex items-center justify-center bg-surface hover:bg-destructive-muted text-muted-foreground hover:text-destructive text-[8px]" title="删除">×</button>
-                            )}
-                          </div>
-                        )}
-                        <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
-                          style={{ backgroundColor: color, color: '#fff' }}>
-                          {STATUS_ICONS[s.status]}
-                        </span>
+                  <div className={`h-full rounded-lg flex items-center gap-2 px-2.5 transition-shadow border ${hov ? 'shadow-md' : 'shadow-sm'}`}
+                    style={{ backgroundColor: c.bg, borderColor: c.border }}>
+                    {/* Status dot */}
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                      style={{ backgroundColor: c.border, color: '#fff' }}>
+                      {ICONS[s.status]}
+                    </span>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-semibold text-foreground truncate">{s.id}</div>
+                      <div className="flex items-center gap-1 text-[8px]" style={{ color: c.text }}>
+                        {s.completedAt && s.startedAt && <span>{fmt(s.completedAt - s.startedAt)}</span>}
+                        {s.reviewer && <span>· review</span>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground">
-                      {s.completedAt && s.startedAt && <span className="bg-surface-alt px-1 rounded">{fmtDur(s.completedAt - s.startedAt)}</span>}
-                      {s.reviewer && <span className="text-info">review</span>}
-                      {s.priority === 'critical' && <span className="text-destructive">⚡</span>}
-                    </div>
+                    {/* Hover actions */}
+                    {hov && (
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button onClick={e => { e.stopPropagation(); onStepClick?.(s); }}
+                          className="w-5 h-5 rounded flex items-center justify-center bg-canvas/80 hover:bg-canvas text-muted-foreground text-[9px]" title="编辑">✎</button>
+                        <button onClick={e => { e.stopPropagation(); onStepAdd?.(s); }}
+                          className="w-5 h-5 rounded flex items-center justify-center bg-canvas/80 hover:bg-canvas text-muted-foreground text-[9px]" title="添加">+</button>
+                        {onStepDelete && (
+                          <button onClick={e => { e.stopPropagation(); onStepDelete(s); }}
+                            className="w-5 h-5 rounded flex items-center justify-center bg-canvas/80 hover:bg-red-50 text-muted-foreground hover:text-red-500 text-[9px]" title="删除">×</button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -242,31 +203,31 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
         ))}
 
         {/* Playhead */}
-        <div className="absolute top-0 bottom-0 w-0.5 bg-primary z-30 pointer-events-none transition-all duration-300"
+        <div className="absolute top-0 bottom-0 w-px bg-primary/60 z-30 pointer-events-none"
           style={{ left: `${playheadX}%` }}>
-          <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-primary shadow" />
-          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-primary shadow" />
+          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary" />
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary" />
         </div>
       </div>
 
       {/* Tooltip */}
-      {hoveredStep && (() => {
-        const step = steps.find(s => s.id === hoveredStep);
-        if (!step) return null;
+      {hovered && (() => {
+        const s = steps.find(x => x.id === hovered);
+        if (!s) return null;
+        const c = COLORS[s.status];
         return (
-          <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-xl p-3 max-w-xs pointer-events-none"
-            style={{ left: tooltipPos.x + 12, top: tooltipPos.y - 10 }}>
-            <p className="text-[12px] font-semibold text-foreground mb-1">{step.id}</p>
-            <p className="text-[10px] text-muted-foreground mb-1">{step.agent} · {step.action}</p>
-            <p className="text-[10px] mb-1">
-              状态: <span style={{ color: STATUS_COLORS[step.status] }}>{STATUS_ICONS[step.status]} {step.status}</span>
-            </p>
-            {step.startedAt && step.completedAt && (
-              <p className="text-[10px] text-muted-foreground">耗时: {fmtDur(step.completedAt - step.startedAt)}</p>
-            )}
-            {step.prompt && (
-              <p className="text-[9px] text-muted-foreground/70 mt-1 line-clamp-2">{step.prompt}</p>
-            )}
+          <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl p-3 w-64 pointer-events-none"
+            style={{ left: Math.min(tip.x + 16, window.innerWidth - 280), top: tip.y - 8 }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: c.border, color: '#fff' }}>{ICONS[s.status]}</span>
+              <span className="text-[12px] font-semibold text-foreground">{s.id}</span>
+            </div>
+            <div className="space-y-1 text-[10px] text-muted-foreground">
+              <p>{s.agent} · {s.action}</p>
+              {s.completedAt && s.startedAt && <p>耗时: {fmt(s.completedAt - s.startedAt)}</p>}
+              {s.reviewer && <p>审查: {s.reviewer}</p>}
+              {s.priority && <p>优先级: {s.priority}</p>}
+            </div>
           </div>
         );
       })()}
@@ -274,8 +235,8 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
   );
 }
 
-function fmtDur(ms: number): string {
+function fmt(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-  return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+  return `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`;
 }
