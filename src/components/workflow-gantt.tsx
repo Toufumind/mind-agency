@@ -141,8 +141,15 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
     <div className="bg-surface rounded-xl overflow-hidden relative" style={{ minHeight: totalH + 40 }}>
       {/* Time axis */}
       <div className="h-7 bg-surface-alt border-b border-border flex items-center px-3 text-[9px] text-muted-foreground relative">
-        <span className="absolute left-2">开始</span>
-        <span className="absolute right-2">结束</span>
+        {layers.map((layer, i) => {
+          const left = (i / Math.max(layers.length, 1)) * 100;
+          const width = (1 / Math.max(layers.length, 1)) * 100;
+          return (
+            <span key={i} className="absolute text-center truncate" style={{ left: `${left}%`, width: `${width}%` }}>
+              {layer.length === 1 ? layer[0] : `Layer ${i + 1}`}
+            </span>
+          );
+        })}
       </div>
 
       {/* Swimlanes + Cards + Edges */}
