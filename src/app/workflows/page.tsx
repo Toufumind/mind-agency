@@ -160,7 +160,7 @@ export default function WorkflowsPage() {
                         {layers.map((layer, li) => (
                           <div key={li} className="flex flex-col items-center gap-3 shrink-0">
                             {layer.map((step: any) => {
-                              const deps = (step.dependsOn || '').split(',').map((d: string) => d.trim()).filter(Boolean);
+                              const deps = Array.isArray(step.dependsOn) ? step.dependsOn : (step.dependsOn || '').split(',').map((d: string) => d.trim()).filter(Boolean);
                               return (
                                 <div key={step.id} className="relative"
                                   onMouseEnter={() => setHoveredStep(step.id)} onMouseLeave={() => setHoveredStep(null)}>
