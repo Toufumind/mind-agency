@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/sidebar';
 import Link from 'next/link';
 import { Play, RefreshCw, CheckCircle, XCircle, GitBranch, ArrowRight, Plus, X, Edit, Trash2, Eye, ThumbsUp, ThumbsDown } from 'lucide-react';
+import WorkflowGantt from '@/components/workflow-gantt';
 import { useT } from '@/components/i18n';
 
 interface WorkflowDef {
@@ -170,94 +171,43 @@ export default function WorkflowsPage() {
           {loading ? <div className="text-center py-20 text-muted-foreground text-[13px]">{t('loading')}</div> :
            workflows.length === 0 ? <div className="text-center py-20 text-muted-foreground text-[13px]">{t('no_workflows')}</div> : (
             showVisual ? (
-              /* ── DAG VISUAL VIEW ── */
-              <div className="space-y-10">
+              /* ── DAG GANTT VIEW ── */
+              <div className="space-y-6">
                 {workflows.map(wf => {
-                  const layers = computeDagLayout(wf.stepsList || []);
+                  const stepsWithTiming = (wf.stepsList || []).map((s: any, i: number) => {
+                    const run = wf.runs?.[0];
+                    const totalSteps = wf.stepsList?.length || 1;
+                    const stepDuration = run ? ((run.completedAt || Date.now()) - run.startedAt) / totalSteps : 30000;
+                    const offset = i * stepDuration;
+                    return {
+                      ...s,
+                      status: run?.status === 'completed' ? 'completed' : run?.status === 'failed' ? 'failed' : i < (run?.stepsDone || 0) ? 'completed' : 'pending',
+                      startedAt: run ? run.startedAt + offset : undefined,
+                      completedAt: run?.status === 'completed' ? run.startedAt + offset + stepDuration : undefined,
+                    };
+                  });
+
                   return (
-                    <div key={wf.group} className="bg-canvas border border-border rounded-2xl p-6">
-                      <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center"><GitBranch size={14} className="text-indigo-500"/></div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <Link href={`/groups/${wf.group}`} className="text-[11px] text-indigo-500 hover:underline">#{wf.group}</Link>
-                              <span className="text-[14px] font-medium text-foreground">{wf.name}</span>
-                              <span className="text-[11px] text-muted-foreground">{t('workflow_steps', { n: wf.steps })}</span>
-                            </div>
-                            {wf.description && <p className="text-[11px] text-muted-foreground mt-0.5">{wf.description.slice(0, 100)}</p>}
-                          </div>
+                    <div key={wf.group}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Link href={`/groups/${wf.group}`} className="text-[13px] font-medium text-foreground hover:underline">{wf.name}</Link>
+                          <span className="text-[10px] text-muted-foreground">#{wf.group}</span>
+                          <span className="text-[10px] text-muted-foreground">· {wf.steps} 步</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <button onClick={() => openEditor(wf.group)} className="flex items-center gap-1 px-2 py-1.5 text-[11px] text-muted hover:text-foreground hover:bg-surface-alt rounded-lg"><Edit size={11}/></button>
-                          <button onClick={() => setDeleteConfirm(wf.group)} className="flex items-center gap-1 px-2 py-1.5 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive-muted rounded-lg"><Trash2 size={11}/></button>
+                          <button onClick={() => openEditor(wf.group)} className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted hover:text-foreground hover:bg-surface-alt rounded-lg"><Edit size={10}/></button>
                           <button onClick={() => trigger(wf.group)} disabled={triggering === wf.group}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-foreground text-canvas text-[11px] rounded-lg hover:opacity-90 disabled:opacity-50">
-                            <Play size={11}/> {triggering===wf.group?t('running'):t('run')}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-foreground text-canvas text-[10px] rounded-lg hover:opacity-90 disabled:opacity-50">
+                            <Play size={10}/> {triggering===wf.group?'...':t('run')}
                           </button>
                         </div>
                       </div>
-
-                      {/* DAG layers */}
-                      <div className="flex items-start gap-4 overflow-x-auto pb-2" style={{ minHeight: layers.length * 90 }}>
-                        {layers.map((layer, li) => (
-                          <div key={li} className="flex flex-col items-center gap-3 shrink-0">
-                            {layer.map((step: any) => {
-                              const deps = Array.isArray(step.dependsOn) ? step.dependsOn : (step.dependsOn || '').split(',').map((d: string) => d.trim()).filter(Boolean);
-                              return (
-                                <div key={step.id} className="relative"
-                                  onMouseEnter={() => setHoveredStep(step.id)} onMouseLeave={() => setHoveredStep(null)}>
-                                  {li > 0 && deps.length > 0 && (
-                                    <div className="absolute -left-4 top-1/2 w-4 flex items-center justify-center -translate-y-1/2">
-                                      <ArrowRight size={10} className="text-muted-foreground rotate-180" />
-                                    </div>
-                                  )}
-                                  <div className="w-44 bg-canvas border rounded-xl p-3 hover:shadow-md transition-shadow cursor-default"
-                                    style={{ borderColor: hoveredStep === step.id ? colors[li % colors.length] : 'var(--color-border)' }}>
-                                    <div className="flex items-center gap-1.5 mb-1.5">
-                                      <span className="text-[9px] font-mono text-white px-1.5 py-0.5 rounded"
-                                        style={{ backgroundColor: colors[li % colors.length] }}>#{li + 1}</span>
-                                      <span className="text-[11px] font-medium text-muted">{step.id}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 text-[10px] text-muted">
-                                      <span className="font-medium text-muted">{step.agent}</span>
-                                      <span className="text-muted-foreground">·</span>
-                                      <span>{step.action}</span>
-                                    </div>
-                                    {step.priority && <span className="text-[9px] text-amber-500 mt-1 block">{step.priority}</span>}
-                                    {step.condition && (
-                                      <div className="mt-1.5 pt-1.5 border-t border-border">
-                                        <span className="text-[9px] text-muted-foreground font-mono truncate block">{step.condition}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                      {/* Run status + approvals (DAG view) */}
-                      {((wf.runs?.length ?? 0) > 0 || (wf.pendingApprovals?.length ?? 0) > 0) && (
-                        <div className="mt-4 pt-3 border-t border-border">
-                          {wf.runs?.filter(r => r.status === 'running').map(run => (
-                            <div key={run.runId} className="flex items-center gap-2 text-[11px]">
-                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                              <span className="text-muted">{run.runId.slice(0, 8)}...</span>
-                              <span className="text-muted-foreground">{run.stepsDone}/{run.stepsTotal} steps</span>
-                              {run.pendingApprovals.map(a => (
-                                <div key={a.approvalId} className="ml-auto flex items-center gap-1">
-                                  <span className="text-[10px] text-indigo-500 font-medium">{a.stepId} 待审批</span>
-                                  <button onClick={() => approve(wf.group, a.approvalId, 'APPROVED')}
-                                    className="flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-medium bg-success text-canvas rounded-md hover:bg-success"><ThumbsUp size={9}/> 批准</button>
-                                  <button onClick={() => approve(wf.group, a.approvalId, 'REJECTED')}
-                                    className="flex items-center gap-0.5 px-2 py-0.5 text-[10px] font-medium bg-destructive text-canvas rounded-md hover:bg-destructive"><ThumbsDown size={9}/> 拒绝</button>
-                                </div>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <WorkflowGantt
+                        steps={stepsWithTiming}
+                        runStartedAt={wf.runs?.[0]?.startedAt}
+                        onStepClick={(s) => { openEditor(wf.group); }}
+                      />
                     </div>
                   );
                 })}
