@@ -62,10 +62,15 @@ export default function WorkflowsPage() {
     setTriggering('');
   };
 
-  const openEditor = async (g: string) => {
+  const openEditor = async (g: string, singleStep?: any) => {
     const r = await fetch(`/api/groups/${g}/workflow`).then(r => r.json());
     setEditGroup(g); setEditWfName(r.name || ''); setEditWfDesc(r.description || '');
-    setEditSteps(r.stepsList?.map((s: any) => ({ id: s.id, agent: s.agent || '', action: s.action || '', priority: s.priority || '', condition: s.condition || '', dependsOn: '', prompt: '' })) || []);
+    if (singleStep) {
+      // Edit only the clicked step
+      setEditSteps([{ id: singleStep.id, agent: singleStep.agent || '', action: singleStep.action || '', priority: singleStep.priority || '', condition: singleStep.condition || '', dependsOn: Array.isArray(singleStep.dependsOn) ? singleStep.dependsOn.join(',') : '', prompt: singleStep.prompt || '' }]);
+    } else {
+      setEditSteps(r.stepsList?.map((s: any) => ({ id: s.id, agent: s.agent || '', action: s.action || '', priority: s.priority || '', condition: s.condition || '', dependsOn: '', prompt: '' })) || []);
+    }
     setShowEditor(true);
   };
 
@@ -199,7 +204,7 @@ export default function WorkflowsPage() {
                       <WorkflowGantt
                         steps={stepsWithTiming}
                         progress={progress}
-                        onStepClick={(s) => { openEditor(wf.group); }}
+                        onStepClick={(s) => { openEditor(wf.group, s); }}
                         onStepDelete={(s) => {
                           if (confirm(`删除步骤 "${s.id}"？`)) {
                             fetch(`/api/groups/${wf.group}/workflow`, {
@@ -222,13 +227,22 @@ export default function WorkflowsPage() {
                           setShowEditor(true);
                         }}
                         onStepMove={(stepId, newAgent) => {
+                          // Update local state immediately
+                          const updated = workflows.map(w => {
+                            if (w.group !== wf.group) return w;
+                            return { ...w, stepsList: (w.stepsList || []).map((s: any) =>
+                              s.id === stepId ? { ...s, agent: newAgent } : s
+                            )};
+                          });
+                          setWorkflows(updated);
+                          // Save to API in background
                           const steps = (wf.stepsList || []).map((s: any) =>
                             s.id === stepId ? { ...s, agent: newAgent } : s
                           );
                           fetch(`/api/groups/${wf.group}/workflow`, {
                             method: 'PUT', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ steps }),
-                          }).then(() => load());
+                          });
                         }}
                       />
                     </div>

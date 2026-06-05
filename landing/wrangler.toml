@@ -1,0 +1,8 @@
+name = "mind-agency"
+pages_build_output_dir = "."
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "mind_agency_db"
+database_name = "mind-agency-db"
+database_id = "dd6c891e-c3c3-4a62-a125-7c2c9db3c8f5"

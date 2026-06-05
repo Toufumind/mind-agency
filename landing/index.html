@@ -137,7 +137,7 @@ footer{border-top:1px solid var(--bd);padding:56px 0 28px;background:var(--sf)}
 
 <nav><div class="ni">
   <a href="#" class="nl"><canvas class="logo-anim" data-size="28" width="56" height="56"></canvas>Mind Agency</a>
-  <div class="nk"><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="#faq">FAQ</a><a href="https://github.com/Toufumind/mind-agency" target="_blank" rel="noopener">GitHub</a></div>
+  <div class="nk"><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="#faq">FAQ</a><a href="/contact">Contact</a><a href="https://github.com/Toufumind/mind-agency" target="_blank" rel="noopener">GitHub</a></div>
   <a href="#quickstart" class="nc">Get Started</a>
 </div></nav>
 
@@ -271,7 +271,7 @@ footer{border-top:1px solid var(--bd);padding:56px 0 28px;background:var(--sf)}
 <footer><div class="ctn">
   <div class="fg2">
     <div class="fb"><div class="nl" style="margin-bottom:4px"><canvas class="logo-anim" data-size="22" width="44" height="44"></canvas>Mind Agency</div><p>From Agent to Agency. Open source, local-first.</p></div>
-    <div class="fcl"><h4>Product</h4><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="https://github.com/Toufumind/mind-agency/releases">Download</a></div>
+    <div class="fcl"><h4>Product</h4><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="/contact">Contact</a><a href="https://github.com/Toufumind/mind-agency/releases">Download</a></div>
     <div class="fcl"><h4>Resources</h4><a href="https://github.com/Toufumind/mind-agency">GitHub</a><a href="https://github.com/Toufumind/mind-agency/blob/main/README.md">Docs</a><a href="#faq">FAQ</a></div>
     <div class="fcl"><h4>Legal</h4><a href="../LICENSE">Apache 2.0</a></div>
   </div>
@@ -279,7 +279,7 @@ footer{border-top:1px solid var(--bd);padding:56px 0 28px;background:var(--sf)}
 </div></footer>
 
 <script>
-function initLogo(c,s){const S=512,C=7,T=48,F=12,d=Math.min(devicePixelRatio||1,2);c.width=s*d;c.height=s*d;c.style.width=s+'px';c.style.height=s+'px';const x=c.getContext('2d');x.scale(d,d);const i=new Image();i.src='../public/shaders/frames_white/logo_sprite_48f_512x512.png';let f=0,l=0,r=0;function draw(t){if(t-l>=1000/F){l=t;const co=f%C,row=Math.floor(f/C);x.clearRect(0,0,s,s);if(i.complete)x.drawImage(i,co*S,row*S,S,S,0,0,s,s);f=(f+1)%T;}r=requestAnimationFrame(draw);}i.complete?requestAnimationFrame(draw):i.onload=()=>requestAnimationFrame(draw);}
+function initLogo(c,s){const S=512,C=7,T=48,F=12,d=Math.min(devicePixelRatio||1,2);c.width=s*d;c.height=s*d;c.style.width=s+'px';c.style.height=s+'px';const x=c.getContext('2d');x.scale(d,d);const i=new Image();i.src='public/logo_sprite_48f_512x512.png';let f=0,l=0,r=0;function draw(t){if(t-l>=1000/F){l=t;const co=f%C,row=Math.floor(f/C);x.clearRect(0,0,s,s);if(i.complete)x.drawImage(i,co*S,row*S,S,S,0,0,s,s);f=(f+1)%T;}r=requestAnimationFrame(draw);}i.complete?requestAnimationFrame(draw):i.onload=()=>requestAnimationFrame(draw);}
 document.querySelectorAll('.logo-anim').forEach(c=>initLogo(c,parseInt(c.dataset.size||'28')));
 const obs=new IntersectionObserver(e=>e.forEach(x=>{if(x.isIntersecting){x.target.classList.add('vis');obs.unobserve(x.target);}}),{threshold:.08,rootMargin:'0px 0px -40px 0px'});
 document.querySelectorAll('.rv2').forEach(el=>obs.observe(el));

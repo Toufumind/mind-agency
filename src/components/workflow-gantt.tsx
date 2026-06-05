@@ -47,12 +47,39 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
   const boxRef = useRef<HTMLDivElement>(null);
   const refs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Close context menu
+  // Close context menu on click outside
   useEffect(() => {
-    const h = () => setCtx(null);
-    if (ctx) document.addEventListener('click', h);
+    if (!ctx) return;
+    const h = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Don't close if clicking inside the context menu
+      if (target.closest('[data-ctx-menu]')) return;
+      setCtx(null);
+    };
+    document.addEventListener('click', h);
     return () => document.removeEventListener('click', h);
   }, [ctx]);
+
+  // Global right-click on document — catch if inside Gantt
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const container = boxRef.current;
+      if (!container || !container.contains(target)) return;
+      if (target.closest('[draggable]')) return;
+      e.preventDefault();
+      const laneEl = target.closest('[data-agent]');
+      const agent = laneEl?.getAttribute('data-agent') || '';
+      setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } });
+    };
+    document.addEventListener('contextmenu', handler, true);
+    return () => document.removeEventListener('contextmenu', handler, true);
+  }, []);
+
+  // Callback ref for container
+  const boxRefCb = useCallback((el: HTMLDivElement | null) => {
+    (boxRef as any).current = el;
+  }, []);
 
   // Empty state
   if (!steps || steps.length === 0) {
@@ -76,6 +103,8 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
     }
     return [...m.entries()];
   }, [steps]);
+
+  // Right-click on lane areas — handled via onContextMenu on lane divs
 
   // Topological layers
   const layers = useMemo(() => {
@@ -152,10 +181,25 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
   const onDragEnd = () => { setDragId(null); setDragAgent(null); };
 
   return (
-    <div ref={boxRef} className="bg-surface rounded-xl w-full overflow-x-auto relative select-none">
+    <div ref={boxRefCb} className="bg-surface rounded-xl w-full overflow-x-auto relative select-none"
+      onContextMenu={e => {
+        // Only show context menu if right-clicked on empty area (not on a card)
+        const target = e.target as HTMLElement;
+        if (!target.closest('[draggable]')) {
+          e.preventDefault();
+          // Find which agent lane was clicked
+          const laneEl = target.closest('[data-agent]');
+          const agent = laneEl?.getAttribute('data-agent') || lanes[0]?.[0] || '';
+          setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } });
+        }
+      }}>
       {/* Header */}
       <div className="flex border-b border-border bg-surface-alt h-7">
-        <div className="w-[72px] shrink-0 border-r border-border/50" />
+        <div className="w-[72px] shrink-0 border-r border-border/50 flex items-center justify-center">
+          {onStepAdd && (
+            <button onClick={() => onStepAdd()} className="text-[10px] text-muted-foreground hover:text-foreground" title="添加步骤">+</button>
+          )}
+        </div>
         {layers.map((_, i) => (
           <div key={i} className="flex-1 flex items-center justify-center text-[9px] text-muted-foreground border-r border-border/30 last:border-r-0">
             {layers[i].length === 1 ? layers[i][0] : `Phase ${i + 1}`}
@@ -165,15 +209,17 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
 
       {/* Lanes */}
       {lanes.map(([agent, agentSteps], li) => (
-        <div key={agent}
+        <div key={agent} data-agent={agent}
           className={`flex border-b border-border/30 ${li % 2 === 0 ? 'bg-surface/30' : ''} ${dragAgent === agent ? 'bg-primary/5 ring-1 ring-primary/30' : ''}`}
           onDragOver={e => onDragOver(e, agent)}
           onDrop={e => onDrop(e, agent)}
-          onDragEnd={onDragEnd}>
+          onDragEnd={onDragEnd}
+          onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, s: { id: "", agent, action: "execute", status: "pending" } }); }}>
           <div className="w-[72px] shrink-0 flex items-center px-2 text-[9px] font-semibold text-muted border-r border-border/50">{agent}</div>
           <div className="flex-1 flex">
             {layers.map((layer, li) => (
-              <div key={li} className="flex-1 flex items-center justify-center gap-1 px-1 py-1.5 border-r border-border/30 last:border-r-0 min-h-[60px]">
+              <div key={li} className="flex-1 flex items-center justify-center gap-1 px-1 py-1.5 border-r border-border/30 last:border-r-0 min-h-[60px]"
+                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } }); }}>
                 {agentSteps.filter(s => layer.includes(s.id)).map(s => {
                   const st = s.status || 'pending';
                   const c = C[st] || C.pending;
@@ -245,7 +291,7 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
 
       {/* Context menu */}
       {ctx && (
-        <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl py-1 w-36" style={{ left: ctx.x, top: ctx.y }} onClick={e => e.stopPropagation()}>
+        <div data-ctx-menu className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl py-1 w-36" style={{ left: Math.min(ctx.x, window.innerWidth - 160), top: Math.min(ctx.y, window.innerHeight - 120) }} onClick={e => e.stopPropagation()}>
           <button onClick={() => { onStepClick?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">✎ 编辑</button>
           <button onClick={() => { onStepAdd?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">+ 添加步骤</button>
           {onStepDelete && <button onClick={() => { onStepDelete(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-destructive hover:bg-destructive-muted">× 删除</button>}
