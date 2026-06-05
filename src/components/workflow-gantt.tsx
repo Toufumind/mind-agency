@@ -138,7 +138,7 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
   }, [steps, agents, stepPositions]);
 
   return (
-    <div className="bg-surface rounded-xl overflow-hidden relative" style={{ minHeight: totalH + 40 }}>
+    <div className="bg-surface rounded-xl overflow-hidden relative w-full" style={{ minHeight: totalH + 40 }}>
       {/* Time axis */}
       <div className="h-7 bg-surface-alt border-b border-border flex items-center px-3 text-[9px] text-muted-foreground relative">
         {layers.map((layer, i) => {
