@@ -32,13 +32,13 @@ const STATUS_COLORS: Record<string, string> = {
   blocked: '#f59e0b',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: '等待中',
-  in_progress: '执行中',
-  completed: '已完成',
-  failed: '失败',
-  skipped: '已跳过',
-  blocked: '被阻塞',
+const STATUS_ICONS: Record<string, string> = {
+  pending: '○',
+  in_progress: '◉',
+  completed: '✓',
+  failed: '✗',
+  skipped: '–',
+  blocked: '◐',
 };
 
 export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
@@ -154,7 +154,7 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
 
       {/* Swimlanes + Cards + Edges */}
       <div className="relative" style={{ height: totalH }}>
-        {/* SVG edges */}
+        {/* SVG edges — use absolute pixel coords */}
         <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
           <defs>
             <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
@@ -162,14 +162,16 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
             </marker>
           </defs>
           {edges.map((e, i) => {
-            // Curved path: cubic bezier
-            const midX = (e.x1 + e.x2) / 2;
-            const dx = Math.abs(e.x2 - e.x1);
-            const curveOffset = Math.min(dx * 0.3, 5);
+            // Convert percentage x to pixels
+            const containerW = 1000; // reference width for calc
+            const x1px = (e.x1 / 100) * containerW;
+            const x2px = (e.x2 / 100) * containerW;
+            const dx = Math.abs(x2px - x1px);
+            const curve = Math.max(dx * 0.4, 20);
             return (
               <path key={i}
-                d={`M ${e.x1}% ${e.y1} C ${e.x1 + curveOffset}% ${e.y1}, ${e.x2 - curveOffset}% ${e.y2}, ${e.x2}% ${e.y2}`}
-                stroke="#d1d5db" strokeWidth="1.5" fill="none" strokeDasharray="4 2"
+                d={`M ${x1px} ${e.y1} C ${x1px + curve} ${e.y1}, ${x2px - curve} ${e.y2}, ${x2px} ${e.y2}`}
+                stroke="#9ca3af" strokeWidth="1.5" fill="none" strokeDasharray="5 3"
                 markerEnd="url(#arrowhead)" />
             );
           })}
@@ -201,17 +203,19 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
                   onMouseEnter={(e) => { setHoveredStep(s.id); setTooltipPos({ x: e.clientX, y: e.clientY }); }}
                   onMouseLeave={() => setHoveredStep(null)}
                   onClick={() => onStepClick?.(s)}>
-                  <div className={`h-full rounded-lg px-2 py-1 flex flex-col justify-between transition-shadow ${isHovered ? 'shadow-lg' : 'shadow-sm'}`}
-                    style={{ backgroundColor: color + '15', borderLeft: `3px solid ${color}` }}>
+                  <div className={`h-full rounded-lg px-2.5 py-1.5 flex flex-col justify-between transition-shadow ${isHovered ? 'shadow-lg' : 'shadow-sm'}`}
+                    style={{ backgroundColor: color + '12', borderLeft: `3px solid ${color}` }}>
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-semibold text-foreground truncate max-w-[70%]">{s.id}</span>
-                      <span className="text-[8px] px-1 py-0.5 rounded text-white font-medium" style={{ backgroundColor: color }}>
-                        {STATUS_LABELS[s.status]}
+                      <span className="text-[10px] font-semibold text-foreground truncate max-w-[75%]">{s.id}</span>
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
+                        style={{ backgroundColor: color, color: '#fff' }}>
+                        {STATUS_ICONS[s.status]}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                      {s.completedAt && s.startedAt && <span>{fmtDur(s.completedAt - s.startedAt)}</span>}
-                      {s.reviewer && <span>· 👁</span>}
+                    <div className="flex items-center gap-1.5 text-[8px] text-muted-foreground">
+                      {s.completedAt && s.startedAt && <span className="bg-surface-alt px-1 rounded">{fmtDur(s.completedAt - s.startedAt)}</span>}
+                      {s.reviewer && <span className="text-info">review</span>}
+                      {s.priority === 'critical' && <span className="text-destructive">⚡</span>}
                     </div>
                   </div>
                 </div>
@@ -238,7 +242,7 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
             <p className="text-[12px] font-semibold text-foreground mb-1">{step.id}</p>
             <p className="text-[10px] text-muted-foreground mb-1">{step.agent} · {step.action}</p>
             <p className="text-[10px] mb-1">
-              状态: <span style={{ color: STATUS_COLORS[step.status] }}>{STATUS_LABELS[step.status]}</span>
+              状态: <span style={{ color: STATUS_COLORS[step.status] }}>{STATUS_ICONS[step.status]} {step.status}</span>
             </p>
             {step.startedAt && step.completedAt && (
               <p className="text-[10px] text-muted-foreground">耗时: {fmtDur(step.completedAt - step.startedAt)}</p>
