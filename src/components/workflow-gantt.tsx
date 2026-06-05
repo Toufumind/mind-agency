@@ -130,8 +130,8 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
         {/* Dependency arrows */}
         <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%">
           <defs>
-            <marker id="ah" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
-              <polygon points="0 0, 6 2, 0 4" fill="#9ca3af" />
+            <marker id="ah" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+              <polygon points="0 0, 7 2.5, 0 5" fill="#9ca3af" />
             </marker>
           </defs>
           {edges.map((e, i) => {
