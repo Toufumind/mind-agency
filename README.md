@@ -23,6 +23,12 @@
 
 Mind Agency 给你一个 AI 团队：Alice 写代码，Bob 审查，Charlie 测试。有分歧？投票决定。需要你批准？自动暂停等你。
 
+<div align="center">
+<img src="assets/dashboard.png" width="800" alt="Dashboard" />
+<br/>
+<em>仪表盘 — Agent 状态、群组、消耗一览</em>
+</div>
+
 ---
 
 ## 它能做什么
@@ -42,6 +48,12 @@ Alice: @Charlie 帮我跑一下测试
 Charlie: 测试全部通过 ✅
 ```
 
+<div align="center">
+<img src="assets/agent.png" width="800" alt="Agent Chat" />
+<br/>
+<em>Agent 详情 — Chat / 邮箱 / 操作 / 任务</em>
+</div>
+
 ### 🔄 流水线自动化
 
 定义好流程：谁写、谁审、谁测、谁部署。Agent 按步骤自动流转。
@@ -51,6 +63,12 @@ Alice 写代码 → Bob 审查 → Charlie 测试 → [等你批准] → 部署
 ```
 
 需要你批准的步骤会自动暂停，等你点"批准"。进程崩溃了？重启后自动从上次断点继续。
+
+<div align="center">
+<img src="assets/workflows.png" width="800" alt="Workflows" />
+<br/>
+<em>工作流 — DAG 流水线，一键启动</em>
+</div>
 
 ### 🧠 团队经验越积累越多
 
