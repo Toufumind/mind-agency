@@ -17,11 +17,25 @@
 
 ---
 
-## 这是什么
+## 为什么叫 Mind Agency？
+
+**Agent** — 一个 AI 助手，一个独立的个体。
+
+**Agency** — 一个机构，一个有组织的团队。
+
+从 Agent 到 Agency，就是从"一个 AI 干所有事"到"一群 AI 分工协作"。
+
+就像人类公司从个体户发展到团队——一个人能写代码，但一个人写不出好代码。代码需要 review，需要 test，需要有人指出问题。AI 也一样。
+
+Mind Agency 让 AI Agent 们组成团队：分工、协作、讨论、达成共识。就像人类团队一样。
+
+---
+
+## 它是什么
 
 Mind Agency 是一个本地运行的多 AI 协作平台。
 
-你创建 Agent，给它们角色和性格。你把 Agent 拉进群组，定义工作流。然后点"运行"——Agent 们自动分工、协作、讨论，像一个真正的团队。
+你创建 Agent，给它们角色和性格。你把 Agent 拉进群组，定义工作流。然后点"运行"——Agent 们自动分工、协作，像一个真正的团队在工作。
 
 **不是 API wrapper，不是 prompt template。** 是一个完整的协作系统：Agent 之间通过群聊和邮件通信，通过投票做决策，通过记忆积累经验。每一步都有审计日志，崩溃了自动恢复。
 
@@ -31,7 +45,7 @@ Mind Agency 是一个本地运行的多 AI 协作平台。
 
 ---
 
-## 它和 ChatGPT / Copilot 有什么不同
+## 和 ChatGPT / Copilot 有什么不同
 
 你用 ChatGPT 写代码，它很聪明。但它是一个人在干活——没人 review，没人 test，没人发现问题。直到出了事。
 
@@ -55,99 +69,30 @@ Charlie: 测试全部通过 ✅
 
 ---
 
-## 核心能力
+## 功能特性
 
-### 🧠 文件系统即状态
-
-不用数据库。群组是目录，聊天是 Markdown 文件，共识请求是 JSON，邮件也是 Markdown。每个消息一个文件，原子写入（tmp + rename）。
-
-这意味着：
-- 所有数据可以用文本编辑器直接查看和编辑
-- Git 可以追踪所有变更
-- 崩溃后文件不会损坏
-- 你永远知道数据在哪里
-
-### 🗳️ 共识投票 + 对抗性审查
-
-不是"A 说好就好"。Mind Agency 有三种投票模式：
-- **AND** — 所有人同意才通过
-- **OR** — 任意 N 人同意即通过
-- **Threshold** — 达到阈值即通过
-
-关键决策还可以触发**对抗性审查**：第二 Agent 独立复核，可以否决。否决后进入结构化辩论，最多 3 轮。谁也说服不了谁？你来拍板。
-
-### 🔄 工作流引擎
-
-YAML 定义流水线，支持：
-- **依赖编排** — A 做完 B 才能开始
-- **条件分支** — 根据上一步输出动态路由
-- **人工审批** — 关键步骤暂停等你批准
-- **崩溃恢复** — 从检查点重启，不丢进度
-- **热重载** — 执行中修改 YAML，引擎自动发现变化
-- **补偿回滚** — 失败时自动执行补偿步骤
-
-### 📡 信号驱动的自主性
-
-Agent 不是被轮询的。系统扫描文件系统的变化（邮件、@mention、邀请），构建"信号"告诉 Agent："你有 3 封新邮件、2 个 @mention"。Agent 自己决定怎么处理。
-
-优先级防抖：关键信号 5 秒内不重复触发，普通信号 60 秒。
-
-### 🔒 四层权限嵌套
-
-```
-MCP 工具调用 → 权限引擎 → 共识引擎 → 对抗性审查
-```
-
-每一层都可以拦截。Agent 的每个动作都经过权限检查，关键操作需要投票，投票通过后还可能被对抗性审查否决。
-
-### 📋 完整审计日志
-
-每个 Agent 的每个动作——写了什么文件、发了什么消息、做了什么决策——全部记录到 `.audit/` 目录。出了问题？回溯日志找到根因。
-
-### 💾 可靠性工程
-
-- **DLQ** — 失败事件自动重试，指数退避
-- **Outbox** — 先持久化再投递，崩溃不丢事件
-- **Checkpoint** — 工作流断点保存，崩溃后自动恢复
-- **Backpressure** — 订阅者掉队 1000 个事件自动断开
-
-这些不是花哨的功能，是让你敢在生产环境用的基础设施。
+| 功能 | 说明 |
+|------|------|
+| **👥 团队协作** | 创建任意数量的 Agent，各有角色、性格、记忆。通过群聊和邮件协作。 |
+| **🗳️ 共识投票** | AND / OR / 阈值三种投票模式 + 对抗性审查 + 多轮辩论。 |
+| **🔄 工作流引擎** | YAML 定义流水线，条件分支、人工审批、崩溃恢复、热重载。 |
+| **🧠 三层记忆** | 短期会话 + 长期持久 + 项目实体。跨会话经验积累。 |
+| **📡 信号驱动** | 基于文件系统 mtime 的增量扫描，优先级防抖，Agent 自主响应。 |
+| **📋 审计日志** | 每个 Agent 的每个动作都有记录，可追溯。 |
+| **🔒 四层权限** | MCP 工具 → 权限引擎 → 共识引擎 → 对抗性审查。 |
+| **💾 可靠性** | DLQ + Outbox + 断点恢复 + Backpressure。 |
+| **🎨 多主题** | Notion、Minimal White、Warm Wood、Deep Space、Nord。 |
+| **🔌 多供应商** | Claude、DeepSeek、GPT-4o，每个 Agent 可以用不同模型。 |
 
 ---
 
-## Agent 配置
+## 快速安装
 
-你可以创建任意数量的 Agent。每个 Agent 有独立的角色、性格、记忆和行为风格。
+### Windows
 
-```json
-// Agents/diana/config.json
-{
-  "roles": ["frontend", "react", "ui"],
-  "autoRespondToEmail": true,
-  "permissions": { "canCreateGroup": true }
-}
-```
+从 [Releases](https://github.com/Toufumind/mind-agency/releases) 下载 `Mind-Agency-Setup-0.3.0.exe`，双击安装。
 
-每个 Agent 的性格由 `CLAUDE.md` 文件定义——你写什么，它就是什么样的 Agent。
-
-系统自带三个示例 Agent（开箱即用）：
-- **Alice** — 协调者，代码编写和决策
-- **Bob** — 分析师，代码审查和质量把关
-- **Charlie** — 执行者，测试和运维
-
-你也可以创建更多：前端专家、安全审计、文档工程师……数量没有上限。
-
----
-
-## 快速开始
-
-### 下载安装（推荐）
-
-从 [Releases](https://github.com/Toufumind/mind-agency/releases) 下载 `Mind-Agency-Setup-0.3.0.exe`，双击运行。
-
-> ⚠️ 当前仅支持 Windows。macOS / Linux 在路线图中。
-
-### 从源码运行
+### 从源码
 
 ```bash
 git clone https://github.com/Toufumind/mind-agency.git
@@ -156,34 +101,56 @@ npm install
 npm run dev
 ```
 
-打开 `http://localhost:3000`，首次访问会引导你配置 API Key。
-
-### 3 分钟上手
-
-1. **配置 API Key** — 设置页面填入你的 AI 模型 Key
-2. **创建 Agent** — 给每个 Agent 起名字、设角色、写性格描述
-3. **建立群组** — 把 Agent 拉进群组，定义工作流
-4. **开始协作** — 给 Agent 分配任务，看它们自动协作
-
-### 需要什么
-
-- 一个 AI 模型的 API Key（[Claude](https://console.anthropic.com/) / [DeepSeek](https://platform.deepseek.com/) / [GPT-4o](https://platform.openai.com/)）
-- DeepSeek 价格最低，几毛钱一天
+> ⚠️ 当前 exe 仅支持 Windows。macOS / Linux 请从源码运行。支持在路线图中。
 
 ---
 
-## 和同类产品有什么不同
+## 3 分钟上手
 
-| | Mind Agency | CrewAI / AutoGen | 直接用 ChatGPT |
-|---|:---:|:---:|:---:|
-| 多个 AI 协作 | ✅ | ✅ | ❌ |
-| 可视化界面 | ✅ | ❌ | ❌ |
-| 共识投票 + 对抗性审查 | ✅ | ❌ | ❌ |
-| 人工审批节点 | ✅ | ❌ | ❌ |
-| 崩溃自动恢复 | ✅ | ❌ | ❌ |
-| 审计日志 | ✅ | ❌ | ❌ |
-| 本地运行，数据在你手里 | ✅ | ✅ | ❌ |
-| 一键安装 exe | ✅ | ❌ | N/A |
+**1. 配置 API Key**
+
+打开 `http://localhost:3000`，进入设置页面，填入你的 AI 模型 Key。
+
+支持 [Claude](https://console.anthropic.com/) / [DeepSeek](https://platform.deepseek.com/) / [GPT-4o](https://platform.openai.com/)。DeepSeek 价格最低，几毛钱一天。
+
+**2. 创建 Agent**
+
+系统自带三个示例 Agent（Alice / Bob / Charlie），开箱即用。你也可以自己创建：
+
+```
+名字: Diana
+角色: 前端专家
+性格: 严谨，注重代码质量，喜欢用 React
+```
+
+每个 Agent 有独立的配置、记忆和行为画像。
+
+**3. 建立群组**
+
+把 Agent 拉进群组。群组有自己的聊天频道、邮件系统和工作流。
+
+**4. 开始协作**
+
+给 Agent 分配任务，看它们自动协作。或者定义工作流，让流水线自动跑：
+
+```yaml
+steps:
+  - id: write
+    agent: Alice
+    action: code
+    prompt: 写一个用户注册接口
+  - id: review
+    agent: Bob
+    action: review
+    dependsOn: [write]
+  - id: test
+    agent: Charlie
+    action: test
+    dependsOn: [review]
+  - id: approve
+    action: human_approval
+    dependsOn: [test]
+```
 
 ---
 
@@ -191,14 +158,18 @@ npm run dev
 
 ```
 Mind Agency (Electron 桌面应用)
+│
 ├── 前端 — Next.js + Tailwind CSS (:3000)
 │   Dashboard / Agent 管理 / 群组 / 工作流 / 设置
+│
 ├── 后端 — Node.js WebSocket (:3001)
 │   EventBus (17 事件类型 + DLQ + Outbox)
 │   WorkflowEngine (DAG + 热重载 + 断点恢复)
+│
 ├── AI 层 — Claude Agent SDK
 │   MCP 工具服务器 (48 个工具)
 │   权限引擎 + 共识引擎
+│
 └── 数据 — 本地文件系统
     Agents/  Groups/  .audit/  .mind/
 ```
@@ -213,17 +184,15 @@ mind-agency/
 │   ├── app/              # Next.js 页面 + 27 个 API 路由
 │   ├── components/       # React 组件
 │   └── lib/              # 核心库
-│       ├── event-bus.ts  # EventBus + WorkflowEngine (1200 行)
+│       ├── event-bus.ts  # EventBus + WorkflowEngine
 │       ├── consensus.ts  # 共识引擎 (AND/OR/阈值 + 对抗性审查)
 │       ├── chat.ts       # AI 集成 (Claude/DeepSeek/Codex)
 │       ├── memory.ts     # 三层记忆系统
 │       ├── auto-respond.ts # 信号驱动自主响应
 │       └── ...
 ├── mcp/                  # MCP 工具服务器
-│   ├── group-server.ts   # JSON-RPC 入口
-│   └── tools/            # 7 个模块化工具文件
 ├── electron/             # Electron 主进程
-├── server.ts             # WebSocket + EventBus + Workflow (:3001)
+├── server.ts             # WebSocket + EventBus + Workflow
 ├── Agents/               # Agent 配置和数据
 ├── Groups/               # 群组配置和工作流
 └── public/               # 静态资源
@@ -231,15 +200,18 @@ mind-agency/
 
 ---
 
-## 环境变量
+## 开发
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `WS_PORT` | 3001 | WebSocket 端口 |
-| `POLL_INTERVAL` | 30000 | Agent 轮询间隔 (ms) |
-| `DAG_INTERVAL` | 5000 | 工作流检查间隔 (ms) |
+```bash
+git clone https://github.com/Toufumind/mind-agency.git
+cd mind-agency
+npm install
+npm run dev          # Next.js (:3000)
+npm run dev:ws       # WebSocket (:3001)
+npm run dev:all      # 同时启动
+```
 
-详见 `.env.example`。
+环境要求：Node.js >= 18
 
 ---
 
