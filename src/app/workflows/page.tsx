@@ -221,6 +221,15 @@ export default function WorkflowsPage() {
                           setEditGroup(wf.group);
                           setShowEditor(true);
                         }}
+                        onStepMove={(stepId, newAgent) => {
+                          const steps = (wf.stepsList || []).map((s: any) =>
+                            s.id === stepId ? { ...s, agent: newAgent } : s
+                          );
+                          fetch(`/api/groups/${wf.group}/workflow`, {
+                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ steps }),
+                          }).then(() => load());
+                        }}
                       />
                     </div>
                   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 
 interface StepData {
   id: string;
@@ -21,6 +21,7 @@ interface Props {
   onStepClick?: (step: StepData) => void;
   onStepDelete?: (step: StepData) => void;
   onStepAdd?: (afterStep?: StepData) => void;
+  onStepMove?: (stepId: string, newAgent: string) => void;
 }
 
 const COLORS: Record<string, { bg: string; border: string; text: string }> = {
@@ -36,17 +37,19 @@ const ICONS: Record<string, string> = {
   pending: '○', in_progress: '◉', completed: '✓', failed: '✗', skipped: '–', blocked: '◐',
 };
 
-export default function WorkflowGantt({ steps, progress, onStepClick, onStepDelete, onStepAdd }: Props) {
+export default function WorkflowGantt({ steps, progress, onStepClick, onStepDelete, onStepAdd, onStepMove }: Props) {
   const [hovered, setHovered] = useState<string | null>(null);
   const [tip, setTip] = useState({ x: 0, y: 0 });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; step: StepData } | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // Close context menu on click outside
   useEffect(() => {
-    const handler = () => setContextMenu(null);
-    if (contextMenu) document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
+    const h = () => setContextMenu(null);
+    if (contextMenu) document.addEventListener('click', h);
+    return () => document.removeEventListener('click', h);
   }, [contextMenu]);
 
   // Group by agent
@@ -81,16 +84,56 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
     return result;
   }, [steps]);
 
-  // Assign layer index to each step
-  const layerOf = useMemo(() => {
-    const m = new Map<string, number>();
-    layers.forEach((layer, i) => layer.forEach(id => m.set(id, i)));
-    return m;
-  }, [layers]);
+  // Get card positions from DOM refs
+  const getCardCenter = useCallback((stepId: string): { x: number; y: number } | null => {
+    const el = cardRefs.current.get(stepId);
+    const container = containerRef.current;
+    if (!el || !container) return null;
+    const er = el.getBoundingClientRect();
+    const cr = container.getBoundingClientRect();
+    return { x: er.left + er.width / 2 - cr.left, y: er.top + er.height / 2 - cr.top };
+  }, []);
+
+  const getCardRight = useCallback((stepId: string): { x: number; y: number } | null => {
+    const el = cardRefs.current.get(stepId);
+    const container = containerRef.current;
+    if (!el || !container) return null;
+    const er = el.getBoundingClientRect();
+    const cr = container.getBoundingClientRect();
+    return { x: er.right - cr.left, y: er.top + er.height / 2 - cr.top };
+  }, []);
+
+  const getCardLeft = useCallback((stepId: string): { x: number; y: number } | null => {
+    const el = cardRefs.current.get(stepId);
+    const container = containerRef.current;
+    if (!el || !container) return null;
+    const er = el.getBoundingClientRect();
+    const cr = container.getBoundingClientRect();
+    return { x: er.left - cr.left, y: er.top + er.height / 2 - cr.top };
+  }, []);
+
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent, step: StepData) => {
+    setDragging(step.id);
+    e.dataTransfer.setData('text/plain', step.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const handleDragOver = (e: React.DragEvent, agent: string) => {
+    e.preventDefault();
+    setDragOver(agent);
+  };
+  const handleDrop = (e: React.DragEvent, agent: string) => {
+    e.preventDefault();
+    const stepId = e.dataTransfer.getData('text/plain');
+    if (stepId && onStepMove) onStepMove(stepId, agent);
+    setDragging(null);
+    setDragOver(null);
+  };
+  const handleDragEnd = () => { setDragging(null); setDragOver(null); };
 
   return (
-    <div ref={containerRef} className="bg-surface rounded-xl w-full overflow-x-auto">
-      {/* Header — layer labels */}
+    <div ref={containerRef} className="bg-surface rounded-xl w-full overflow-x-auto relative select-none">
+      {/* Layer headers */}
       <div className="flex border-b border-border bg-surface-alt h-7">
         {layers.map((layer, i) => (
           <div key={i} className="flex-1 flex items-center justify-center text-[9px] text-muted-foreground border-r border-border/50 last:border-r-0 px-1">
@@ -99,14 +142,16 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
         ))}
       </div>
 
-      {/* Swimlanes */}
+      {/* Lanes */}
       {lanes.map(([agent, agentSteps], li) => (
-        <div key={agent} className={`flex border-b border-border/30 ${li % 2 === 0 ? 'bg-surface/30' : ''}`}>
-          {/* Agent label */}
+        <div key={agent}
+          className={`flex border-b border-border/30 transition-colors ${li % 2 === 0 ? 'bg-surface/30' : ''} ${dragOver === agent ? 'bg-primary/5 ring-1 ring-primary/30' : ''}`}
+          onDragOver={e => handleDragOver(e, agent)}
+          onDrop={e => handleDrop(e, agent)}
+          onDragEnd={handleDragEnd}>
           <div className="w-20 shrink-0 flex items-center px-2 text-[9px] font-semibold text-muted border-r border-border/50">
             {agent}
           </div>
-          {/* Layer columns */}
           <div className="flex-1 flex">
             {layers.map((layer, li) => {
               const layerSteps = agentSteps.filter(s => layer.includes(s.id));
@@ -116,10 +161,14 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
                     const status = s.status || 'pending';
                     const c = COLORS[status] || COLORS.pending;
                     const hov = hovered === s.id;
+                    const isDragging = dragging === s.id;
                     return (
                       <div key={s.id}
-                        className={`rounded-lg px-2 py-1.5 flex flex-col justify-between cursor-pointer transition-all border ${hov ? 'shadow-md z-10' : 'shadow-sm'}`}
+                        ref={el => { if (el) cardRefs.current.set(s.id, el); }}
+                        className={`rounded-lg px-2 py-1.5 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all border ${hov ? 'shadow-md z-10' : 'shadow-sm'} ${isDragging ? 'opacity-50' : ''}`}
                         style={{ backgroundColor: c.bg, borderColor: c.border, minWidth: 100, flex: 1, maxWidth: 180 }}
+                        draggable
+                        onDragStart={e => handleDragStart(e, s)}
                         onMouseEnter={e => { setHovered(s.id); setTip({ x: e.clientX, y: e.clientY }); }}
                         onMouseLeave={() => setHovered(null)}
                         onClick={() => onStepClick?.(s)}
@@ -145,9 +194,35 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
         </div>
       ))}
 
+      {/* SVG dependency arrows — drawn after layout */}
+      <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
+        <defs>
+          <marker id="ah" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
+            <polygon points="0 0, 7 2.5, 0 5" fill="#9ca3af" />
+          </marker>
+        </defs>
+        {steps.map(s => {
+          const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
+          if (deps.length === 0) return null;
+          const target = getCardLeft(s.id);
+          if (!target) return null;
+          return deps.map((depId, i) => {
+            const source = getCardRight(depId);
+            if (!source) return null;
+            const mx = (source.x + target.x) / 2;
+            return (
+              <path key={`${s.id}-${depId}`}
+                d={`M${source.x},${source.y} C${mx},${source.y} ${mx},${target.y} ${target.x},${target.y}`}
+                stroke="#9ca3af" strokeWidth="1.5" fill="none" strokeDasharray="5 3"
+                markerEnd="url(#ah)" />
+            );
+          });
+        })}
+      </svg>
+
       {/* Playhead */}
       <div className="absolute top-0 bottom-0 w-px bg-primary/60 z-30 pointer-events-none"
-        style={{ left: `calc(20px + ${progress * 80}%)` }}>
+        style={{ left: `calc(80px + ${progress * (100 - 8)}%)` }}>
         <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary" />
         <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary" />
       </div>
