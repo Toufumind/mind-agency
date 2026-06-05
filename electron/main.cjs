@@ -22,9 +22,14 @@ const isDev = !app.isPackaged;
 const APP_ROOT = isDev ? path.resolve(__dirname, '..') : app.getAppPath();
 
 // Mutable data goes alongside the EXE, not in %APPDATA%
+// v0.4: Use user's home directory if exe dir is not writable
 const DATA_DIR = isDev
   ? APP_ROOT
-  : path.join(path.dirname(app.getPath('exe')), 'mind-data');
+  : (() => {
+      const exeDir = path.join(path.dirname(app.getPath('exe')), 'mind-data');
+      try { fs.mkdirSync(exeDir, { recursive: true }); return exeDir; }
+      catch { return path.join(app.getPath('home'), 'MindAgency-data'); }
+    })();
 
 const PORT = parseInt(process.env.MIND_PORT || '3000', 10);
 const URL = `http://127.0.0.1:${PORT}`;

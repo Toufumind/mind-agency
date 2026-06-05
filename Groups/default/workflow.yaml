@@ -1,0 +1,26 @@
+name: dyn-test
+steps:
+  - id: step1
+    agent: Alice
+    action: review
+    prompt: |
+      说一句话介绍你自己。回复格式: DONE|step1
+  - id: step2
+    agent: Bob
+    action: review
+    dependsOn: [step1]
+    prompt: |
+      说一句话介绍你自己。回复格式: DONE|step2
+  - id: step3
+    agent: Charlie
+    action: review
+    dependsOn: [step2]
+    prompt: |
+      说一句话介绍你自己。回复格式: DONE|step3
+  - id: step4
+    agent: Alice
+    action: verify
+    dependsOn: [step3]
+    prompt: >
+      你现在被动态添加进 workflow。
+      说"动态步骤成功"。回复 DONE。

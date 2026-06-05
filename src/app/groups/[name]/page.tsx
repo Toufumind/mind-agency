@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Sidebar from '@/components/sidebar';
 import { Send, Loader2, Play, MessageCircle, GitBranch, Settings, X, RefreshCw, Plus, Crown, Star, Trash2, ArrowRightLeft, Pin, PinOff, Bell, Eye, EyeOff, ArrowRight, Search, Paperclip } from 'lucide-react';
@@ -15,6 +15,17 @@ interface GroupConfig {
   name?: string; description?: string;
   announcement?: { title: string; content: string; pinnedBy: string; pinnedAt: number };
   members?: string[];
+}
+
+function ErrorBoundary({ children }: { children: React.ReactNode }) {
+  const [error, setError] = useState<Error | null>(null);
+  if (error) return <div className="flex-1 flex items-center justify-center p-8"><div className="text-center"><p className="text-[14px] text-destructive font-medium mb-2">页面出错了</p><p className="text-[12px] text-muted-foreground">{error.message}</p><button onClick={() => setError(null)} className="mt-3 px-3 py-1.5 text-[12px] bg-surface-alt rounded-lg hover:bg-surface-hover">重试</button></div></div>;
+  return <ErrorCatcher onError={setError}>{children}</ErrorCatcher>;
+}
+
+class ErrorCatcher extends React.Component<{ children: React.ReactNode; onError: (e: Error) => void }, {}> {
+  componentDidCatch(e: Error) { console.error('[GroupPage ERROR]', e); this.props.onError(e); }
+  render() { return this.props.children; }
 }
 
 export default function GroupPage() {
@@ -195,6 +206,7 @@ export default function GroupPage() {
   };
 
   return (
+    <ErrorBoundary>
     <div className="flex h-full bg-canvas">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
@@ -382,7 +394,7 @@ export default function GroupPage() {
 
                   {showDag ? (
                     /* ── DAG 看板视图 ── */
-                    <DagView steps={workflow.stepsList || []} hoveredStep={hoveredStep} setHoveredStep={setHoveredStep} />
+                    <DagViewSafe steps={workflow.stepsList || []} hoveredStep={hoveredStep} setHoveredStep={setHoveredStep} />
                   ) : (
                     /* ── 列表视图 ── */
                     <div className="space-y-2">
@@ -738,12 +750,24 @@ export default function GroupPage() {
           </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }
 
 const DAG_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
 
+function DagViewSafe(props: any) {
+  try { return <DagView {...props} />; }
+  catch (e: any) {
+    console.error('[DagView ERROR]', e?.message || e);
+    return <div className="bg-surface rounded-xl p-4 text-[12px] text-destructive">DAG error: {e?.message || String(e)}</div>;
+  }
+}
+
 function DagView({ steps, hoveredStep, setHoveredStep }: { steps: any[]; hoveredStep: string | null; setHoveredStep: (id: string | null) => void }) {
+  if (!steps || steps.length === 0) {
+    return <div className="bg-surface rounded-xl p-8 text-center text-[12px] text-muted-foreground">暂无步骤</div>;
+  }
   // Compute layers: topological sort into parallel lanes
   const layers: any[][] = [];
   const placed = new Set<string>();
@@ -790,8 +814,8 @@ function DagView({ steps, hoveredStep, setHoveredStep }: { steps: any[]; hovered
     }
   }
 
-  const svgW = layers.length * (CARD_W + GAP_X) + PAD * 2;
-  const svgH = Math.max(...layers.map(l => l.length)) * (CARD_H + GAP_Y) + PAD * 2;
+  const svgW = Math.max(layers.length, 1) * (CARD_W + GAP_X) + PAD * 2;
+  const svgH = Math.max(Math.max(...layers.map(l => l.length), 0), 1) * (CARD_H + GAP_Y) + PAD * 2;
 
   // Build edges
   const edges: Array<{ x1: number; y1: number; x2: number; y2: number; color: string }> = [];
