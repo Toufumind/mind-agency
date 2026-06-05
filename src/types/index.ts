@@ -30,6 +30,8 @@ export interface Email {
   date: string;
   body: string;
   filename: string;
+  /** Whether the AI agent has processed this email (via auto-respond). */
+  processed: boolean;
 }
 
 export interface AgentStats {

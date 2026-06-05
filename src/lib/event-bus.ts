@@ -15,6 +15,14 @@ import * as yaml from 'js-yaml';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { AUDIT_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
+import { broadcastWs } from './ws-embedded';
+import { checkToolPermission } from './permission-engine';
+import {
+  saveRunMeta, saveStepCheckpoint, completeRunCheckpoint,
+  appendRunHistory, findIncompleteRuns, cleanupCheckpoints,
+  type StepCheckpoint,
+} from './workflow-checkpoint';
 
 // ═══════════════════════════════════════════════════════ Event Bus ═════
 
@@ -67,7 +75,7 @@ export interface DeadLetterEntry { event: EventMessage; failedSubIds: string[]; 
 
 const VALID_EVENT_TYPES = new Set(Object.values(EventType)) as Set<string>;
 const MAX_DEDUP = 10000; const BP_LIMIT = 1000; const ORPHAN_MS = 300000; const DLQ_MAX = 1000; const DLQ_SCAN_MS = 30000;
-const OUTBOX_DIR = path.join(process.cwd(), '.audit', 'outbox');
+const OUTBOX_DIR = path.join(AUDIT_DIR, 'outbox');
 
 export class EventBus {
   private subs = new Map<string, SubEntry>();
@@ -136,7 +144,21 @@ export class EventBus {
 
   // ── Outbox persistence v0.3 (P1) ─────────────────────────────────
 
-  /** Persist event to .audit/outbox/YYYY-MM-DD.jsonl before delivery */
+  /**
+   * Persist event to .audit/outbox/YYYY-MM-DD.jsonl before delivery.
+   *
+   * Atomicity note: appendFileSync is NOT atomic in the POSIX sense, but for
+   * small writes (< 4KB, which a single JSON line always is) on modern OS
+   * kernels (Linux ext4, NTFS, APFS), the write lands in a single disk
+   * sector and is effectively atomic. This is the same guarantee that tools
+   * like jq and Node.js itself rely on for JSONL append patterns. If the
+   * process crashes mid-write, at most the last line may be truncated, and
+   * replayOutbox() already skips corrupt lines via JSON.parse catch.
+   *
+   * The try-catch below handles OS-level failures (disk full, permission
+   * denied, directory deleted) gracefully -- outbox persistence is
+   * best-effort and must never crash the event bus.
+   */
   private persistToOutbox(event: EventMessage): void {
     if (!this.outboxEnabled) return;
     try {
@@ -144,7 +166,11 @@ export class EventBus {
       const today = new Date().toISOString().slice(0, 10);
       const line = JSON.stringify({ ...event, _outboxAt: Date.now() }) + '\n';
       fs.appendFileSync(path.join(OUTBOX_DIR, `${today}.jsonl`), line, 'utf-8');
-    } catch (e: unknown) { console.error(`[event-bus] outbox write failed: ${e instanceof Error ? e.message : String(e)}`); }
+    } catch (e: unknown) {
+      // Graceful degradation: log and continue. Outbox is best-effort;
+      // event delivery to live subscribers still proceeds regardless.
+      console.error(`[event-bus] outbox write failed (continuing): ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   /** Replay undelivered events from outbox on startup */
@@ -203,14 +229,62 @@ export class EventBus {
 export function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }
 export function isValidEventType(t: string): t is EventType { return VALID_EVENT_TYPES.has(t); }
 
+// ── v0.4: Singleton EventBus + in-process Pub/Sub ─────────────────────
+
+let _singleton: EventBus | null = null;
+
+/** Get or create the global EventBus singleton */
+export function getEventBus(): EventBus {
+  if (!_singleton) _singleton = new EventBus();
+  return _singleton;
+}
+
+/** Set the singleton (called from server.ts after creation) */
+export function setEventBus(bus: EventBus): void { _singleton = bus; }
+
+type EventHandler = (event: EventMessage) => void;
+const _handlers = new Map<EventType, Set<EventHandler>>();
+
+/** Subscribe to an event type in-process (no HTTP overhead) */
+export function onEvent(type: EventType, handler: EventHandler): () => void {
+  if (!_handlers.has(type)) _handlers.set(type, new Set());
+  _handlers.get(type)!.add(handler);
+  // Auto-route via the singleton's subscribe
+  const bus = getEventBus();
+  const subId = bus.subscribe({ event: type }, { scope: 'events' }, `inproc:${type}`, (msg) => {
+    handler(msg);
+  });
+  return () => {
+    _handlers.get(type)?.delete(handler);
+    try { bus.unsubscribe(subId); } catch { /* sub may already be removed */ }
+  };
+}
+
+/** Emit an event via the singleton (in-process, no HTTP) */
+export function emitEvent(type: EventType, payload: Record<string, unknown>, source: string): void {
+  getEventBus().emit(createEvent(type, payload, source));
+}
+
 // ═══════════════════════════════════════════════════ Workflow Engine ═══
 
 export enum StepStatus { PENDING = 'pending', BLOCKED = 'blocked', IN_PROGRESS = 'in_progress', COMPLETED = 'completed', SKIPPED = 'skipped', FAILED = 'failed' }
 export enum WorkflowStatus { IDLE = 'idle', RUNNING = 'running', COMPLETED = 'completed', FAILED = 'failed' }
 
-export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; timeout?: number; onFailure?: string; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; }
-export interface WorkflowDefinition { name: string; description?: string; steps: WorkflowStep[]; source?: string; }
-export interface WorkflowRunRecord { runId: string; workflowName: string; startedAt: number; completedAt?: number; status: WorkflowStatus; steps: Map<string, StepStatus>; stepRetries: Map<string, number>; rollbacks: Array<{ stepId: string; reason: string; timestamp: number }>; compensations: string[]; }
+export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; timeout?: number; onFailure?: string; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
+export interface WorkflowTrigger {
+  type: 'manual' | 'file_change' | 'schedule' | 'event';
+  /** For schedule: cron expression (e.g. "0 9 * * 1-5") */
+  cron?: string;
+  /** For event: EventBus event type to listen for */
+  eventType?: string;
+  /** For file_change: file path to watch */
+  watchFile?: string;
+  /** For file_change: debounce interval in ms */
+  debounceMs?: number;
+}
+export interface WorkflowDefinition { name: string; description?: string; steps: WorkflowStep[]; source?: string; concurrency?: number; trigger?: WorkflowTrigger; }
+export interface TaskReport { stepId: string; agent: string; status: string; summary: string; details: string; timestamp: number; }
+export interface WorkflowRunRecord { runId: string; workflowName: string; startedAt: number; completedAt?: number; status: WorkflowStatus; steps: Map<string, StepStatus>; stepRetries: Map<string, number>; rollbacks: Array<{ stepId: string; reason: string; timestamp: number }>; compensations: string[]; taskReports: Map<string, TaskReport>; }
 
 export interface StepExecutor { execute(step: WorkflowStep, context: Record<string, string>): Promise<string>; }
 
@@ -269,37 +343,80 @@ export class SimulatedStepExecutor implements StepExecutor {
   }
 }
 
-/** Production executor — calls agent via chatOnce (real AI), ChatDev-style reviews */
+/** Production executor — calls agent via chatOnce (real AI) with model fallback */
 export class ChatStepExecutor implements StepExecutor {
   async execute(step: WorkflowStep, ctx: Record<string, string>): Promise<string> {
-    try {
-      const { chatOnce } = await import('./chat.js');
-      const a = step.action.toLowerCase();
-      const ctxStr = Object.entries(ctx).map(([k, v]) => `[${k}] → ${v.slice(0, 300)}`).join('\n');
-
-      // ChatDev 审查模式: precise file:line findings
-      let prompt: string;
-      if (a.includes('review') || a.includes('audit')) {
-        prompt = reviewInstructions(step.agent + ' 负责的模块');
-        if (ctxStr) prompt += `\n\n上游审查发现:\n${ctxStr}`;
-        prompt += `\n\n${step.prompt}\n\n按 ISSUE|file:line|description|fix 格式输出每个问题。`;
-      } else if (a.includes('fix') || a.includes('修复')) {
-        // Fixer mode: extract findings and fix precisely at cited locations
-        const findings = Object.values(ctx).flatMap(v => parseReviewFindings(v));
-        if (findings.length > 0) {
-          prompt = `[ChatDev 修复模式] 请精准修复以下 ${findings.length} 个问题：\n`;
-          prompt += findings.map(f => `  - ${f.file}:${f.line} — ${f.desc} → ${f.fix}`).join('\n');
-          prompt += `\n\n${step.prompt}\n\n修复完成后逐项回复 FIXED|file:line|description。`;
-        } else {
-          prompt = ctxStr ? `DAG 步骤: ${step.action}\n\n上游输出:\n${ctxStr}\n\n${step.prompt}` : step.prompt;
+    const { chatOnce } = await import('./chat');
+    // v0.4: Build context from upstream steps (including task reports)
+    const ctxStr = Object.entries(ctx)
+      .map(([k, v]) => {
+        if (k.includes('.')) {
+          // Task report field (e.g., "step1.status", "step1.summary")
+          return `[${k}]: ${v}`;
         }
-      } else {
-        prompt = ctxStr ? `DAG 步骤: ${step.action}\n\n上游输出:\n${ctxStr}\n\n${step.prompt}\n\n简短回复，包含你的决定（如 APPROVED, REJECTED, DEPLOYED 等关键字）。` : step.prompt;
-      }
+        return `[上游步骤 ${k} 的输出]\n${v.slice(0, 500)}`;
+      })
+      .join('\n\n');
 
-      const { reply } = await chatOnce(step.agent, prompt);
-      return reply || `EMPTY_REPLY ACTION:${step.action} AGENT:${step.agent}`;
-    } catch (e: unknown) { throw new Error(`ChatStepExecutor failed: ${e instanceof Error ? e.message : String(e)}`); }
+    // v0.4: Step is a notification — agent does the work and reports via task tool
+    const promptSuffix = `\n\n---\n\n【重要】完成任务后，请用 task 工具报告结果：
+task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summary="你的结果摘要", details="详细说明")
+这一步的结果会被工作流引擎读取。`;
+
+    const prompt = ctxStr
+      ? `[工作流上下文]\n${ctxStr}\n\n---\n\n你的任务:\n${step.prompt}${promptSuffix}`
+      : `${step.prompt}${promptSuffix}`;
+
+    // ── Permission check — every step execution goes through the engine ──
+    const perm = checkToolPermission(step.agent, `workflow_step_${step.action}`, { stepId: step.id, action: step.action });
+    if (!perm.allowed) {
+      throw new Error(`步骤 ${step.id} (${step.action}) 需要审批: ${perm.message}`);
+    }
+
+    // ── Execution with model fallback ──
+    const models = ['deepseek-v4-flash', 'deepseek-v4-pro'];
+    let lastError: unknown;
+
+    for (let i = 0; i < models.length; i++) {
+      try {
+        console.log(`[wf] ChatStepExecutor → ${step.agent} (${step.action}) model=${models[i]} len=${prompt.length}`);
+        // Pass model override to chatOnce — this sidesteps ANTHROPIC_MODEL env var
+        const { createChatStream } = await import('./chat');
+        const stream = createChatStream(step.agent, prompt, undefined, models[i]);
+        const reader = stream.getReader();
+        let reply = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value.type === 'text') reply += value.content || '';
+          if (value.type === 'error') throw new Error(value.content || 'Unknown error');
+        }
+
+        // v0.4: Read structured result from task report file
+        const reportDir = path.join(MIND_DIR, 'agents', step.agent, '.task-reports');
+        const reportPath = path.join(reportDir, `${step.id}.json`);
+        if (fs.existsSync(reportPath)) {
+          try {
+            const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+            console.log(`[wf] ChatStepExecutor ← ${step.agent} task_report=${report.summary?.slice(0, 100)}`);
+            // Clean up the report file
+            fs.unlinkSync(reportPath);
+            return `${report.status}: ${report.summary}${report.details ? '\n' + report.details : ''}`;
+          } catch {}
+        }
+
+        // Fallback: use text output if agent didn't write to memory
+        console.log(`[wf] ChatStepExecutor ← ${step.agent} text=${reply.slice(0, 100)} (no memory entry)`);
+        return reply || `EMPTY_REPLY ACTION:${step.action} AGENT:${step.agent}`;
+      } catch (e: unknown) {
+        lastError = e;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.log(`[wf] ChatStepExecutor ${models[i]} failed: ${msg}${i < models.length - 1 ? ' → trying fallback ' + models[i + 1] : ''}`);
+        // Continue to next fallback model
+      }
+    }
+
+    throw new Error(`ChatStepExecutor exhausted all models: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
   }
 }
 
@@ -311,7 +428,19 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
   if (!p || typeof p !== 'object') throw new Error('Invalid workflow YAML');
   const sl = p.steps || p.tasks || [];
   if (!Array.isArray(sl)) throw new Error('YAML "steps" must be an array');
-  return { name: p.name || 'unnamed', description: p.description, steps: sl.map((s: any, i: number) => ({ id: s.id || `step_${i}`, agent: s.agent || 'unknown', action: s.action || 'execute', prompt: s.prompt || '', notify: s.notify, condition: s.condition, dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined), timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined, retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined, retryBackoff: s.retry_backoff || s.retryBackoff || undefined, priority: s.priority || undefined })) };
+  // Parse trigger config
+  let trigger: WorkflowTrigger | undefined;
+  if (p.trigger) {
+    trigger = {
+      type: p.trigger.type || 'manual',
+      cron: p.trigger.cron,
+      eventType: p.trigger.event_type || p.trigger.eventType,
+      watchFile: p.trigger.watch_file || p.trigger.watchFile,
+      debounceMs: p.trigger.debounce_ms || p.trigger.debounceMs || 5000,
+    };
+  }
+
+  return { name: p.name || 'unnamed', description: p.description, concurrency: typeof p.concurrency === 'number' ? p.concurrency : undefined, trigger, steps: sl.map((s: any, i: number) => ({ id: s.id || `step_${i}`, agent: s.agent || 'unknown', action: s.action || 'execute', prompt: s.prompt || '', notify: s.notify, condition: s.condition, dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined), timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined, retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined, retryBackoff: s.retry_backoff || s.retryBackoff || undefined, priority: s.priority || undefined, reviewer: s.reviewer || undefined, reviewPrompt: s.review_prompt || s.reviewPrompt || undefined })) };
 }
 
 // ── DAG internal types ──────────────────────────────────────────────
@@ -323,20 +452,70 @@ const PRIORITY: Record<string, number> = { critical: 0, high: 1, normal: 2, low:
 
 export class WorkflowEngine {
   private runs = new Map<string, WorkflowRunRecord>();
+  /** Maps workflow name → latest runId (avoids overwriting older run records) */
+  private latestRuns = new Map<string, string>();
   private bus?: EventBus;
   private executor: StepExecutor;
   /** v0.3 P2: Human approval inbox — approvalId → { runId, stepId, node } */
   private pendingApprovals = new Map<string, { runId: string; stepId: string; node: DagNode; nodes: Map<string, DagNode> }>();
+  /** v0.4: Abort controllers per run for cancellation */
+  private abortControllers = new Map<string, AbortController>();
 
   constructor(bus?: EventBus, executor?: StepExecutor) { this.bus = bus; this.executor = executor || createStepExecutor(); }
 
   /** Execute a workflow — starts DAG asynchronously. Returns run record immediately. */
-  execute(def: WorkflowDefinition): WorkflowRunRecord {
+  execute(def: WorkflowDefinition, group?: string): WorkflowRunRecord {
     const runId = randomUUID();
-    const rec: WorkflowRunRecord = { runId, workflowName: def.name, startedAt: Date.now(), status: WorkflowStatus.RUNNING, steps: new Map(def.steps.map(s => [s.id, StepStatus.PENDING])), stepRetries: new Map(), rollbacks: [], compensations: [] };
-    this.runs.set(runId, rec); this.runs.set(def.name, rec);
+    const rec: WorkflowRunRecord = { runId, workflowName: def.name, startedAt: Date.now(), status: WorkflowStatus.RUNNING, steps: new Map(def.steps.map(s => [s.id, StepStatus.PENDING])), stepRetries: new Map(), rollbacks: [], compensations: [], taskReports: new Map() };
+    if (group) (rec as any)._group = group;
+    this.runs.set(runId, rec);
+    this.latestRuns.set(def.name, runId);
+    // v0.4: Register abort controller
+    const ac = new AbortController();
+    this.abortControllers.set(runId, ac);
+
+    // v0.4: Save run checkpoint
+    if (group) {
+      saveRunMeta(group, runId, { workflowName: def.name, startedAt: rec.startedAt, status: 'running' });
+    }
+
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_CREATED, { taskId: runId, title: `Workflow: ${def.name}`, stepsTotal: def.steps.length }, 'workflow-engine'));
-    this.executeDag(runId, def).then(() => { const r = this.runs.get(runId); if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }).catch((err: Error) => { const r = this.runs.get(runId); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: err.message }, 'workflow-engine')); });
+    this.executeDag(runId, def).then(() => {
+      const r = this.runs.get(runId);
+      if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); }
+      // v0.4: Complete checkpoint + append history
+      if (group) {
+        completeRunCheckpoint(group, runId, 'completed');
+        const stepsCompleted = [...(r?.steps.values() || [])].filter(s => s === StepStatus.COMPLETED).length;
+        const stepsFailed = [...(r?.steps.values() || [])].filter(s => s === StepStatus.FAILED).length;
+        appendRunHistory(group, {
+          runId, workflowName: def.name, group,
+          startedAt: rec.startedAt, completedAt: Date.now(),
+          status: 'completed', stepsTotal: def.steps.length,
+          stepsCompleted, stepsFailed,
+          compensations: r?.compensations.length || 0,
+        });
+        cleanupCheckpoints(group);
+      }
+      this.evictOldRuns();
+    }).catch((err: Error) => {
+      const r = this.runs.get(runId);
+      if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); }
+      if (group) {
+        completeRunCheckpoint(group, runId, 'failed');
+        const stepsCompleted = [...(r?.steps.values() || [])].filter(s => s === StepStatus.COMPLETED).length;
+        const stepsFailed = [...(r?.steps.values() || [])].filter(s => s === StepStatus.FAILED).length;
+        appendRunHistory(group, {
+          runId, workflowName: def.name, group,
+          startedAt: rec.startedAt, completedAt: Date.now(),
+          status: 'failed', stepsTotal: def.steps.length,
+          stepsCompleted, stepsFailed,
+          compensations: r?.compensations.length || 0,
+        });
+      }
+      if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: err.message }, 'workflow-engine'));
+      this.evictOldRuns();
+    });
     return rec;
   }
 
@@ -347,12 +526,156 @@ export class WorkflowEngine {
     const nodes = new Map<string, DagNode>();
     const compOnly = new Set<string>();
 
-    for (const s of def.steps) { const deps = (s.dependsOn || []).filter(Boolean); if (s.onFailure) compOnly.add(s.onFailure); nodes.set(s.id, { step: s, deps, dependents: [], status: StepStatus.PENDING, output: '', error: '', retryCount: 0, maxRetries: s.retry ?? 3, onFailure: s.onFailure, timeout: s.timeout || 300000, startedAt: 0 }); }
-    for (const [id, node] of nodes) { for (const depId of node.deps) { const d = nodes.get(depId); if (d) d.dependents.push(id); } }
+    // Track YAML file for dynamic reload
+    const yamlPath = (run as any)._yamlPath as string | undefined;
+    let lastYamlMtime = yamlPath ? this.getFileMtime(yamlPath) : 0;
 
-    const maxIter = Math.min(nodes.size * 10, 500); let iter = 0;
+    const addSteps = (steps: WorkflowStep[]) => {
+      for (const s of steps) {
+        if (nodes.has(s.id)) continue; // skip existing
+        if (s.onFailure) compOnly.add(s.onFailure);
+        nodes.set(s.id, {
+          step: s, deps: s.dependsOn || [], dependents: [],
+          status: StepStatus.PENDING, output: '', error: '',
+          retryCount: 0, maxRetries: s.retry ?? 3,
+          onFailure: s.onFailure, timeout: s.timeout || 300000, startedAt: 0,
+        });
+      }
+      // Rebuild dependent links
+      for (const [id, node] of nodes) {
+        node.dependents = [];
+        for (const [oid, other] of nodes) {
+          if (other.deps.includes(id)) node.dependents.push(oid);
+        }
+      }
+      // Sync to run record
+      for (const [id, node] of nodes) {
+        if (!run.steps.has(id)) run.steps.set(id, node.status);
+      }
+    };
+
+    addSteps(def.steps);
+
+    // ── Cycle detection via DFS ──────────────────────────────────────
+    const detectCycle = (nodesMap: Map<string, DagNode>): string | null => {
+      const WHITE = 0, GRAY = 1, BLACK = 2;
+      const color = new Map<string, number>();
+      const parent = new Map<string, string>();
+      for (const id of nodesMap.keys()) color.set(id, WHITE);
+
+      const dfs = (u: string): string | null => {
+        color.set(u, GRAY);
+        const node = nodesMap.get(u);
+        if (node) {
+          for (const v of node.deps) {
+            if (!nodesMap.has(v)) continue;
+            if (color.get(v) === GRAY) {
+              // Reconstruct cycle path
+              const cycle: string[] = [v, u];
+              let cur = u;
+              while (cur !== v) {
+                cur = parent.get(cur) || v;
+                if (cur !== v) cycle.push(cur);
+              }
+              return cycle.reverse().join(' → ') + ' → ' + v;
+            }
+            if (color.get(v) === WHITE) {
+              parent.set(v, u);
+              const result = dfs(v);
+              if (result) return result;
+            }
+          }
+        }
+        color.set(u, BLACK);
+        return null;
+      };
+
+      for (const id of nodesMap.keys()) {
+        if (color.get(id) === WHITE) {
+          const cycle = dfs(id);
+          if (cycle) return cycle;
+        }
+      }
+      return null;
+    };
+
+    const cyclePath = detectCycle(nodes);
+    if (cyclePath) {
+      throw new Error(`Circular dependency detected in workflow DAG: ${cyclePath}`);
+    }
+
+    const maxIter = Math.max(nodes.size * 10, 1000); let iter = 0;
 
     while (iter++ < maxIter) {
+      if (run.status !== WorkflowStatus.RUNNING) return;
+      // v0.4: Check abort signal
+      const ac = this.abortControllers.get(runId);
+      if (ac?.signal.aborted) {
+        run.status = WorkflowStatus.FAILED;
+        run.completedAt = Date.now();
+        console.log(`[wf] Workflow ${runId.slice(0, 8)} cancelled`);
+        if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: 'cancelled', cancelled: true }, 'workflow-engine'));
+        return;
+      }
+
+      // ── Dynamic reload: check if YAML was modified (v0.4: add + delete + modify) ─────────
+      if (yamlPath && iter > 1 && iter % 3 === 0) {
+        const mtime = this.getFileMtime(yamlPath);
+        if (mtime > lastYamlMtime) {
+          try {
+            const raw = fs.readFileSync(yamlPath, 'utf-8');
+            const newDef = parseWorkflowYaml(raw);
+            const newIds = new Set(newDef.steps.map(s => s.id));
+            const existingIds = new Set([...nodes.keys()]);
+
+            // 1. Detect ADDED steps
+            const added = newDef.steps.filter(s => !existingIds.has(s.id));
+            if (added.length > 0) {
+              console.log(`[wf] Dynamic reload: +${added.length} added: ${added.map(s => s.id).join(', ')}`);
+              addSteps(added);
+            }
+
+            // 2. Detect REMOVED steps (v0.4)
+            const removed = [...existingIds].filter(id => !newIds.has(id));
+            for (const id of removed) {
+              const node = nodes.get(id);
+              if (!node) continue;
+              if (node.status === StepStatus.IN_PROGRESS) {
+                console.log(`[wf] Dynamic reload: step "${id}" removed but running — will complete then discard`);
+                // Don't interrupt running steps — let them finish, then skip dependents
+              } else if (node.status === StepStatus.PENDING || node.status === StepStatus.BLOCKED) {
+                console.log(`[wf] Dynamic reload: -1 removed: ${id}`);
+                node.status = StepStatus.SKIPPED;
+                run.steps.set(id, StepStatus.SKIPPED);
+                nodes.delete(id);
+              }
+              // COMPLETED/FAILED steps — leave in history, just remove from active DAG
+            }
+
+            // 3. Detect MODIFIED steps (v0.4)
+            for (const newStep of newDef.steps) {
+              const existing = nodes.get(newStep.id);
+              if (!existing) continue; // already handled as "added"
+              if (existing.status !== StepStatus.PENDING && existing.status !== StepStatus.BLOCKED) continue; // only modify pending/blocked
+              // Check if definition changed
+              const oldDef = JSON.stringify({ agent: existing.step.agent, action: existing.step.action, prompt: existing.step.prompt, condition: existing.step.condition, dependsOn: existing.step.dependsOn });
+              const newDefStr = JSON.stringify({ agent: newStep.agent, action: newStep.action, prompt: newStep.prompt, condition: newStep.condition, dependsOn: newStep.dependsOn });
+              if (oldDef !== newDefStr) {
+                console.log(`[wf] Dynamic reload: ~1 modified: ${newStep.id}`);
+                existing.step = newStep;
+                // Rebuild deps if dependsOn changed
+                existing.deps = newStep.dependsOn || [];
+                existing.dependents = [];
+                for (const [oid, other] of nodes) {
+                  if (other.deps.includes(newStep.id)) other.dependents.push(newStep.id);
+                }
+              }
+            }
+          } catch (err) { /* parse errors ignored, Agent may be mid-write */ }
+          lastYamlMtime = mtime;
+        }
+      }
+
       if (run.status !== WorkflowStatus.RUNNING) return;
       const ready: DagNode[] = [];
 
@@ -362,14 +685,38 @@ export class WorkflowEngine {
         if (node.deps.length === 0 && compOnly.has(id) && node.status === StepStatus.PENDING) continue;
         const depsOk = node.deps.every(depId => { const dn = nodes.get(depId); return dn && (dn.status === StepStatus.COMPLETED || dn.status === StepStatus.SKIPPED); });
         if (!depsOk) { node.status = StepStatus.BLOCKED; run.steps.set(id, StepStatus.BLOCKED); continue; }
-        if (node.step.condition) { const ctx: Record<string, string> = {}; for (const [, n] of nodes) { if (n.output) ctx[n.step.id] = n.output; } if (!this.evalCond(node.step.condition, ctx)) { node.status = StepStatus.SKIPPED; run.steps.set(id, StepStatus.SKIPPED); continue; } }
+        if (node.step.condition) {
+          const ctx: Record<string, string> = {};
+          for (const [sid, n] of nodes) {
+            if (n.output) ctx[sid] = n.output;
+            // v0.4: Include task report data in condition context
+            const report = run.taskReports.get(sid);
+            if (report) {
+              ctx[`${sid}.status`] = report.status;
+              ctx[`${sid}.summary`] = report.summary;
+              ctx[`${sid}.details`] = report.details;
+            }
+          }
+          if (!this.evalCond(node.step.condition, ctx)) { node.status = StepStatus.SKIPPED; run.steps.set(id, StepStatus.SKIPPED); continue; }
+        }
         ready.push(node);
       }
 
       if (ready.length === 0) { const pending = [...nodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED); if (pending.length === 0) break; for (const n of pending) { if (n.deps.some(depId => { const dn = nodes.get(depId); return dn && dn.status === StepStatus.FAILED; })) { n.status = StepStatus.SKIPPED; run.steps.set(n.step.id, StepStatus.SKIPPED); } } break; }
 
       ready.sort((a, b) => (PRIORITY[a.step.priority || 'normal'] ?? 2) - (PRIORITY[b.step.priority || 'normal'] ?? 2));
-      await Promise.allSettled(ready.map(n => this.execNode(runId, n, nodes)));
+
+      // v0.4: Respect concurrency limit (global default + per-workflow override)
+      const maxConcurrent = (def as any).concurrency || this.getGlobalConcurrency();
+      if (ready.length <= maxConcurrent) {
+        await Promise.allSettled(ready.map(n => this.execNode(runId, n, nodes)));
+      } else {
+        // Execute in batches respecting the limit
+        for (let i = 0; i < ready.length; i += maxConcurrent) {
+          const batch = ready.slice(i, i + maxConcurrent);
+          await Promise.allSettled(batch.map(n => this.execNode(runId, n, nodes)));
+        }
+      }
     }
 
     let failed = false, allDone = true;
@@ -395,40 +742,182 @@ export class WorkflowEngine {
         approvalId, phase: WorkflowPhase.APPROVAL,
         prompt: node.step.prompt,
       }, 'workflow-engine'));
+
+      // Push notification to browser so the human user sees the approval request
+      try {
+        const group = (run as any)._group || '';
+        broadcastWs('wf_approval', {
+          runId, approvalId, stepId: sid, group,
+          workflow: run.workflowName,
+          agent: node.step.agent,
+          prompt: (node.step.prompt || '').slice(0, 200),
+        });
+      } catch {}
+
       return; // Pause — resume via submitApproval()
     }
 
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, phase }, 'workflow-engine'));
-    const ctx: Record<string, string> = {}; for (const depId of node.deps) { const dn = nodes.get(depId); if (dn?.output) ctx[depId] = dn.output; }
+    const ctx: Record<string, string> = {};
+    for (const depId of node.deps) {
+      const dn = nodes.get(depId);
+      if (dn?.output) ctx[depId] = dn.output;
+      // v0.4: Include task report in downstream context
+      const report = run.taskReports.get(depId);
+      if (report) {
+        ctx[`${depId}.status`] = report.status;
+        ctx[`${depId}.summary`] = report.summary;
+        ctx[`${depId}.details`] = report.details;
+      }
+    }
 
     try {
       const out = await this.executor.execute(node.step, ctx);
       node.output = out; node.status = StepStatus.COMPLETED; run.steps.set(sid, StepStatus.COMPLETED);
+
+      // v0.4: Read and store task report in run record
+      const reportDir = path.join(MIND_DIR, 'agents', node.step.agent, '.task-reports');
+      const reportPath = path.join(reportDir, `${sid}.json`);
+      if (fs.existsSync(reportPath)) {
+        try {
+          const report: TaskReport = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+          run.taskReports.set(sid, report);
+          fs.unlinkSync(reportPath); // clean up
+          console.log(`[wf] Task report: ${sid} → ${report.status}: ${report.summary?.slice(0, 80)}`);
+        } catch {}
+      }
+
+      // v0.4: Save step checkpoint
+      const grp = (run as any)._group as string | undefined;
+      if (grp) saveStepCheckpoint(grp, runId, { stepId: sid, status: 'completed', output: out, retries: node.retryCount, timestamp: Date.now() });
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output: out, phase }, 'workflow-engine'));
       if (node.step.notify) { const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify]; for (const to of nl) if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_REQUESTED, { taskId: runId, stepId: sid, workflow: run.workflowName, from: node.step.agent, to, title: `${node.step.action}`, prompt: node.step.prompt.slice(0, 200), phase }, 'workflow-engine')); }
+
+      // v0.4: Auto-review — if step has a reviewer, insert a review step
+      if (node.step.reviewer) {
+        const reviewId = `${sid}_review`;
+        const reviewPrompt = node.step.reviewPrompt || `请审查以下步骤的输出。\n\n步骤: ${node.step.action} (由 ${node.step.agent} 执行)\n输出:\n${out.slice(0, 2000)}\n\n请检查是否正确、完整、符合要求。回复 APPROVED 或 REJECTED 及原因。`;
+        const reviewStep: WorkflowStep = {
+          id: reviewId, agent: node.step.reviewer, action: 'review',
+          prompt: reviewPrompt, dependsOn: [sid], priority: 'high',
+        };
+        // Inject review step into DAG
+        if (!nodes.has(reviewId)) {
+          nodes.set(reviewId, {
+            step: reviewStep, deps: [sid], dependents: [],
+            status: StepStatus.PENDING, output: '', error: '',
+            retryCount: 0, maxRetries: 2, timeout: 300000, startedAt: 0,
+          });
+          node.dependents.push(reviewId);
+          run.steps.set(reviewId, StepStatus.PENDING);
+          console.log(`[wf] Auto-review: ${reviewId} assigned to ${node.step.reviewer}`);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err); node.error = msg;
       if (node.retryCount < node.maxRetries) { node.retryCount++; run.stepRetries.set(sid, node.retryCount); node.status = StepStatus.PENDING; run.steps.set(sid, StepStatus.PENDING); const bf = node.step.retryBackoff === 'fixed' ? 3000 : Math.pow(2, node.retryCount) * 1000; await new Promise(r => setTimeout(r, bf)); return this.execNode(runId, node, nodes); }
       node.status = StepStatus.FAILED; run.steps.set(sid, StepStatus.FAILED); run.rollbacks.push({ stepId: sid, reason: msg, timestamp: Date.now() });
+      // v0.4: Save step checkpoint on failure
+      const grpFail = (run as any)._group as string | undefined;
+      if (grpFail) saveStepCheckpoint(grpFail, runId, { stepId: sid, status: 'failed', output: node.output, error: msg, retries: node.retryCount, timestamp: Date.now() });
       if (node.onFailure && nodes.has(node.onFailure)) { const cn = nodes.get(node.onFailure)!; run.compensations.push(node.onFailure); if (cn.status === StepStatus.PENDING) { if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: node.onFailure, workflow: run.workflowName, agent: cn.step.agent, action: 'compensation', note: `Triggered by: ${sid}`, phase: WorkflowPhase.COMPENSATION }, 'workflow-engine')); await this.execNode(runId, cn, nodes); } return; }
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true, phase }, 'workflow-engine'));
     }
   }
 
+  /** v0.4: Enhanced condition evaluator — supports and_(), or_(), not_(), router() */
   private evalCond(cond: string, ctx: Record<string, string>): boolean {
+    // ── Compound operators (v0.4) ──
+    // and_($.a.output contains X, $.b.output == Y)
+    const andMatch = cond.match(/^and_\((.+)\)$/i);
+    if (andMatch) {
+      const args = this.splitConditionArgs(andMatch[1]);
+      return args.every(a => this.evalCond(a.trim(), ctx));
+    }
+    // or_($.a.output contains X, $.b.output == Y)
+    const orMatch = cond.match(/^or_\((.+)\)$/i);
+    if (orMatch) {
+      const args = this.splitConditionArgs(orMatch[1]);
+      return args.some(a => this.evalCond(a.trim(), ctx));
+    }
+    // not_($.step.output contains ERROR)
+    const notMatch = cond.match(/^not_\((.+)\)$/i);
+    if (notMatch) {
+      return !this.evalCond(notMatch[1].trim(), ctx);
+    }
+    // router($.step.output, { "APPROVED": "deploy_step", "REJECTED": "rollback_step" })
+    // Returns true if the current step output matches any key (used for branching)
+    const routerMatch = cond.match(/^router\(\s*\$\.(\w+)\.output\s*,\s*\{(.+)\}\s*\)$/i);
+    if (routerMatch) {
+      const [, sid, routesStr] = routerMatch;
+      const out = (ctx[sid] || '').toLowerCase().trim();
+      // Parse route keys
+      const keys = routesStr.split(',').map(k => {
+        const m = k.match(/"(.+?)"/);
+        return m ? m[1].toLowerCase() : k.trim().toLowerCase();
+      });
+      return keys.some(k => out.includes(k));
+    }
+
+    // ── Single expression (original) ──
     const m = cond.match(/^\$\.(\w+)\.output\s+(contains|==|!=)\s+(.+)$/i);
     if (m) { const [, sid, op, raw] = m; const v = raw.trim().replace(/^['"]|['"]$/g, ''); const out = (ctx[sid] || '').toLowerCase(); const o = op.toLowerCase(); if (o === 'contains') return out.includes(v.toLowerCase()); if (o === '==') return out === v.toLowerCase(); if (o === '!=') return out !== v.toLowerCase(); }
     return Object.prototype.hasOwnProperty.call(ctx, cond);
   }
 
+  /** Split condition arguments respecting nested parentheses */
+  private splitConditionArgs(argsStr: string): string[] {
+    const args: string[] = [];
+    let depth = 0, current = '';
+    for (const ch of argsStr) {
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      if (ch === ',' && depth === 0) { args.push(current); current = ''; }
+      else current += ch;
+    }
+    if (current.trim()) args.push(current);
+    return args;
+  }
+
   // ── Public helpers ────────────────────────────────────────────────
 
-  updateStep(wn: string, sid: string, s: StepStatus) { const r = this.runs.get(wn); if (r) r.steps.set(sid, s); }
-  recordRetry(wn: string, sid: string): number { const r = this.runs.get(wn); if (!r) return 0; const n = (r.stepRetries.get(sid) || 0) + 1; r.stepRetries.set(sid, n); return n; }
-  recordRollback(wn: string, sid: string, reason: string) { const r = this.runs.get(wn); if (r) r.rollbacks.push({ stepId: sid, reason, timestamp: Date.now() }); }
-  recordCompensation(wn: string, sid: string) { const r = this.runs.get(wn); if (!r) return; r.compensations.push(sid); if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: `dag:${wn}:${sid}`, workflow: wn, step: sid, agent: 'scheduler', action: 'compensation' }, 'workflow-engine')); }
-  complete(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }
-  fail(wn: string) { const r = this.runs.get(wn); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } }
+  /** Find the latest run by workflow name */
+  private findRunByName(wn: string): WorkflowRunRecord | undefined {
+    let latest: WorkflowRunRecord | undefined;
+    for (const r of this.runs.values()) {
+      if (r.workflowName === wn) {
+        if (!latest || r.startedAt > latest.startedAt) latest = r;
+      }
+    }
+    return latest;
+  }
+
+  /** Evict old completed/failed runs — keep last `keep` per workflow name */
+  private evictOldRuns(keep: number = 100): void {
+    const byName = new Map<string, WorkflowRunRecord[]>();
+    for (const r of this.runs.values()) {
+      if (!byName.has(r.workflowName)) byName.set(r.workflowName, []);
+      byName.get(r.workflowName)!.push(r);
+    }
+    for (const [, runs] of byName) {
+      // Sort by startedAt ascending (oldest first)
+      runs.sort((a, b) => a.startedAt - b.startedAt);
+      // Remove finished runs beyond the keep limit
+      const finished = runs.filter(r => r.status !== WorkflowStatus.RUNNING);
+      while (finished.length > keep) {
+        const oldest = finished.shift()!;
+        this.runs.delete(oldest.runId);
+        this.abortControllers.delete(oldest.runId);
+      }
+    }
+  }
+
+  updateStep(wn: string, sid: string, s: StepStatus) { const r = this.findRunByName(wn); if (r) r.steps.set(sid, s); }
+  recordRetry(wn: string, sid: string): number { const r = this.findRunByName(wn); if (!r) return 0; const n = (r.stepRetries.get(sid) || 0) + 1; r.stepRetries.set(sid, n); return n; }
+  recordRollback(wn: string, sid: string, reason: string) { const r = this.findRunByName(wn); if (r) r.rollbacks.push({ stepId: sid, reason, timestamp: Date.now() }); }
+  recordCompensation(wn: string, sid: string) { const r = this.findRunByName(wn); if (!r) return; r.compensations.push(sid); if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: `dag:${wn}:${sid}`, workflow: wn, step: sid, agent: 'scheduler', action: 'compensation' }, 'workflow-engine')); }
+  complete(wn: string) { const r = this.findRunByName(wn); if (r) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }
+  fail(wn: string) { const r = this.findRunByName(wn); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } }
   listRuns(): WorkflowRunRecord[] { const seen = new Set<string>(); const out: WorkflowRunRecord[] = []; for (const r of this.runs.values()) { if (!seen.has(r.runId)) { seen.add(r.runId); out.push(r); } } return out; }
   /** v0.3 P2: Submit human approval decision and resume DAG execution */
   submitApproval(approvalId: string, decision: 'APPROVED' | 'REJECTED', comment?: string): boolean {
@@ -463,18 +952,11 @@ export class WorkflowEngine {
       }
     }
 
-    // Resume DAG: find the workflow definition and re-execute remaining steps
-    const defs: WorkflowDefinition[] = [];
-    for (const [rid, r] of this.runs) {
-      if (r.runId === runId && r.workflowName === run.workflowName) {
-        // Rebuild definition from stored nodes
-        const steps = [...nodes.values()].map(n => n.step);
-        defs.push({ name: run.workflowName, steps });
-        break;
-      }
-    }
-    if (defs.length > 0) {
-      this.executeDag(runId, defs[0]).then(() => {
+    // Resume DAG: rebuild definition from stored nodes (preserves dynamically injected review steps)
+    const steps = [...nodes.values()].map(n => n.step);
+    if (steps.length > 0) {
+      const def: WorkflowDefinition = { name: run.workflowName, steps };
+      this.executeDag(runId, def).then(() => {
         const r = this.runs.get(runId);
         if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); }
       }).catch((err: Error) => {
@@ -498,7 +980,16 @@ export class WorkflowEngine {
     }));
   }
 
-  getRun(idOrName: string): WorkflowRunRecord | undefined { return this.runs.get(idOrName); }
+  getRun(idOrName: string): WorkflowRunRecord | undefined {
+    // First try direct lookup by runId
+    const direct = this.runs.get(idOrName);
+    if (direct) return direct;
+    // Then try latestRuns lookup by workflow name
+    const latestRunId = this.latestRuns.get(idOrName);
+    if (latestRunId) return this.runs.get(latestRunId);
+    return undefined;
+  }
+  private getFileMtime(fp: string): number { try { return fs.statSync(fp).mtimeMs; } catch { return 0; } }
 
   /** v0.3 P2: Check system load before scheduling new work */
   private maxLoad = parseFloat(process.env.MAX_CPU_LOAD || '0.8');
@@ -547,5 +1038,157 @@ export class WorkflowEngine {
     const seen = new Set<string>(); let a = 0, c = 0, f = 0, tr = 0, rb = 0, cp = 0;
     for (const [, r] of this.runs) { if (seen.has(r.runId)) continue; seen.add(r.runId); if (r.status === WorkflowStatus.RUNNING) a++; else if (r.status === WorkflowStatus.COMPLETED) c++; else if (r.status === WorkflowStatus.FAILED) f++; tr += r.stepRetries.size; rb += r.rollbacks.length; cp += r.compensations.length; }
     return { totalRuns: seen.size, activeRuns: a, completedRuns: c, failedRuns: f, totalRetries: tr, totalRollbacks: rb, totalCompensations: cp };
+  }
+
+  /** v0.4: Cancel a running workflow */
+  cancel(runId: string): boolean {
+    const ac = this.abortControllers.get(runId);
+    if (!ac) return false;
+    ac.abort();
+    this.abortControllers.delete(runId);
+    return true;
+  }
+
+  /** v0.4: Add a step to a running workflow */
+  addStep(group: string, step: WorkflowStep): boolean {
+    const run = this.findRunByGroup(group);
+    if (!run || run.status !== WorkflowStatus.RUNNING) return false;
+    // Store in pending additions — will be picked up by hot-reload
+    const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
+    if (!fs.existsSync(wfPath)) return false;
+    try {
+      const raw = fs.readFileSync(wfPath, 'utf-8');
+      const def = parseWorkflowYaml(raw);
+      def.steps.push(step);
+      fs.writeFileSync(wfPath, yaml.dump(def), 'utf-8');
+      console.log(`[wf] Added step ${step.id} to ${group} workflow`);
+      return true;
+    } catch { return false; }
+  }
+
+  /** v0.4: Delete a step from a running workflow */
+  deleteStep(group: string, stepId: string): boolean {
+    const run = this.findRunByGroup(group);
+    if (!run || run.status !== WorkflowStatus.RUNNING) return false;
+    const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
+    if (!fs.existsSync(wfPath)) return false;
+    try {
+      const raw = fs.readFileSync(wfPath, 'utf-8');
+      const def = parseWorkflowYaml(raw);
+      const idx = def.steps.findIndex(s => s.id === stepId);
+      if (idx === -1) return false;
+      def.steps.splice(idx, 1);
+      fs.writeFileSync(wfPath, yaml.dump(def), 'utf-8');
+      console.log(`[wf] Deleted step ${stepId} from ${group} workflow`);
+      return true;
+    } catch { return false; }
+  }
+
+  /** v0.4: Modify a step in a running workflow */
+  modifyStep(group: string, stepId: string, changes: Partial<WorkflowStep>): boolean {
+    const run = this.findRunByGroup(group);
+    if (!run || run.status !== WorkflowStatus.RUNNING) return false;
+    const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
+    if (!fs.existsSync(wfPath)) return false;
+    try {
+      const raw = fs.readFileSync(wfPath, 'utf-8');
+      const def = parseWorkflowYaml(raw);
+      const step = def.steps.find(s => s.id === stepId);
+      if (!step) return false;
+      Object.assign(step, changes);
+      fs.writeFileSync(wfPath, yaml.dump(def), 'utf-8');
+      console.log(`[wf] Modified step ${stepId} in ${group} workflow`);
+      return true;
+    } catch { return false; }
+  }
+
+  /** v0.4: Find a running workflow by group name */
+  private findRunByGroup(group: string): WorkflowRunRecord | undefined {
+    for (const run of this.runs.values()) {
+      if ((run as any)._group === group && run.status === WorkflowStatus.RUNNING) {
+        return run;
+      }
+    }
+    return undefined;
+  }
+
+  /** v0.4: Get global concurrency limit from settings */
+  private getGlobalConcurrency(): number {
+    try {
+      const settingsPath = path.join(process.env.MIND_DATA_DIR || process.cwd(), '.mind', 'settings.json');
+      if (fs.existsSync(settingsPath)) {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        return settings.maxConcurrentTasks || 5;
+      }
+    } catch {}
+    return 5; // default
+  }
+
+  /** v0.4: Recover incomplete runs — resume from checkpoint */
+  recoverCheckpoints(): Array<{ group: string; runId: string; workflowName: string }> {
+    const incomplete = findIncompleteRuns();
+    const recovered: Array<{ group: string; runId: string; workflowName: string }> = [];
+
+    for (const { group, runId, meta } of incomplete) {
+      console.log(`[wf-checkpoint] Resuming: ${meta.workflowName} (${runId.slice(0, 8)}) in ${group}`);
+
+      // Read the workflow definition from disk
+      const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
+      if (!fs.existsSync(wfPath)) {
+        console.log(`[wf-checkpoint] No workflow.yaml in ${group}, marking as failed`);
+        completeRunCheckpoint(group, runId, 'failed');
+        continue;
+      }
+
+      try {
+        const raw = fs.readFileSync(wfPath, 'utf-8');
+        const def = parseWorkflowYaml(raw);
+
+        // Create a new run record with checkpoint state pre-loaded
+        const newRunId = runId; // keep same ID for continuity
+        const completedSteps = meta.steps.filter(s => s.status === 'completed');
+        const rec: WorkflowRunRecord = {
+          runId: newRunId,
+          workflowName: def.name,
+          startedAt: meta.startedAt,
+          status: WorkflowStatus.RUNNING,
+          steps: new Map(def.steps.map(s => [s.id, StepStatus.PENDING])),
+          stepRetries: new Map(),
+          rollbacks: [],
+          compensations: [],
+          taskReports: new Map(),
+        };
+
+        // Mark already-completed steps
+        for (const cs of completedSteps) {
+          rec.steps.set(cs.stepId, StepStatus.COMPLETED);
+        }
+
+        (rec as any)._group = group;
+        this.runs.set(newRunId, rec);
+        this.latestRuns.set(def.name, newRunId);
+
+        // Resume DAG execution
+        this.executeDag(newRunId, def).then(() => {
+          const r = this.runs.get(newRunId);
+          if (r && r.status === WorkflowStatus.RUNNING) {
+            r.status = WorkflowStatus.COMPLETED;
+            r.completedAt = Date.now();
+          }
+          completeRunCheckpoint(group, newRunId, 'completed');
+        }).catch((err: Error) => {
+          const r = this.runs.get(newRunId);
+          if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); }
+          completeRunCheckpoint(group, newRunId, 'failed');
+          console.log(`[wf-checkpoint] Resume failed: ${err.message}`);
+        });
+
+        recovered.push({ group, runId: newRunId, workflowName: meta.workflowName });
+      } catch (err: unknown) {
+        console.log(`[wf-checkpoint] Resume error: ${err instanceof Error ? err.message : String(err)}`);
+        completeRunCheckpoint(group, runId, 'failed');
+      }
+    }
+    return recovered;
   }
 }

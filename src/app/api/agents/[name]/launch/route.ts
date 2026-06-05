@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import path from 'path';
+import { AGENTS_DIR } from '@/lib/data-dir';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const agentDir = path.join(process.cwd(), 'Agents', name);
+  const agentDir = path.join(AGENTS_DIR, name);
 
   // Validate agent name (prevent path traversal)
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {

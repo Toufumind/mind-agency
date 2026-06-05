@@ -39,13 +39,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map(t => (
           <div
             key={t.id}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white border border-gray-200 text-[13px] text-gray-700 shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-canvas border border-border text-[13px] text-muted shadow-sm"
             style={{ animation: 'slide-up 0.2s ease-out' }}
           >
             {t.type === 'success' ? (
-              <Check size={14} className="text-green-500" />
+              <Check size={14} className="text-success" />
             ) : (
-              <X size={14} className="text-red-500" />
+              <X size={14} className="text-destructive" />
             )}
             {t.message}
           </div>

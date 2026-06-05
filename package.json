@@ -1,29 +1,74 @@
 {
   "name": "mind-agency",
-  "version": "0.1.0",
-  "description": "Mind Agency — A multi-agent collaboration platform with email communication",
+  "version": "0.4.0",
+  "description": "Mind Agency — From Agent to Agency. 一个 AI 做不了的事，一群 AI 可以。",
   "scripts": {
-    "dev": "next dev",
+    "build:mcp": "node scripts/build-mcp.mjs",
+    "dev": "npm run build:mcp && next dev",
     "dev:ws": "npx tsx server.ts",
-    "dev:all": "concurrently \"next dev\" \"npx tsx server.ts\"",
-    "build": "next build",
+    "dev:all": "npm run build:mcp && concurrently \"next dev\" \"npx tsx server.ts\"",
+    "build": "npm run build:mcp && next build",
+    "build:exe": "npm run build:mcp && node scripts/build-exe.mjs",
+    "build:installer": "npm run build:exe && scripts\\build-installer.bat",
+    "release": "node scripts/release.mjs",
     "start": "next start",
     "lint": "next lint"
   },
-  "bin": {
-    "mind-agency": "./bin/mind-agency.js"
+  "main": "./electron/main.cjs",
+  "build": {
+    "appId": "com.mindagency.app",
+    "productName": "Mind Agency",
+    "directories": {
+      "output": "dist-exe"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache",
+      "!src/**/*.ts",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "electron/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "keywords": [
     "agent",
+    "agency",
     "collaboration",
-    "team",
-    "email",
-    "ai"
+    "multi-agent",
+    "workflow",
+    "ai",
+    "claude",
+    "mcp"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Toufumind",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Toufumind/mind-agency.git"
+  },
+  "homepage": "https://github.com/Toufumind/mind-agency#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.159",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.400.0",
@@ -35,13 +80,19 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@electron/packager": "^20.0.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
+    "@yao-pkg/pkg": "^6.20.0",
+    "caxa": "^3.0.1",
     "concurrently": "^10.0.0",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.22.3",
     "typescript": "^5.7.0"

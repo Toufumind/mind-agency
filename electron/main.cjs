@@ -1,0 +1,400 @@
+/**
+ * Mind Agency — Electron Desktop App
+ *
+ * Architecture:
+ *   App code (.next/, node_modules/) → EXE directory (read-only)
+ *   User data  (Agents/, Groups/)    → %APPDATA%/MindAgency/ (writable)
+ *
+ * On first launch, seed data is copied from the bundled app to AppData.
+ * Agents can then freely create groups, send emails, etc. at runtime.
+ */
+
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const path = require('path');
+const http = require('http');
+const fs = require('fs');
+const { spawn } = require('child_process');
+const { pathToFileURL } = require('url');
+
+// ── Config ───────────────────────────────────────────────
+
+const isDev = !app.isPackaged;
+const APP_ROOT = isDev ? path.resolve(__dirname, '..') : app.getAppPath();
+
+// Mutable data goes alongside the EXE, not in %APPDATA%
+const DATA_DIR = isDev
+  ? APP_ROOT
+  : path.join(path.dirname(app.getPath('exe')), 'mind-data');
+
+const PORT = parseInt(process.env.MIND_PORT || '3000', 10);
+const URL = `http://127.0.0.1:${PORT}`;
+
+let win = null;
+
+// ── Seed data on first run ───────────────────────────────
+
+function seedDataDir() {
+  if (isDev) return; // In dev, use project root directly
+
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  // Always overwrite Agents/ and Groups/ with clean bundled copy.
+  // Preserve .audit/ and .mind/ (user settings, tokens, memories).
+  for (const m of ['Agents', 'Groups']) {
+    const src = path.join(APP_ROOT, m);
+    const dest = path.join(DATA_DIR, m);
+    if (fs.existsSync(dest)) {
+      try { fs.rmSync(dest, { recursive: true, force: true }); } catch {}
+    }
+    if (fs.existsSync(src)) {
+      copyDir(src, dest);
+      console.log(`[mind]   ✓ ${m}/ seeded (clean)`);
+    }
+  }
+  // Create .audit/.mind if absent (preserve agent memories between runs)
+  for (const m of ['.audit', '.mind']) {
+    const d = path.join(DATA_DIR, m);
+    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+  }
+  // Clean stale agent memories referencing agents no longer in the bundle
+  const mindAgentsDir = path.join(DATA_DIR, '.mind', 'agents');
+  if (fs.existsSync(mindAgentsDir)) {
+    try {
+      const known = new Set(fs.readdirSync(path.join(APP_ROOT, 'Agents')).filter(d => fs.statSync(path.join(APP_ROOT, 'Agents', d)).isDirectory()));
+      for (const a of fs.readdirSync(mindAgentsDir)) {
+        if (!known.has(a)) {
+          try { fs.rmSync(path.join(mindAgentsDir, a), { recursive: true, force: true }); console.log(`[mind]   ✗ removed stale memory for ${a}`); } catch {}
+        }
+      }
+    } catch {}
+  }
+
+}
+
+function copyDir(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const e of fs.readdirSync(src, { withFileTypes: true })) {
+    const sp = path.join(src, e.name);
+    const dp = path.join(dest, e.name);
+    if (e.isDirectory()) copyDir(sp, dp);
+    else fs.copyFileSync(sp, dp);
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────
+
+function waitForServer(retries, delay) {
+  return new Promise((resolve, reject) => {
+    function tryConnect(n) {
+      if (n <= 0) return reject(new Error('Server timeout'));
+      http.get(URL, (res) => {
+        if (res.statusCode < 500) resolve();
+        else setTimeout(() => tryConnect(n - 1), delay);
+      }).on('error', () => setTimeout(() => tryConnect(n - 1), delay));
+    }
+    tryConnect(retries);
+  });
+}
+
+// ── Window ───────────────────────────────────────────────
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1400, height: 900,
+    minWidth: 960, minHeight: 640,
+    title: 'Mind Agency',
+    frame: false,
+    backgroundColor: '#ffffff',
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
+    },
+  });
+
+  win.setMenuBarVisibility(false);
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  win.once('ready-to-show', () => {
+    win.show();
+    win.focus();
+    // v0.4: Check for updates after window is ready
+    setTimeout(checkForUpdates, 5000);
+  });
+
+  win.on('closed', () => { win = null; });
+
+  win.loadURL(URL);
+}
+
+// ── IPC: Window controls ──────────────────────────────────
+
+ipcMain.on('window:minimize', () => { win?.minimize(); });
+ipcMain.on('window:maximize', () => {
+  if (win?.isMaximized()) win.unmaximize(); else win?.maximize();
+});
+ipcMain.on('window:close', () => { win?.close(); });
+ipcMain.handle('window:isMaximized', () => win?.isMaximized() || false);
+ipcMain.on('window:isMaximized', (event) => {
+  event.returnValue = win?.isMaximized() || false;
+});
+
+// ── Start ────────────────────────────────────────────────
+
+/** WebSocket child process handle — hoisted for will-quit cleanup */
+let wsChild = null;
+
+// ── Auto-Update (v0.4) ──────────────────────────────────────────────
+
+const CURRENT_VERSION = app.getVersion();
+const GITHUB_REPO = 'mindica-ai/mind-agency'; // Change to your repo
+const UPDATE_CHECK_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+
+async function checkForUpdates() {
+  if (isDev) return;
+  try {
+    const { default: https } = await import('https');
+    const data = await new Promise((resolve, reject) => {
+      const req = https.get(UPDATE_CHECK_URL, {
+        headers: { 'User-Agent': 'Mind-Agency-Desktop' },
+        timeout: 10000,
+      }, (res) => {
+        let body = '';
+        res.on('data', (c) => body += c);
+        res.on('end', () => { try { resolve(JSON.parse(body)); } catch { reject(new Error('parse error')); } });
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+
+    if (!data.tag_name) return;
+    const latestVersion = data.tag_name.replace(/^v/, '');
+    if (latestVersion === CURRENT_VERSION) {
+      console.log(`[update] Current version ${CURRENT_VERSION} is up to date`);
+      return;
+    }
+
+    console.log(`[update] New version available: ${latestVersion} (current: ${CURRENT_VERSION})`);
+
+    // Find the exe asset
+    const asset = (data.assets || []).find(a => a.name.endsWith('.exe') && a.name.includes('Mind Agency'));
+    if (!asset) {
+      console.log('[update] No exe asset found in release');
+      return;
+    }
+
+    // Notify renderer about available update
+    const windows = BrowserWindow.getAllWindows();
+    for (const win of windows) {
+      win.webContents.send('update-available', {
+        currentVersion: CURRENT_VERSION,
+        newVersion: latestVersion,
+        downloadUrl: asset.browser_download_url,
+        releaseNotes: data.body || '',
+      });
+    }
+  } catch (err) {
+    console.log(`[update] Check failed: ${err.message}`);
+  }
+}
+
+/** Download update and replace current exe */
+async function downloadUpdate(downloadUrl, newVersion) {
+  const windows = BrowserWindow.getAllWindows();
+  for (const win of windows) {
+    win.webContents.send('update-progress', { status: 'downloading', percent: 0 });
+  }
+
+  try {
+    const { default: https } = await import('https');
+    const { default: http } = await import('http');
+
+    const exePath = app.getPath('exe');
+    const tempPath = exePath + '.update';
+
+    await new Promise((resolve, reject) => {
+      const protocol = downloadUrl.startsWith('https') ? https : http;
+      const req = protocol.get(downloadUrl, { timeout: 300000 }, (res) => {
+        if (res.statusCode === 302 || res.statusCode === 301) {
+          // Follow redirect
+          protocol.get(res.headers.location, { timeout: 300000 }, (res2) => {
+            downloadStream(res2, tempPath, resolve, reject);
+          }).on('error', reject);
+          return;
+        }
+        downloadStream(res, tempPath, resolve, reject);
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('download timeout')); });
+    });
+
+    function downloadStream(stream, dest, resolve, reject) {
+      const total = parseInt(stream.headers['content-length'] || '0', 10);
+      let downloaded = 0;
+      const ws = fs.createWriteStream(dest);
+      stream.on('data', (chunk) => {
+        downloaded += chunk.length;
+        const percent = total > 0 ? Math.round((downloaded / total) * 100) : 0;
+        for (const win of BrowserWindow.getAllWindows()) {
+          win.webContents.send('update-progress', { status: 'downloading', percent });
+        }
+      });
+      stream.pipe(ws);
+      ws.on('finish', () => resolve());
+      ws.on('error', reject);
+    }
+
+    console.log(`[update] Download complete: ${tempPath}`);
+
+    // Replace current exe with downloaded one
+    // On Windows, we can't replace a running exe directly.
+    // Instead, we write a batch script that waits for the process to exit, replaces the exe, then restarts.
+    const batPath = exePath + '.update.bat';
+    const batContent = `
+@echo off
+timeout /t 2 /nobreak > nul
+move /y "${tempPath}" "${exePath}"
+start "" "${exePath}"
+del "%~f0"
+`;
+    fs.writeFileSync(batPath, batContent, 'utf-8');
+
+    // Notify user
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('update-progress', { status: 'ready', newVersion });
+    }
+
+    console.log(`[update] Update ready. Restart to apply v${newVersion}`);
+  } catch (err) {
+    console.error(`[update] Download failed: ${err.message}`);
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('update-progress', { status: 'error', error: err.message });
+    }
+  }
+}
+
+/** Restart app to apply update */
+function restartForUpdate() {
+  const exePath = app.getPath('exe');
+  const batPath = exePath + '.update.bat';
+  if (fs.existsSync(batPath)) {
+    const { spawn } = require('child_process');
+    spawn('cmd.exe', ['/c', batPath], { detached: true, stdio: 'ignore' }).unref();
+    app.quit();
+  }
+}
+
+// IPC handlers for renderer
+ipcMain.handle('update:check', checkForUpdates);
+ipcMain.handle('update:download', (event, downloadUrl, newVersion) => downloadUpdate(downloadUrl, newVersion));
+ipcMain.handle('update:restart', restartForUpdate);
+ipcMain.handle('update:version', () => CURRENT_VERSION);
+
+app.whenReady().then(async () => {
+  console.log(`[mind] v0.3 — ${isDev ? 'DEV' : 'PROD'}`);
+  console.log(`[mind] App:  ${APP_ROOT}`);
+  console.log(`[mind] Data: ${DATA_DIR}`);
+
+  // (1) Prepare writable data directory
+  seedDataDir();
+
+  // (2) Tell Next.js/MCP where data and app code live
+  process.env.MIND_DATA_DIR = DATA_DIR;
+  process.env.MIND_APP_DIR  = APP_ROOT;
+  process.env.NODE_ENV = 'production';
+  process.env.PORT = String(PORT);
+  process.env.HOSTNAME = '127.0.0.1';
+
+  // In packaged mode, claude.exe's MCP config needs to use Electron's
+  // bundled Node.js (process.execPath) instead of system `node` / `npx tsx`.
+  // chat.ts checks this env var to switch MCP command.
+  if (!isDev) {
+    process.env.MIND_ELECTRON_EXE = process.execPath;
+  }
+
+  // (3) Start Next.js server in-process
+  console.log('[mind] Starting Next.js...');
+  try {
+    await import(pathToFileURL(path.join(APP_ROOT, 'server.js')).href);
+  } catch (e) {
+    console.error('[mind] Server load error:', e.message);
+  }
+
+  // (4) Wait for server ready
+  console.log('[mind] Waiting for server...');
+  try {
+    await waitForServer(30, 400);
+  } catch (e) {
+    console.error('[mind] Server did not become ready:', e.message);
+  }
+
+  // (4b) Start WebSocket notification + Workflow server on :3001
+  console.log('[mind] Starting WebSocket server...');
+  try {
+    // Packaged: use bundled server.mjs (no tsx needed)
+    // Dev: use npx tsx server.ts
+    const wsEntry = isDev
+      ? path.join(APP_ROOT, 'server.ts')
+      : path.join(APP_ROOT, 'server.mjs');
+    if (fs.existsSync(wsEntry)) {
+      const spawnOpts = {
+        cwd: APP_ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          MIND_DATA_DIR: DATA_DIR,
+          MIND_APP_DIR: APP_ROOT,
+          PORT: String(PORT),
+          WS_PORT: '3001',
+        },
+      };
+      if (isDev) {
+        wsChild = spawn('npx.cmd', ['tsx', wsEntry], spawnOpts);
+      } else {
+        // Packaged: run bundled server.mjs directly with Electron's Node
+        wsChild = spawn(
+          process.execPath,
+          [wsEntry],
+          { ...spawnOpts, env: { ...spawnOpts.env, ELECTRON_RUN_AS_NODE: '1' } }
+        );
+      }
+      wsChild.stdout.on('data', (d) => process.stdout.write(`[ws] ${d}`));
+      wsChild.stderr.on('data', (d) => process.stderr.write(`[ws] ${d}`));
+      wsChild.on('error', (e) => console.error('[mind] WS server error:', e.message));
+      wsChild.on('exit', (code) => console.log(`[mind] WS server exited (${code})`));
+    }
+  } catch (e) {
+    console.error('[mind] Failed to start WS server:', e.message);
+  }
+
+  // (5) Show window
+  console.log('[mind] Ready → opening window');
+  createWindow();
+});
+
+app.on('window-all-closed', () => { app.quit(); });
+app.on('will-quit', () => {
+  // Kill WS child process
+  if (wsChild) {
+    try { wsChild.kill(); } catch {}
+  }
+  // Only kill claude.exe processes that are direct children of this Electron process
+  try {
+    const { execSync } = require('child_process');
+    const ourPid = process.pid;
+    // Find child claude.exe processes via Windows WMIC, kill only those
+    const out = execSync(
+      `wmic process where "ParentProcessId=${ourPid} and Name='claude.exe'" get ProcessId /format:csv 2>nul`,
+      { windowsHide: true, timeout: 5000, encoding: 'utf8' }
+    );
+    const pids = out.split('\n').filter(l => /\d+/.test(l)).map(l => l.split(',').pop()?.trim()).filter(Boolean);
+    for (const pid of pids) {
+      try { execSync(`taskkill /F /PID ${pid} /T 2>nul`, { windowsHide: true, timeout: 3000 }); } catch {}
+    }
+  } catch {}
+});
+app.on('activate', () => { if (!win) createWindow(); });

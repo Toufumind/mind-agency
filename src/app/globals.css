@@ -1,13 +1,440 @@
+/* ═══════════════════════════════════════════════════════════
+   Mind Agency — 主题系统 v2
+   三层 Token 体系：Primitive → Semantic → Component
+   Token 命名规范对齐 Hugo 的「极简白」设计系统 v1.0
+   通过 [data-theme] 属性切换，CSS 变量即时生效
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Tailwind v4 静态 Design Token ────────────────── */
 @import "tailwindcss";
 
-body {
-  background-color: #fff;
-  color: #1f1f1f;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@theme {
+  /* 字体 */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  /* 圆角 */
+  --radius-xs:  0.125rem;
+  --radius-sm:  0.25rem;
+  --radius-md:  0.375rem;
+  --radius-lg:  0.5rem;
+  --radius-xl:  0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.25rem;
+
+  /* 过渡 */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-theme:     var(--ease-in-out);
+  --duration-theme: 200ms;
+
+  /* ═══ 自定义颜色 — Tailwind v4 编译用 ═══ */
+  /* 这些值是默认值，会被 [data-theme] 块的 CSS 变量覆盖 */
+  /* bg-{name}, text-{name}, border-{name} 工具类自动生成 */
+
+  /* 背景层级 */
+  --color-canvas:         #ffffff;
+  --color-surface:        #fafafa;
+  --color-surface-alt:    #f5f5f5;
+  --color-surface-hover:  #eeeeee;
+
+  /* 文本层级 */
+  --color-foreground:        #0a0a0a;
+  --color-muted:             #525252;
+  --color-muted-foreground:  #8a8a8a;
+  --color-disabled:          #c7c7c7;
+
+  /* 边框层级 */
+  --color-border:        #e8e8e8;
+  --color-border-strong: #d4d4d4;
+
+  /* 品牌蓝 */
+  --color-primary:         #4c6ef5;
+  --color-primary-hover:   #3b5bdb;
+  --color-primary-muted:   #edf2ff;
+  --color-primary-subtle:  #dbe4ff;
+
+  /* 状态色 */
+  --color-success:           #059669;
+  --color-success-muted:     #ecfdf5;
+  --color-warning:           #d97706;
+  --color-warning-muted:     #fffbeb;
+  --color-destructive:       #dc2626;
+  --color-destructive-muted: #fef2f2;
+  --color-info:              #4c6ef5;
+  --color-info-muted:        #edf2ff;
+
+  /* 品牌色板 */
+  --color-agency-50:  #f0f4ff;
+  --color-agency-100: #dbe4ff;
+  --color-agency-200: #bac8ff;
+  --color-agency-300: #91a7ff;
+  --color-agency-400: #748ffc;
+  --color-agency-500: #5c7cfa;
+  --color-agency-600: #4c6ef5;
+  --color-agency-700: #4263eb;
+  --color-agency-800: #3b5bdb;
+  --color-agency-900: #364fc7;
+  --color-agency-950: #2b3fa0;
 }
 
-* { scrollbar-width: thin; scrollbar-color: #e5e5e5 transparent; }
 
-@keyframes toast-in { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+/* ═══════════════════════════════════════════════════════════
+   :root — 默认主题变量
+   未设置 data-theme 时 fallback 到极简白
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* 阴影 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.06), 0 4px 6px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.08), 0 8px 10px rgba(0, 0, 0, 0.04);
+  --color-shadow: rgba(0, 0, 0, 0.06);
+
+  /* 组件级 Token */
+  --sidebar-bg:         var(--color-surface);
+  --sidebar-border:     var(--color-border);
+  --sidebar-item-hover: var(--color-surface-alt);
+  --sidebar-item-active:var(--color-canvas);
+  --card-bg:           var(--color-canvas);
+  --card-border:       var(--color-border);
+  --input-bg:          var(--color-canvas);
+  --input-border:      var(--color-border);
+  --input-focus-ring:  var(--color-primary);
+  --btn-primary-bg:    var(--color-foreground);
+  --btn-primary-text:  var(--color-canvas);
+  --btn-secondary-bg:  var(--color-canvas);
+  --btn-secondary-text:var(--color-muted);
+  --code-bg:   var(--color-surface-alt);
+  --code-text: var(--color-destructive);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   主题一：极简白 · Minimal White（Hugo 设计）
+   设计规范 v1.0 — Agents/Hugo/design-spec-minimal-white.md
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="minimal-white"] {
+  /* 与 :root fallback 一致，显式声明以确保主题切换兜底 */
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   主题二：深空科技 · Deep Space（Iris 设计）
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="deep-space"] {
+  /* Iris 设计稿精确色值 — 三主题对照见 Agents/Iris/设计提案_暖木主题_v1.md */
+  --color-canvas:         #0d0d12;
+  --color-surface:        #16161d;
+  --color-surface-alt:    #1c1c24;
+  --color-surface-hover:  #22222b;
+
+  --color-foreground:        #e8e8ed;
+  --color-muted:             #9898a8;
+  --color-muted-foreground:  #606070;
+  --color-disabled:          #3d3d4d;
+
+  --color-border:        #23232d;
+  --color-border-strong: #32323f;
+
+  /* 品牌蓝 #4c6ef5 — 三套主题统一锁定 */
+  --color-primary:         #4c6ef5;
+  --color-primary-hover:   #3b5bdb;
+  --color-primary-muted:   #1a1f3a;
+  --color-primary-subtle:  #0d1530;
+
+  --color-success:           #3fb950;
+  --color-success-muted:     #0b2e1a;
+  --color-warning:           #d29922;
+  --color-warning-muted:     #2a1f0e;
+  --color-destructive:       #f85149;
+  --color-destructive-muted: #2d1215;
+  --color-info:              #4c6ef5;
+  --color-info-muted:        #1a1f3a;
+
+  --color-shadow: rgba(0, 0, 0, 0.40);
+
+  /* 深色主题阴影加重 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.32), 0 2px 4px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.36), 0 4px 6px rgba(0, 0, 0, 0.24);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.40), 0 8px 10px rgba(0, 0, 0, 0.32);
+
+  --sidebar-bg:         var(--color-surface);
+  --sidebar-border:     var(--color-border);
+  --sidebar-item-hover: var(--color-surface-alt);
+  --sidebar-item-active:var(--color-canvas);
+
+  --card-bg:           var(--color-surface);
+  --card-border:       var(--color-border);
+
+  --input-bg:          var(--color-canvas);
+  --input-border:      var(--color-border);
+  --input-focus-ring:  var(--color-primary);
+
+  --btn-primary-bg:    var(--color-primary);
+  --btn-primary-text:  var(--color-canvas);
+  --btn-secondary-bg:  var(--color-surface-alt);
+  --btn-secondary-text:var(--color-foreground);
+
+  --code-bg:   var(--color-surface-alt);
+  --code-text: var(--color-destructive);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   主题三：暖木 · Warm Wood（Leo 设计）
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="warm-wood"] {
+  /* ── Primitive 色板（木色系） ── */
+  --color-wood-50:  #fdf8f0;
+  --color-wood-100: #faf0e0;
+  --color-wood-200: #f5e1c8;
+  --color-wood-300: #e8c9a0;
+  --color-wood-400: #d4a574;
+  --color-wood-500: #b8855c;
+  --color-wood-600: #9c6b46;
+  --color-wood-700: #7d5232;
+  --color-wood-800: #5e3a1f;
+  --color-wood-900: #3f2410;
+  --color-wood-950: #261408;
+
+  /* Iris 设计稿精确色值 — Agents/Iris/设计提案_暖木主题_v1.md */
+  --color-canvas:         #faf8f5;
+  --color-surface:        #f5f0eb;
+  --color-surface-alt:    #ede6de;
+  --color-surface-hover:  #e5dbd0;
+
+  --color-foreground:        #2c2825;
+  --color-muted:             #6b6560;
+  --color-muted-foreground:  #9e9690;
+  --color-disabled:          #c9c3bd;
+
+  --color-border:        #e5ddd4;
+  --color-border-strong: #d4cbbf;
+
+  /* 品牌蓝 #4c6ef5 — 三套主题统一锁定 */
+  --color-primary:         #4c6ef5;
+  --color-primary-hover:   #3b5bdb;
+  --color-primary-muted:   #edf0ff;
+  --color-primary-subtle:  #dbe0ff;
+
+  /* 状态色同极简白（暖木底色够浅，状态色不需要特别适配） */
+  --color-success:           #059669;
+  --color-success-muted:     #edf5ed;
+  --color-warning:           #d97706;
+  --color-warning-muted:     #fef7ed;
+  --color-destructive:       #dc2626;
+  --color-destructive-muted: #fef2f2;
+  --color-info:              #4c6ef5;
+  --color-info-muted:        #edf0ff;
+
+  --color-shadow: rgba(90, 70, 50, 0.08);
+
+  /* 暖棕调阴影（黑阴影在暖白底上显脏） */
+  --shadow-xs: 0 1px 2px rgba(90, 70, 50, 0.08);
+  --shadow-sm: 0 1px 3px rgba(90, 70, 50, 0.10), 0 1px 2px rgba(90, 70, 50, 0.06);
+  --shadow-md: 0 4px 6px rgba(90, 70, 50, 0.10), 0 2px 4px rgba(90, 70, 50, 0.06);
+  --shadow-lg: 0 10px 15px rgba(90, 70, 50, 0.12), 0 4px 6px rgba(90, 70, 50, 0.08);
+  --shadow-xl: 0 20px 25px rgba(90, 70, 50, 0.15), 0 8px 10px rgba(90, 70, 50, 0.08);
+
+  --sidebar-bg:         var(--color-surface);
+  --sidebar-border:     var(--color-border);
+  --sidebar-item-hover: var(--color-surface-alt);
+  --sidebar-item-active:var(--color-canvas);
+
+  --card-bg:           var(--color-canvas);
+  --card-border:       var(--color-border);
+
+  --input-bg:          var(--color-canvas);
+  --input-border:      var(--color-border);
+  --input-focus-ring:  var(--color-primary);
+
+  --btn-primary-bg:    var(--color-foreground);
+  --btn-primary-text:  var(--color-canvas);
+  --btn-secondary-bg:  var(--color-surface-alt);
+  --btn-secondary-text:var(--color-muted);
+
+  --code-bg:   var(--color-surface-alt);
+  --code-text: var(--color-destructive);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   主题四：Notion · 无边框极简风
+   设计理念：去掉所有可见边框，纯阴影 + 色差区分层级
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="notion"] {
+  /* ── 背景 — 纯白 + 极浅灰层级 ── */
+  --color-canvas:         #ffffff;
+  --color-surface:        #fbfbfa;
+  --color-surface-alt:    #f7f6f3;
+  --color-surface-hover:  #efeee9;
+
+  /* ── 文本 ── */
+  --color-foreground:        #1a1a1a;
+  --color-muted:             #6b6b6b;
+  --color-muted-foreground:  #9b9b9b;
+  --color-disabled:          #c7c7c7;
+
+  /* ── 边框 — 透明/极淡，视觉上无边框 ── */
+  --color-border:        transparent;
+  --color-border-strong: #e8e7e3;
+
+  /* ── 品牌蓝 ── */
+  --color-primary:         #4c6ef5;
+  --color-primary-hover:   #3b5bdb;
+  --color-primary-muted:   #edf2ff;
+  --color-primary-subtle:  #dbe4ff;
+
+  --color-success:           #059669;
+  --color-success-muted:     #ecfdf5;
+  --color-warning:           #d97706;
+  --color-warning-muted:     #fffbeb;
+  --color-destructive:       #dc2626;
+  --color-destructive-muted: #fef2f2;
+  --color-info:              #4c6ef5;
+  --color-info-muted:        #edf2ff;
+
+  --color-shadow: rgba(15, 15, 15, 0.04);
+
+  /* Notion 风格阴影 — 柔和、不突兀 */
+  --shadow-xs: 0 0 0 0 transparent;
+  --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.04);
+  --shadow-md: 0 2px 4px rgba(15, 15, 15, 0.04), 0 1px 2px rgba(15, 15, 15, 0.02);
+  --shadow-lg: 0 4px 8px rgba(15, 15, 15, 0.05), 0 2px 4px rgba(15, 15, 15, 0.02);
+  --shadow-xl: 0 8px 16px rgba(15, 15, 15, 0.06), 0 4px 8px rgba(15, 15, 15, 0.03);
+
+  /* ── 组件 — Notion 精髓：无边框 ── */
+  --sidebar-bg:         #fbfbfa;
+  --sidebar-border:     transparent;
+  --sidebar-item-hover: var(--color-surface-hover);
+  --sidebar-item-active:var(--color-canvas);
+
+  --card-bg:           var(--color-canvas);
+  --card-border:       transparent;
+
+  --input-bg:          var(--color-surface-alt);
+  --input-border:      transparent;
+  --input-focus-ring:  var(--color-primary);
+
+  --btn-primary-bg:    var(--color-foreground);
+  --btn-primary-text:  var(--color-canvas);
+  --btn-secondary-bg:  var(--color-surface-alt);
+  --btn-secondary-text:var(--color-muted);
+
+  --code-bg:   var(--color-surface-alt);
+  --code-text: var(--color-destructive);
+}
+
+/* ══════ Notion 无边框 — 全局覆盖 ══════ */
+[data-theme="notion"] * {
+  border-color: transparent !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   主题五：Nord · 北极（冷色调开发者主题）
+   灵感来自 Nord Theme (https://www.nordtheme.com/)
+   ═══════════════════════════════════════════════════════════ */
+
+[data-theme="nord"] {
+  /* ── 背景 — Polar Night ── */
+  --color-canvas:         #2e3440;
+  --color-surface:        #3b4252;
+  --color-surface-alt:    #434c5e;
+  --color-surface-hover:  #4c566a;
+
+  /* ── 文本 — Snow Storm ── */
+  --color-foreground:        #eceff4;
+  --color-muted:             #d8dee9;
+  --color-muted-foreground:  #a0aabe;
+  --color-disabled:          #616e88;
+
+  /* ── 边框 ── */
+  --color-border:        #4c566a;
+  --color-border-strong: #616e88;
+
+  /* ── 品牌蓝 — Frost ── */
+  --color-primary:         #88c0d0;
+  --color-primary-hover:   #81a1c1;
+  --color-primary-muted:   #2e3440;
+  --color-primary-subtle:  #3b4252;
+
+  /* ── 状态色 — Aurora ── */
+  --color-success:           #a3be8c;
+  --color-success-muted:     #2e3440;
+  --color-warning:           #ebcb8b;
+  --color-warning-muted:     #2e3440;
+  --color-destructive:       #bf616a;
+  --color-destructive-muted: #2e3440;
+  --color-info:              #88c0d0;
+  --color-info-muted:        #2e3440;
+
+  --color-shadow: rgba(0, 0, 0, 0.3);
+
+  /* ── 阴影 — 深色适配 ── */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.5), 0 8px 10px rgba(0, 0, 0, 0.3);
+
+  /* ── 组件 ── */
+  --sidebar-bg:         #2e3440;
+  --sidebar-border:     #4c566a;
+  --sidebar-item-hover: #3b4252;
+  --sidebar-item-active:#434c5e;
+  --card-bg:           #3b4252;
+  --card-border:       #4c566a;
+  --input-bg:          #3b4252;
+  --input-border:      #4c566a;
+  --input-focus-ring:  #88c0d0;
+  --btn-primary-bg:    #88c0d0;
+  --btn-primary-text:  #2e3440;
+  --btn-secondary-bg:  #434c5e;
+  --btn-secondary-text:#eceff4;
+  --code-bg:   #3b4252;
+  --code-text: #d08770;
+}
+
+
+
+
+
+/* ═══════════════════════════════════════════════════════════
+   全局基础样式
+   ═══════════════════════════════════════════════════════════ */
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition:
+    background-color var(--duration-theme) var(--ease-theme),
+    color var(--duration-theme) var(--ease-theme);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+/* 动画 */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 .animate-in { animation: toast-in .3s ease-out; }
+
+/* ── Electron frameless window ─────────────────────── */
+.drag-region { -webkit-app-region: drag; }
+.no-drag { -webkit-app-region: no-drag; }

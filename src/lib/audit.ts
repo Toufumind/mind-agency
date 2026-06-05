@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { AUDIT_DIR, AGENTS_DIR } from './data-dir';
 
 export interface AuditEntry {
   id: string;
@@ -12,7 +13,7 @@ export interface AuditEntry {
   status: 'success' | 'error';
 }
 
-const AUDIT_DIR = path.join(process.cwd(), '.audit');
+
 
 function ensureAuditDir() {
   if (!fs.existsSync(AUDIT_DIR)) {
@@ -22,11 +23,11 @@ function ensureAuditDir() {
 
 function getAuditDateFile(): string {
   const today = new Date().toISOString().split('T')[0];
-  return path.join(AUDIT_DIR, `${today}.json`);
+  return path.join(AUDIT_DIR, `${today}.jsonl`);
 }
 
 /**
- * 写一条审计日志到 .audit/YYYY-MM-DD.json
+ * 写一条审计日志到 .audit/YYYY-MM-DD.jsonl（append-only，避免竞态）
  */
 export function writeAudit(params: {
   agent: string;
@@ -48,30 +49,21 @@ export function writeAudit(params: {
   };
 
   const file = getAuditDateFile();
-  let entries: AuditEntry[] = [];
-  if (fs.existsSync(file)) {
-    try {
-      entries = JSON.parse(fs.readFileSync(file, 'utf-8'));
-      if (!Array.isArray(entries)) entries = [];
-    } catch {
-      entries = [];
-    }
-  }
-  entries.push(entry);
-  fs.writeFileSync(file, JSON.stringify(entries, null, 2), 'utf-8');
+  const line = JSON.stringify(entry) + '\n';
+  fs.appendFileSync(file, line, 'utf-8');
 
   return entry;
 }
 
 /**
  * 读取最近的 N 条审计日志
- * 从最新的日期文件向前扫描
+ * 从最新的日期文件向前扫描（支持 .jsonl 和旧版 .json）
  */
 export function readAuditLogs(limit: number = 100): AuditEntry[] {
   if (!fs.existsSync(AUDIT_DIR)) return [];
 
   const files = fs.readdirSync(AUDIT_DIR)
-    .filter(f => f.endsWith('.json'))
+    .filter(f => f.endsWith('.jsonl') || f.endsWith('.json'))
     .sort()
     .reverse(); // newest first
 
@@ -80,13 +72,23 @@ export function readAuditLogs(limit: number = 100): AuditEntry[] {
   for (const file of files) {
     if (results.length >= limit) break;
     try {
-      const entries: AuditEntry[] = JSON.parse(
-        fs.readFileSync(path.join(AUDIT_DIR, file), 'utf-8')
-      );
-      // Each file has entries oldest-first; we want newest-first overall
-      for (let i = entries.length - 1; i >= 0; i--) {
-        results.push(entries[i]);
-        if (results.length >= limit) break;
+      const raw = fs.readFileSync(path.join(AUDIT_DIR, file), 'utf-8');
+      if (file.endsWith('.jsonl')) {
+        // JSONL: each line is one entry, newest at bottom — read from bottom
+        const lines = raw.split('\n').filter(Boolean);
+        for (let i = lines.length - 1; i >= 0; i--) {
+          results.push(JSON.parse(lines[i]));
+          if (results.length >= limit) break;
+        }
+      } else {
+        // Legacy JSON array format
+        const entries: AuditEntry[] = JSON.parse(raw);
+        if (Array.isArray(entries)) {
+          for (let i = entries.length - 1; i >= 0; i--) {
+            results.push(entries[i]);
+            if (results.length >= limit) break;
+          }
+        }
       }
     } catch { /* skip corrupted files */ }
   }
@@ -115,7 +117,7 @@ export function loadAgentConfig(agentName: string): {
     canDeploy?: boolean;
   };
 } | null {
-  const configPath = path.join(process.cwd(), 'Agents', agentName, 'config.json');
+  const configPath = path.join(AGENTS_DIR, agentName, 'config.json');
   if (!fs.existsSync(configPath)) return null;
   try {
     return JSON.parse(fs.readFileSync(configPath, 'utf-8'));

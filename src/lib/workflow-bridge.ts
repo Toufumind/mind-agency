@@ -1,0 +1,251 @@
+/**
+ * Workflow Bridge — unified workflow execution (v1.0).
+ *
+ * Uses WorkflowEngine with ChatStepExecutor (real AI via chatOnce).
+ * human_approval steps pause the DAG and wait for API approval.
+ * All runs and pending approvals are stored in-memory (survives within process).
+ * Run metadata persisted to Groups/<name>/workflow-state.json.
+ */
+
+import fs from 'fs';
+import path from 'path';
+import { randomUUID } from 'crypto';
+import { GROUPS_DIR } from './data-dir';
+import {
+  WorkflowEngine, WorkflowStatus, ChatStepExecutor,
+  parseWorkflowYaml, type WorkflowDefinition,
+  type WorkflowRunRecord, type StepStatus,
+} from './event-bus';
+
+// ══════════════════════════════ Singleton Engine ═══════════════════════════
+
+let engine: WorkflowEngine | null = null;
+
+/** Module-level AbortController — cancelled on shutdown to stop all polling loops */
+const _shutdownController = new AbortController();
+
+function getEngine(): WorkflowEngine {
+  if (!engine) engine = new WorkflowEngine(undefined, new ChatStepExecutor());
+  return engine;
+}
+
+// ════════════════════════════ Public API ═════════════════════════════════
+
+/** Trigger a workflow for a group. Runs DAG asynchronously via ChatStepExecutor. */
+export async function triggerWorkflow(group: string): Promise<{ runId: string } | { error: string }> {
+  const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
+  if (!fs.existsSync(wfPath)) return { error: `no workflow.yaml in ${group}` };
+
+  const yaml = fs.readFileSync(wfPath, 'utf-8');
+  let def: WorkflowDefinition;
+  try { def = parseWorkflowYaml(yaml); }
+  catch { return { error: 'invalid workflow YAML' }; }
+  if (!def.name || !def.steps?.length) return { error: 'workflow requires name and steps' };
+
+  const eng = getEngine();
+  const run = eng.execute(def, group);
+  run._wfDef = def;
+  run._yamlPath = wfPath;
+
+  // Persist initial state to disk immediately
+  saveWorkflowState(group, {
+    workflowName: def.name,
+    runId: run.runId,
+    currentStep: '',
+    owner: '',
+    status: 'running',
+    startedAt: run.startedAt,
+    history: [],
+  });
+
+  // Async completion watcher (fire and forget)
+  waitForCompletion(run.runId, group).catch(err => {
+    console.error(`[wf] completion watcher error for ${group}:`, err);
+  });
+
+  return { runId: run.runId };
+}
+
+/** Get all workflow runs (for status display). Falls back to disk if engine is cold. */
+export function getRuns(): Array<{
+  runId: string; group: string; workflowName: string; status: string;
+  stepsTotal: number; stepsDone: number; startedAt: number;
+  steps: Record<string, string>; // stepId → status
+  pendingApprovals: Array<{ approvalId: string; stepId: string; agent: string; prompt: string }>;
+}> {
+  // Try in-memory first
+  if (engine) {
+    const runs = engine.listRuns();
+    if (runs.length > 0) {
+      const approvals = engine.listPendingApprovals();
+      return runs.map(r => ({
+        runId: r.runId,
+        group: (r as any)._group || '',
+        workflowName: r.workflowName,
+        status: r.status,
+        stepsTotal: r.steps.size,
+        stepsDone: [...r.steps.values()].filter(s => s === 'completed' || s === 'skipped').length,
+        startedAt: r.startedAt,
+        steps: Object.fromEntries(r.steps),
+        pendingApprovals: approvals.filter(a => a.runId === r.runId).map(a => ({
+          approvalId: a.approvalId, stepId: a.stepId, agent: a.agent, prompt: a.prompt,
+        })),
+      }));
+    }
+  }
+
+  // Fallback to disk (engine cold after restart or hot-reload)
+  if (!fs.existsSync(GROUPS_DIR)) return [];
+  const results: any[] = [];
+  for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
+    if (!g.isDirectory() || g.name.startsWith('.')) continue;
+    const state = loadWorkflowState(g.name);
+    if (state && (state.status === 'running' || state.status === 'completed' || state.status === 'failed')) {
+      results.push({
+        runId: state.runId, group: g.name, workflowName: state.workflowName,
+        status: state.status, stepsTotal: 0, stepsDone: 0, startedAt: state.startedAt,
+        pendingApprovals: [],
+      });
+    }
+  }
+  return results;
+}
+
+/** Submit a human approval decision and resume the DAG. */
+export function approveWorkflow(
+  approvalId: string,
+  decision: 'APPROVED' | 'REJECTED',
+  comment?: string
+): { ok: boolean; error?: string } {
+  const eng = getEngine();
+  const ok = eng.submitApproval(approvalId, decision, comment);
+  if (!ok) return { ok: false, error: 'approval not found or already processed' };
+
+  // Update persisted state
+  const pending = eng.listPendingApprovals();
+  // Find the run this approval belonged to
+  for (const r of eng.listRuns()) {
+    const group = (r as any)._group;
+    if (group) {
+      saveWorkflowState(group, {
+        workflowName: r.workflowName,
+        runId: r.runId,
+        currentStep: '',
+        owner: '',
+        status: r.status,
+        startedAt: r.startedAt,
+        history: [],
+      });
+    }
+  }
+
+  return { ok: true };
+}
+
+/** Get pending approvals for a specific group. */
+export function getPendingApprovals(group: string): Array<{
+  approvalId: string; runId: string; stepId: string; agent: string; prompt: string;
+}> {
+  const eng = getEngine();
+  return eng.listPendingApprovals().filter(a => {
+    for (const r of eng.listRuns()) {
+      if (r.runId === a.runId && (r as any)._group === group) return true;
+    }
+    return false;
+  });
+}
+
+// ═══════════════════════════════ Internal ═══════════════════════════════
+
+/** Extend WorkflowRunRecord with metadata fields */
+declare module './event-bus' {
+  interface WorkflowRunRecord {
+    _group?: string;
+    _wfDef?: WorkflowDefinition;
+    _yamlPath?: string;
+  }
+}
+
+// ── Group state persistence ─────────────────────────────────
+
+interface GroupWorkflowState {
+  workflowName: string;
+  runId: string;
+  currentStep: string;
+  owner: string;
+  status: string;
+  startedAt: number;
+  history: { step: string; agent: string; result: string; at: number }[];
+}
+
+function loadWorkflowState(group: string): GroupWorkflowState | null {
+  const fp = path.join(GROUPS_DIR, group, 'workflow-state.json');
+  try {
+    if (fs.existsSync(fp)) return JSON.parse(fs.readFileSync(fp, 'utf-8'));
+  } catch {}
+  return null;
+}
+
+function saveWorkflowState(group: string, state: GroupWorkflowState): void {
+  const fp = path.join(GROUPS_DIR, group, 'workflow-state.json');
+  fs.writeFileSync(fp, JSON.stringify(state, null, 2), 'utf-8');
+}
+
+// ── Completion watcher ────────────────────────────────────
+
+async function waitForCompletion(runId: string, group: string): Promise<void> {
+  const eng = getEngine();
+  const { signal } = _shutdownController;
+  while (!signal.aborted) {
+    await Promise.race([
+      sleep(3000),
+      new Promise<void>(r => signal.addEventListener('abort', () => r(), { once: true })),
+    ]);
+    if (signal.aborted) break;
+    const run = eng.getRun(runId);
+    if (!run) break;
+    if (run.status === WorkflowStatus.COMPLETED) {
+      const s = loadWorkflowState(group);
+      if (s) { s.status = 'completed'; saveWorkflowState(group, s); }
+      break;
+    }
+    if (run.status === WorkflowStatus.FAILED) {
+      const s = loadWorkflowState(group);
+      if (s) { s.status = 'failed'; saveWorkflowState(group, s); }
+      break;
+    }
+    // Update progress
+    const s = loadWorkflowState(group);
+    if (s) {
+      s.status = run.status;
+      // Track completed steps
+      const done: string[] = [];
+      for (const [sid, st] of run.steps) {
+        if (st === 'completed' || st === 'skipped') done.push(sid);
+      }
+      s.currentStep = done.join(',');
+      saveWorkflowState(group, s);
+    }
+  }
+}
+
+// ── Recovery ──────────────────────────────────────────────
+
+export function recoverRunningWorkflows(): void {
+  if (!fs.existsSync(GROUPS_DIR)) return;
+  for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
+    if (!g.isDirectory() || g.name.startsWith('.')) continue;
+    const state = loadWorkflowState(g.name);
+    if (state && state.status === 'running') {
+      console.log(`[wf] recovered workflow in ${g.name}: ${state.workflowName} (${state.runId.slice(0, 8)}...)`);
+    }
+  }
+}
+
+function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)); }
+
+/** Cancel all polling loops — call from server.ts shutdown handler */
+export function cancelAllWatchers(): void {
+  _shutdownController.abort();
+  console.log('[wf] all completion watchers cancelled');
+}

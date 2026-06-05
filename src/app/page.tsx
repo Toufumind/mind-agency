@@ -2,131 +2,124 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from '@/components/sidebar';
+import { useSidebarData } from '@/components/sidebar-context';
+import { useNotifications } from '@/components/notification-provider';
 import Link from 'next/link';
-import { Hash, Users, Mail, Zap, RefreshCw, GitBranch, Clock, CheckCircle, XCircle, ArrowRight, UserCheck, Radio } from 'lucide-react';
-import { useEventStream } from '@/hooks/use-event-stream';
+import { Hash, Users, Mail, ArrowRight, Activity, Clock, AlertCircle, DollarSign } from 'lucide-react';
+import { useT } from '@/components/i18n';
+import LogoCanvas from '@/components/logo-canvas';
 
 interface AgentInfo { name: string; emailCount: number; config?: { roles?: string[]; permissions?: Record<string, boolean>; autoRespondToEmail?: boolean; }; }
-interface GroupInfo { name: string; messageCount: number; memberCount: number; lastActivity?: string; }
-interface PipelineRun { runId: string; group: string; workflow: string; status: string; stepsDone: number; totalSteps: number; pendingApproval?: { approvalId: string; stepId: string }; }
-interface PipelineStats { totalRuns: number; running: number; completed: number; failed: number; runs: PipelineRun[]; }
+interface GroupInfo { name: string; }
+interface PendingItem { type: string; id: string; group: string; requestedBy: string; description: string; createdAt: number; }
 
 export default function HomePage() {
+  const { t } = useT();
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [groups, setGroups] = useState<GroupInfo[]>([]);
   const [totalEmails, setTotalEmails] = useState(0);
-  const [pipeline, setPipeline] = useState<PipelineStats>({ totalRuns: 0, running: 0, completed: 0, failed: 0, runs: [] });
-  const [loading, setLoading] = useState(true);
-  const [sysLoad, setSysLoad] = useState(0);
-  const [uptime, setUptime] = useState(0);
-
-  const loadSystem = useCallback(async () => {
-    try {
-      const s = await fetch('/api/system/status').then(r => r.json());
-      setSysLoad(s.load?.loadPercent || 0);
-      setUptime(s.uptime || 0);
-    } catch {}
-  }, []);
-
-  const loadPipeline = useCallback(async () => {
-    try {
-      const gr = await fetch('/api/groups/scan').then(r => r.json());
-      const gs: string[] = gr.groups || [];
-      const runs: PipelineRun[] = [];
-      for (const g of gs) {
-        try {
-          const w = await fetch(`/api/groups/${g}/workflow`).then(r => r.json());
-          if (w.activeRuns) for (const r of w.activeRuns) runs.push({ ...r, group: g, workflow: w.name, totalSteps: w.steps });
-        } catch {}
-      }
-      setPipeline({
-        totalRuns: runs.length, running: runs.filter(r => r.status === 'running').length,
-        completed: runs.filter(r => r.status === 'completed').length,
-        failed: runs.filter(r => r.status === 'failed').length, runs,
-      });
-    } catch {}
-  }, []);
+  const [todayCost, setTodayCost] = useState(0);
+  const [pending, setPending] = useState<PendingItem[]>([]);
+  const sidebar = useSidebarData();
+  const { unreadGroups } = useNotifications();
 
   const load = useCallback(() => {
-    setLoading(true);
-    fetch('/api/agents').then(r => r.json()).then(d => {
-      setAgents(d.agents || []);
-      let t = 0; for (const a of d.agents || []) t += a.emailCount; setTotalEmails(t);
-    }).catch(() => {}).finally(() => setLoading(false));
-    fetch('/api/groups/scan').then(r => r.json()).then(d => {
-      setGroups((d.groups || []).map((g: string) => ({ name: g, messageCount: 0, memberCount: 0 })));
-    }).catch(() => {});
-    loadPipeline();
-    loadSystem();
-  }, [loadPipeline, loadSystem]);
+    fetch('/api/agents').then(r=>r.json()).then(d=>{ setAgents(d.agents||[]); let t=0; for(const a of d.agents||[]) t+=a.emailCount; setTotalEmails(t); }).catch(()=>{});
+    fetch('/api/groups/scan').then(r=>r.json()).then(d=>setGroups((d.groups||[]).map((g:string)=>({name:g})))).catch(()=>{});
+    fetch('/api/system/analytics').then(r=>r.json()).then(d=>setTodayCost(d.costs?.todayTotal || 0)).catch(()=>{});
+    fetch('/api/system/pending').then(r=>r.json()).then(d=>setPending(d.items||[])).catch(()=>{});
+    sidebar.refresh();
+  },[]);
+  useEffect(()=>{load()},[load]);
 
-  useEffect(() => { load(); }, [load]);
-
-  // ── WebSocket live events ──
-  const { connected, lastEvent } = useEventStream({
-    eventTypes: ['task.created', 'task.in_progress', 'task.completed', 'task.blocked', 'task.review_requested'],
-    scope: 'all',
-  });
-  useEffect(() => {
-    if (lastEvent && ['task.created', 'task.completed', 'task.blocked', 'task.review_requested'].includes(lastEvent.event)) {
-      loadPipeline();
-    }
-  }, [lastEvent, loadPipeline]);
+  const nonMe = agents.filter(a => a.name !== 'me');
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
-      <Sidebar />
+    <div className="flex h-full bg-canvas overflow-hidden"><Sidebar />
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-8 py-10">
-          <div className="flex items-center justify-between mb-10">
-            <div>
-              <h1 className="text-[24px] font-semibold text-gray-900">Mind Agency</h1>
-              <div className="flex items-center gap-2 mt-1.5">
-                <p className="text-[13px] text-gray-400">Multi-agent collaboration dashboard</p>
-                {connected && <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full"><Radio size={8} className="animate-pulse" /> Live</span>}
-              </div>
-            </div>
-            <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-[12px] text-gray-600 hover:bg-gray-50"><RefreshCw size={13} /> Refresh</button>
-          </div>
-
-          <div className="grid grid-cols-5 gap-3 mb-10">
-            <StatCard icon={<Users size={16} />} label="Agents" value={agents.length} color="text-blue-600" bg="bg-blue-50" />
-            <StatCard icon={<Hash size={16} />} label="Groups" value={groups.length} color="text-indigo-600" bg="bg-indigo-50" />
-            <StatCard icon={<Mail size={16} />} label="Emails" value={totalEmails} color="text-amber-600" bg="bg-amber-50" />
-            <StatCard icon={<Zap size={16} />} label="Auto" value={agents.filter(a => a.config?.autoRespondToEmail).length} sub="active" color="text-green-600" bg="bg-green-50" />
-            <StatCard icon={<GitBranch size={16} />} label="Pipeline" value={pipeline.running} sub={`${pipeline.completed} done · CPU ${sysLoad}% · ${Math.floor(uptime / 60)}m up`} color="text-purple-600" bg="bg-purple-50" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-6 mb-10">
-            <div className="space-y-4">
-              <h2 className="text-[12px] font-medium text-gray-400 uppercase tracking-widest flex items-center gap-2"><Hash size={12} /> Groups</h2>
-              {groups.map(g => (<Link key={g.name} href={`/groups/${g.name}`} className="block bg-white border border-gray-100 rounded-2xl p-4 hover:border-gray-200 hover:shadow-sm"><span className="text-[14px] font-medium text-gray-800">#{g.name}</span></Link>))}
-            </div>
-            <div className="space-y-4">
-              <h2 className="text-[12px] font-medium text-gray-400 uppercase tracking-widest flex items-center gap-2"><Users size={12} /> Agents</h2>
-              {agents.map(a => { const isAdmin = a.config?.roles?.includes('admin');
-                return (<Link key={a.name} href={`/agents/${a.name}`} className="flex items-center gap-3 bg-white border border-gray-100 rounded-2xl p-4 hover:border-gray-200 hover:shadow-sm"><span className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-medium ${isAdmin ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>{a.name[0]}</span><div><span className="text-[13px] font-medium text-gray-800">{a.name}</span><p className="text-[11px] text-gray-400">{(a.config?.roles || []).join(', ') || 'member'}</p></div></Link>);
-              })}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2.5">
+              <LogoCanvas size={28} />
+              <p className="text-[13px] text-muted-foreground">{t('dashboard')}</p>
             </div>
           </div>
 
-          {pipeline.runs.length > 0 && (
-            <div className="border-t border-gray-100 pt-8">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[12px] font-medium text-gray-400 uppercase tracking-widest flex items-center gap-2"><GitBranch size={12} /> Active Pipelines</h2>
-                <Link href="/workflows" className="text-[11px] text-indigo-500 hover:text-indigo-600 flex items-center gap-1">Manage <ArrowRight size={11} /></Link>
-              </div>
+          {/* ── Stats row ── */}
+          <div className="grid grid-cols-5 gap-3 mb-8">
+            <StatCard icon={<Users size={15} className="text-info"/>} bg="bg-info-muted" value={nonMe.length} label={t('agents')} />
+            <StatCard icon={<Hash size={15} className="text-indigo-600"/>} bg="bg-indigo-50" value={groups.length} label={t('groups')} />
+            <StatCard icon={<Mail size={15} className="text-amber-600"/>} bg="bg-amber-50" value={totalEmails} label={t('emails')} />
+            <StatCard icon={<DollarSign size={15} className="text-success"/>} bg="bg-success-muted" value={`¥${todayCost.toFixed(2)}`} label="今日消耗" />
+            <StatCard icon={<AlertCircle size={15} className="text-destructive"/>} bg="bg-destructive-muted" value={pending.length} label="待审批" />
+          </div>
+
+          {/* ── Two-column: Agent cards + Pending/Activity ── */}
+          <div className="flex gap-6 mb-8">
+            {/* Left: Agent status cards */}
+            <div className="flex-1 min-w-0">
+              <h2 className="text-[12px] font-medium text-muted mb-3 flex items-center gap-1.5"><Users size={12}/> Agent</h2>
               <div className="space-y-2">
-                {pipeline.runs.map(run => (
-                  <div key={run.runId} className="bg-white border border-gray-100 rounded-xl p-4 flex items-center gap-4">
-                    {run.status === 'completed' ? <CheckCircle size={16} className="text-green-500 shrink-0" /> : run.status === 'failed' ? <XCircle size={16} className="text-red-500 shrink-0" /> : <Clock size={16} className="text-sky-500 animate-pulse shrink-0" />}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2"><span className="text-[13px] font-medium text-gray-800">{run.workflow}</span><span className="text-[11px] text-gray-400">#{run.group}</span><span className={`text-[10px] px-1.5 py-0.5 rounded-full ${run.status === 'completed' ? 'bg-green-50 text-green-600' : run.status === 'failed' ? 'bg-red-50 text-red-600' : 'bg-sky-50 text-sky-600'}`}>{run.status}</span></div>
-                      <div className="flex items-center gap-2 mt-1"><div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${run.status === 'completed' ? 'bg-green-400' : run.status === 'failed' ? 'bg-red-400' : 'bg-sky-400 animate-pulse'}`} style={{ width: `${run.totalSteps > 0 ? (run.stepsDone / run.totalSteps * 100) : 0}%` }} /></div><span className="text-[10px] text-gray-400 shrink-0">{run.stepsDone}/{run.totalSteps} steps</span></div>
-                    </div>
-                    <span className="text-[10px] text-gray-300 font-mono shrink-0">{run.runId.slice(-8)}</span>
+                {nonMe.length === 0 && groups.length === 0 ? (
+                  <div className="bg-gradient-to-br from-surface to-canvas border border-border rounded-2xl p-8 text-center mb-6">
+                    <div className="flex justify-center mb-4"><LogoCanvas size={40} /></div>
+                    <h3 className="text-[16px] font-semibold text-foreground mb-2">{t('welcome')}</h3>
+                    <p className="text-[13px] text-muted leading-relaxed max-w-md mx-auto">{t('welcome_desc')}</p>
                   </div>
-                ))}
+                ) : nonMe.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground py-4">{t('no_agents') || '暂无 Agent'}</p>
+                ) : (
+                  nonMe.map(a => <AgentCard key={a.name} agent={a} activity={sidebar.activity[a.name]} />)
+                )}
+              </div>
+            </div>
+
+            {/* Right: Pending + Activity */}
+            <div className="w-[340px] shrink-0 space-y-4">
+              {/* Pending approvals */}
+              {pending.length > 0 && (
+                <div className="bg-canvas border border-border rounded-2xl p-4">
+                  <h2 className="text-[12px] font-medium text-muted mb-3 flex items-center gap-1.5"><AlertCircle size={12}/> 待审批</h2>
+                  <div className="space-y-1.5">
+                    {pending.slice(0, 5).map(p => (
+                      <Link key={`${p.type}-${p.id}`} href={p.group ? `/groups/${p.group}` : '#'}
+                        className="flex items-start gap-2.5 px-2 py-2 hover:bg-surface rounded-lg transition-colors">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 shrink-0 ${
+                          p.type === 'consensus' ? 'bg-warning-muted text-warning' : 'bg-info-muted text-info'
+                        }`}>{p.type === 'consensus' ? '共识' : '工作流'}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[12px] text-foreground truncate">{p.description}</p>
+                          <p className="text-[10px] text-muted-foreground">{p.requestedBy} · {timeAgo(t, p.createdAt)}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Live activity (compact) */}
+              <LiveActivity />
+            </div>
+          </div>
+
+          {/* ── Groups ── */}
+          {groups.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-[12px] font-medium text-muted mb-3 flex items-center gap-1.5"><Hash size={12}/> {t('groups')}</h2>
+              <div className="space-y-2">
+                {groups.map(g => {
+                  const unread = unreadGroups[g.name] || 0;
+                  return (
+                    <Link key={g.name} href={`/groups/${g.name}`} className="flex items-center gap-3 bg-canvas border border-border rounded-xl px-4 py-3 hover:shadow-sm transition-all group">
+                      <span className="w-7 h-7 rounded-lg bg-surface flex items-center justify-center text-[10px] font-bold text-muted shrink-0">#</span>
+                      <span className="text-[13px] font-medium text-foreground flex-1">{g.name}</span>
+                      <div className="flex items-center gap-2">
+                        {unread > 0 && <span className="text-[10px] bg-destructive text-canvas rounded-full w-5 h-5 flex items-center justify-center font-bold">{unread>9?'9+':unread}</span>}
+                        <ArrowRight size={13} className="text-muted-foreground/40 group-hover:text-muted-foreground transition-colors"/>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -136,6 +129,84 @@ export default function HomePage() {
   );
 }
 
-function StatCard({ icon, label, value, sub, color, bg }: { icon: React.ReactNode; label: string; value: number | string; sub?: string; color: string; bg: string; }) {
-  return (<div className="bg-white border border-gray-100 rounded-2xl p-4 hover:shadow-sm"><div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center mb-2.5`}><span className={color}>{icon}</span></div><p className="text-[20px] font-semibold text-gray-900 leading-none">{value}</p><p className="text-[11px] text-gray-400 mt-1">{sub || label}</p></div>);
+function StatCard({ icon, bg, value, label }: { icon: React.ReactNode; bg: string; value: string | number; label: string }) {
+  return (
+    <div className="bg-canvas border border-border rounded-2xl p-4">
+      <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center mb-2.5`}>{icon}</div>
+      <p className="text-[20px] font-semibold text-foreground">{value}</p>
+      <p className="text-[11px] text-muted-foreground mt-1">{label}</p>
+    </div>
+  );
+}
+
+function AgentCard({ agent, activity }: { agent: AgentInfo; activity: any }) {
+  const status = activity?.status || 'idle';
+  const isBusy = ['processing','chatting','working'].includes(status);
+  const detail = activity?.detail || '';
+  const roles = (agent.config?.roles || []).join(', ') || '成员';
+
+  return (
+    <Link href={`/agents/${agent.name}`} className="flex items-center gap-3 bg-canvas border border-border rounded-xl p-3.5 hover:shadow-sm transition-all group">
+      <span className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-medium shrink-0 ${
+        isBusy ? 'bg-success-muted text-success' : 'bg-surface-alt text-muted'
+      }`}>{agent.name[0]}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-medium text-foreground">{agent.name}</span>
+          <span className={`w-2 h-2 rounded-full ${isBusy ? 'bg-success' : activity?.active ? 'bg-success-muted' : 'bg-border'}`} />
+        </div>
+        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+          {isBusy ? detail : activity?.active ? '空闲' : '离线'} · {roles}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Mail size={12} className="text-muted-foreground/50"/>
+        <span className="text-[10px] text-muted-foreground">{agent.emailCount}</span>
+        <ArrowRight size={13} className="text-muted-foreground/30 group-hover:text-muted-foreground transition-colors ml-1"/>
+      </div>
+    </Link>
+  );
+}
+
+function LiveActivity() {
+  const { t } = useT();
+  const [events, setEvents] = useState<any[]>([]);
+  useEffect(() => {
+    const load = () => fetch('/api/system/analytics').then(r => r.json()).then(d => {
+      // Filter out idle events — only show meaningful actions
+      setEvents((d.activity || []).filter((e: any) => e.type !== 'agent_idle').slice(0, 8));
+    }).catch(() => {});
+    load();
+    const timer = setInterval(load, 15000);
+    let ws: WebSocket|null=null, stopped=false, rt:any;
+    const connect = () => { if(stopped)return; try{ws=new WebSocket(`ws://${window.location.hostname}:3001`); ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==='dashboard_refresh')load()}catch{}}; ws.onclose=()=>{if(!stopped)rt=setTimeout(connect,3000)}; }catch{ if(!stopped)rt=setTimeout(connect,3000); } };
+    connect();
+    return () => { stopped=true; clearInterval(timer); clearTimeout(rt); ws?.close(); };
+  }, []);
+
+  if (events.length === 0) return null;
+
+  return (
+    <div className="bg-canvas border border-border rounded-2xl p-4">
+      <h2 className="text-[12px] font-medium text-muted mb-3 flex items-center gap-1.5"><Clock size={12}/> 最近活动</h2>
+      <div className="space-y-1 max-h-[240px] overflow-y-auto">
+        {events.map((e,i) => (
+          <div key={i} className="flex items-center gap-2 px-2 py-1.5 hover:bg-surface rounded-lg transition-colors text-[12px]">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${e.type==='decide'?'bg-success':e.type==='email'?'bg-warning':'bg-info'}`}/>
+            <span className="font-medium text-muted shrink-0">{e.agent}</span>
+            {e.group && <span className="text-muted-foreground/60 shrink-0">#{e.group}</span>}
+            <span className="text-muted-foreground truncate">{e.detail}</span>
+            <span className="text-[9px] text-muted-foreground/50 shrink-0 ml-auto">{timeAgo(t, e.timestamp)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function timeAgo(t:(k:string,v?:Record<string,string|number>)=>string, ts:number):string {
+  const s=Math.floor((Date.now()-ts)/1000);
+  if(s<60)return t('just_now');
+  if(s<3600)return t('min_ago',{n:Math.floor(s/60)});
+  return t('hour_ago',{n:Math.floor(s/3600)});
 }

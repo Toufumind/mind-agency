@@ -3,17 +3,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import ChatPanel from '@/components/chat-panel';
+import EmailClient from '@/components/email-client';
 import Sidebar from '@/components/sidebar';
-import {
-  Mail, FileText, Hash, Settings, X, RefreshCw, Zap, Shield, Clock,
-  Activity, Check, AlertCircle, Plus
-} from 'lucide-react';
+import { Mail, Hash, Settings, Shield, MessageCircle, FileText, GitBranch, RefreshCw } from 'lucide-react';
+import { useT } from '@/components/i18n';
 
-interface Context { agent: string; emails: number; messages: number; groups: string[]; }
 interface AgentConfig {
   autoRespondToEmail: boolean; autoProcessGroupInvites: boolean;
   notifyOnEmail: boolean; notifyOnGroupMention: boolean;
   roles: string[]; permissions: Record<string, boolean>;
+  heartbeatIntervalMs?: number;
 }
 interface AuditEntry { agent: string; action: string; resource: string; timestamp: string; status?: string; details?: string; }
 
@@ -21,228 +20,339 @@ const defaultConfig: AgentConfig = {
   autoRespondToEmail: false, autoProcessGroupInvites: false,
   notifyOnEmail: true, notifyOnGroupMention: true,
   roles: [], permissions: {},
+  heartbeatIntervalMs: 0,
 };
 
 export default function AgentPage() {
   const { name } = useParams<{ name: string }>();
-  const [ctx, setCtx] = useState<Context | null>(null);
-  const [showCtx, setShowCtx] = useState(true);
-  const [showConfig, setShowConfig] = useState(false);
-  const [showAudit, setShowAudit] = useState(false);
+  const { t } = useT();
+  const [tab, setTab] = useState<'chat' | 'email' | 'ops' | 'tasks'>('chat');
+  const [tasks, setTasks] = useState<any[]>([]);
   const [config, setConfig] = useState<AgentConfig>(defaultConfig);
   const [saving, setSaving] = useState(false);
-  const [polling, setPolling] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
-
-  const loadContext = useCallback(() => {
+  const [showConfig, setShowConfig] = useState(false);
+  const [showClaude, setShowClaude] = useState(false);
+  const [claudeMd, setClaudeMd] = useState('');
+  const [claudeSaving, setClaudeSaving] = useState(false);
+  const [emailCount, setEmailCount] = useState(0);
+  const [groups, setGroups] = useState<string[]>([]);
+  const loadInfo = useCallback(() => {
     Promise.all([
-      fetch('/api/agents'),
-      fetch(`/api/agents/${name}/chat`),
-      fetch(`/api/groups/scan?agent=${name}`),
-      fetch(`/api/emails?agent=${name}`),
-    ]).then(async ([agentsR, chatR, groupsR, emailsR]) => {
-      const agents = await agentsR.json();
-      const chat = await chatR.json();
-      const groups = await groupsR.json();
-      const emails = await emailsR.json();
-      setCtx({
-        agent: name, emails: Array.isArray(emails) ? emails.length : 0,
-        messages: chat.messages?.length || 0, groups: groups.groups || [],
-      });
-    }).catch(() => {});
+      fetch(`/api/emails?agent=${name}`).then(r=>r.json()),
+      fetch(`/api/groups/scan?agent=${name}`).then(r=>r.json()),
+    ]).then(([emails, g]) => {
+      setEmailCount(Array.isArray(emails) ? emails.length : 0);
+      setGroups(g.groups || []);
+    }).catch(()=>{});
   }, [name]);
 
   const loadConfig = useCallback(() => {
-    fetch(`/api/agents/${name}/config`).then(r => r.json())
-      .then(d => { if (!d.error) setConfig({ ...defaultConfig, ...d }); }).catch(() => {});
+    fetch(`/api/agents/${name}/config`).then(r=>r.json())
+      .then(d => { if (!d.error) { const c = { ...defaultConfig, ...d }; setConfig(c); setRolesInput((c.roles || []).join(', ')); setHeartbeatMin(String(Math.round((c.heartbeatIntervalMs ?? 0) / 60000 * 10) / 10)); } }).catch(() => {});
   }, [name]);
 
-  const loadAudit = useCallback(() => {
-    fetch(`/api/audit?agent=${name}&limit=20`).then(r => r.json())
-      .then(d => setAuditLogs(d.logs || [])).catch(() => {});
+  const loadClaude = useCallback(() => {
+    fetch(`/api/agents/${name}/config?file=claude`).then(r=>r.json())
+      .then(d => setClaudeMd(d.content || '')).catch(() => {});
   }, [name]);
 
-  useEffect(() => { loadContext(); loadConfig(); }, [loadContext, loadConfig]);
+  const fetchTasks = useCallback(() => {
+    fetch(`/api/agents/${name}/tasks`).then(r => r.json()).then(d => setTasks(d.tasks || [])).catch(() => {});
+  }, [name]);
 
-  // Lazy load audit only when panel opens
-  useEffect(() => { if (showAudit) loadAudit(); }, [showAudit, loadAudit]);
-
-  // Background auto-poll
-  useEffect(() => {
-    if (!config.autoRespondToEmail) return;
-    const t = setInterval(() => {
-      fetch(`/api/agents/${name}/auto-respond`, { method: 'POST' })
-        .then(r => r.json()).then(d => { if (d.triggered) { setTimeout(loadContext, 2000); setTimeout(loadAudit, 3000); } })
-        .catch(() => {});
-    }, 30000);
-    return () => clearInterval(t);
-  }, [config.autoRespondToEmail, name, loadContext, loadAudit]);
-
-  const handlePoll = async () => {
-    setPolling(true);
-    try { await fetch(`/api/agents/${name}/auto-respond`, { method: 'POST' }); setTimeout(loadContext, 2000); setTimeout(loadAudit, 3000); }
-    catch {}
-    setPolling(false);
-  };
+  useEffect(() => { loadInfo(); loadConfig(); loadClaude(); fetchTasks(); }, [loadInfo, loadConfig, loadClaude, fetchTasks]);
 
   const toggleConfig = async (key: keyof AgentConfig) => {
-    const next = { ...config, [key]: !config[key] };
-    setConfig(next); setSaving(true);
-    try { await fetch(`/api/agents/${name}/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: !config[key] }) }); }
-    catch {}
+    const next = { ...config, [key]: !config[key] }; setConfig(next); setSaving(true);
+    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ [key]: !config[key] }) }); } catch {}
     setSaving(false);
   };
 
-  const tokenEstimate = ctx ? ctx.messages * 200 + ctx.emails * 50 + 15000 : 0;
-  const tokenPct = Math.min(100, Math.round((tokenEstimate / 200000) * 100));
+  const saveClaude = async () => {
+    setClaudeSaving(true);
+    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ claudeMd }) }); } catch {}
+    setClaudeSaving(false);
+  };
 
-  const actionLabel = (action: string) => {
-    if (action.includes('chat')) return 'Chat';
-    if (action.includes('email')) return 'Email';
-    if (action.includes('group')) return 'Group';
-    if (action.includes('config')) return 'Config';
-    if (action.includes('agent')) return 'Agent';
-    return action.slice(0, 10);
+  const [rolesInput, setRolesInput] = useState('');
+  const [heartbeatMin, setHeartbeatMin] = useState('0');
+  const saveConfigField = async (key: string, value: any) => {
+    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ [key]: value }) }); } catch {}
+  };
+  const saveRoles = async () => {
+    const roles = rolesInput.split(',').map(s => s.trim()).filter(Boolean);
+    await saveConfigField('roles', roles);
+    setConfig({ ...config, roles });
+  };
+  const saveHeartbeat = async () => {
+    const min = parseFloat(heartbeatMin) || 0;
+    const ms = Math.round(min * 60000);
+    await saveConfigField('heartbeatIntervalMs', ms);
+    setConfig({ ...config, heartbeatIntervalMs: ms });
   };
 
   const isAdmin = config.roles?.includes('admin');
-  const autoOn = config.autoRespondToEmail;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
+    <div className="flex h-full overflow-hidden bg-canvas">
       <Sidebar />
+
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Context bar */}
-        {ctx && showCtx && (
-          <div className="px-5 py-2 border-b border-gray-100 bg-gray-50/30 flex items-center gap-4 shrink-0 text-[12px]">
+
+        {/* ── Compact header ── */}
+        <div className="px-5 py-3 border-b border-border flex items-center gap-4 shrink-0 bg-canvas">
+          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-medium bg-surface-alt text-muted`}>{name[0]}</span>
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium ${isAdmin ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                {name[0]}
+              <h1 className="text-[14px] font-semibold text-foreground">{name}</h1>
+              {isAdmin && <Shield size={11} className="text-muted-foreground"/>}
+              {config.autoRespondToEmail && <span className="text-[9px] bg-success-muted text-success px-1.5 py-0.5 rounded-full font-medium">auto</span>}
+            </div>
+            <p className="text-[10px] text-muted-foreground flex items-center gap-2">
+              {config.roles.length > 0 ? config.roles.join(', ') : '成员'}
+              <span className="text-border">·</span>
+              <Mail size={10}/> {emailCount} 封
+              <span className="text-border">·</span>
+              <Hash size={10}/> {groups.length} 群
+            </p>
+          </div>
+          <button onClick={() => setShowConfig(!showConfig)}
+            className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-lg transition-colors ${showConfig ? 'bg-surface-alt text-muted' : 'text-muted-foreground hover:text-muted'}`}>
+            <Settings size={12}/> 配置
+          </button>
+        </div>
+
+
+        {/* ── Chat / Email tabs ── */}
+        <div className="flex items-center gap-1 px-5 py-2 border-b border-border shrink-0 bg-canvas">
+          <button onClick={() => setTab('chat')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${tab==='chat'?'bg-surface-alt text-foreground':'text-muted hover:text-foreground'}`}>
+            <MessageCircle size={13}/> Chat
+          </button>
+          <button onClick={() => setTab('email')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${tab==='email'?'bg-surface-alt text-foreground':'text-muted hover:text-foreground'}`}>
+            <Mail size={13}/> 邮箱
+            {emailCount > 0 && <span className="text-[10px] bg-info-muted text-info rounded-full w-4 h-4 flex items-center justify-center">{emailCount}</span>}
+          </button>
+          <button onClick={() => setTab('ops')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${tab==='ops'?'bg-surface-alt text-foreground':'text-muted hover:text-foreground'}`}>
+            <FileText size={13}/> 操作
+          </button>
+          <button onClick={() => { setTab('tasks'); fetchTasks(); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${tab==='tasks'?'bg-surface-alt text-foreground':'text-muted hover:text-foreground'}`}>
+            <GitBranch size={13}/> 任务
+            {tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length > 0 && (
+              <span className="text-[10px] bg-warning-muted text-warning rounded-full w-4 h-4 flex items-center justify-center">
+                {tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length}
               </span>
-              <span className="font-medium text-gray-800">{name}</span>
-              {isAdmin && <Shield size={10} className="text-gray-400" />}
-              {autoOn && <span className="text-[9px] bg-green-50 text-green-500 px-1.5 py-0.5 rounded-full font-medium">auto</span>}
-            </div>
-
-            <span className="text-gray-200">|</span>
-            <span className="flex items-center gap-1 text-gray-500"><Mail size={11} />{ctx.emails}</span>
-            <span className="flex items-center gap-1 text-gray-500"><FileText size={11} />{ctx.messages}</span>
-            {ctx.groups.length > 0 && <><span className="text-gray-200">|</span><span className="flex items-center gap-1 text-gray-500"><Hash size={11} />{ctx.groups.join(', ')}</span></>}
-
-            {/* Token estimate */}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-              tokenPct > 80 ? 'bg-red-50 text-red-500' : tokenPct > 50 ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-400'
-            }`} title={`~${(tokenEstimate/1000).toFixed(0)}k tokens`}>
-              ~{(tokenEstimate/1000).toFixed(0)}k
-            </span>
-
-            <div className="ml-auto flex items-center gap-2">
-              <button onClick={handlePoll} disabled={polling}
-                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${polling ? 'text-gray-300' : 'text-green-500 hover:text-green-700 hover:bg-green-50'}`}>
-                <Zap size={11} className={polling ? 'animate-spin inline mr-0.5' : 'inline mr-0.5'} />Poll
-              </button>
-              <button onClick={loadContext} className="text-gray-300 hover:text-gray-500"><RefreshCw size={11} /></button>
-              <button onClick={() => setShowAudit(!showAudit)}
-                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${showAudit ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-                <Activity size={11} className="inline mr-1" />Audit
-              </button>
-              <button onClick={() => setShowConfig(!showConfig)}
-                className={`text-[10px] px-2 py-0.5 rounded-md transition-colors ${showConfig ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-600'}`}>
-                <Settings size={11} className="inline mr-1" />Config
-              </button>
-              <button onClick={() => setShowCtx(false)} className="text-gray-300 hover:text-gray-500"><X size={12} /></button>
-            </div>
-          </div>
-        )}
-
-        {/* Config panel */}
-        {showConfig && (
-          <div className="px-5 py-4 border-b border-gray-100 bg-white shrink-0">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <h3 className="text-[13px] font-medium text-gray-800">Agent Configuration</h3>
-                {saving && <span className="text-[10px] text-gray-400 animate-pulse">saving...</span>}
-              </div>
-              <div className="flex items-center gap-3 text-[11px] text-gray-500">
-                {isAdmin && <span className="flex items-center gap-1"><Shield size={10} /> admin</span>}
-                <span>roles: {config.roles?.join(', ') || 'none'}</span>
-              </div>
-            </div>
-
-            {/* Permissions display */}
-            {Object.keys(config.permissions).length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {Object.entries(config.permissions).map(([perm, val]) => (
-                  <span key={perm} className={`text-[10px] px-2 py-1 rounded-md flex items-center gap-1 ${
-                    val ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-400'
-                  }`}>
-                    {val ? <Check size={10} /> : <X size={10} />} {perm}
-                  </span>
-                ))}
-              </div>
             )}
+          </button>
+        </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Toggle label="Auto-respond to emails" desc="Agent reads and responds to new emails automatically" checked={config.autoRespondToEmail} onChange={() => toggleConfig('autoRespondToEmail')} />
-              <Toggle label="Auto-process group invites" desc="Agent auto-joins groups when invited via email" checked={config.autoProcessGroupInvites} onChange={() => toggleConfig('autoProcessGroupInvites')} />
-              <Toggle label="Notify on new email" desc="Toast notification when new email arrives" checked={config.notifyOnEmail} onChange={() => toggleConfig('notifyOnEmail')} />
-              <Toggle label="Notify on group mention" desc="Alert when @mentioned in a group" checked={config.notifyOnGroupMention} onChange={() => toggleConfig('notifyOnGroupMention')} />
-            </div>
-
-            <p className="text-[10px] text-gray-300 mt-3 font-mono">Agents/{name}/config.json</p>
-          </div>
-        )}
-
-        {/* Audit log panel */}
-        {showAudit && (
-          <div className="px-5 py-3 border-b border-gray-100 bg-white shrink-0 max-h-[200px] overflow-y-auto">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-[13px] font-medium text-gray-800 flex items-center gap-2">
-                <Activity size={12} /> Audit Log ({auditLogs.length})
-              </h3>
-              <button onClick={loadAudit} className="text-gray-300 hover:text-gray-500"><RefreshCw size={11} /></button>
-            </div>
-            {auditLogs.length === 0 ? (
-              <p className="text-[11px] text-gray-400 text-center py-4">No audit records</p>
+        {/* ── Content row: main + config sidebar ── */}
+        <div className="flex-1 flex min-h-0">
+          <div className="flex-1 flex flex-col min-h-0">
+            {tab === 'chat' ? (
+              <ChatPanel agentName={name} />
+            ) : tab === 'tasks' ? (
+              <TasksPanel agentName={name} tasks={tasks} onRefresh={fetchTasks} />
+            ) : tab === 'ops' ? (
+              <OpsLog agentName={name} />
             ) : (
-              <div className="space-y-1">
-                {auditLogs.map((e, i) => (
-                  <div key={i} className="flex items-center gap-2 text-[11px]">
-                    <span className="text-gray-300 font-mono w-[40px]">{e.timestamp?.slice(11, 19)}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      e.status === 'error' ? 'bg-red-50 text-red-500' : 'bg-gray-100 text-gray-600'
-                    }`}>{actionLabel(e.action)}</span>
-                    <span className="text-gray-600 truncate flex-1">{e.resource}</span>
-                    {e.details && <span className="text-gray-400 truncate max-w-[200px]">{e.details.slice(0, 60)}</span>}
-                  </div>
-                ))}
-              </div>
+              <EmailClient agentName={name} displayName={name} />
             )}
           </div>
-        )}
 
-        {/* Chat */}
-        <div className="flex-1 min-h-0">
-          <ChatPanel agentName={name} />
+          {showConfig && (
+            <div className="w-[300px] border-l border-border bg-surface overflow-y-auto shrink-0">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
+                <span className="text-[12px] font-medium text-foreground">配置 · {name}</span>
+                <button onClick={() => setShowConfig(false)} className="text-muted-foreground hover:text-foreground">
+                  <span className="text-[16px] leading-none">&times;</span>
+                </button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-1 gap-1">
+                  <Toggle label="自动回复邮件" desc="有新邮件时自动响应" checked={config.autoRespondToEmail} onChange={() => toggleConfig('autoRespondToEmail')} />
+                  <Toggle label="自动加入群组" desc="被邀请时自动接受" checked={config.autoProcessGroupInvites} onChange={() => toggleConfig('autoProcessGroupInvites')} />
+                  <Toggle label="新邮件通知" desc="收到新邮件时弹窗提醒" checked={config.notifyOnEmail} onChange={() => toggleConfig('notifyOnEmail')} />
+                  <Toggle label="群@通知" desc="被@时弹窗提醒" checked={config.notifyOnGroupMention} onChange={() => toggleConfig('notifyOnGroupMention')} />
+                </div>
+                <div className="border-t border-border pt-3 space-y-3">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Roles (逗号分隔)</label>
+                    <div className="flex gap-1">
+                      <input value={rolesInput} onChange={e => setRolesInput(e.target.value)}
+                        placeholder="admin, reviewer, developer"
+                        className="flex-1 px-2.5 py-1.5 text-[12px] border border-border rounded-lg outline-none focus:border-border-strong" />
+                      <button onClick={saveRoles}
+                        className="px-2.5 py-1.5 text-[11px] font-medium bg-foreground text-canvas rounded-lg hover:opacity-90">{t('save')}</button>
+                    </div>
+                  </div>
+                  {/* v0.4: Provider selector */}
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">AI Provider</label>
+                    <select value={(config as any).provider || 'claude'}
+                      onChange={async (e) => {
+                        const v = e.target.value;
+                        setConfig({ ...config, provider: v } as any);
+                        await saveConfigField('provider', v);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-[12px] border border-border rounded-lg outline-none focus:border-border-strong bg-canvas">
+                      <option value="claude">Claude (Anthropic / DeepSeek)</option>
+                      <option value="codex">Codex (OpenAI CLI)</option>
+                    </select>
+                    <p className="text-[10px] text-muted-foreground/50 mt-1">切换后新对话从头开始，旧记录保留</p>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Heartbeat (分钟, 0=关闭)</label>
+                    <div className="flex gap-1">
+                      <input value={heartbeatMin} onChange={e => setHeartbeatMin(e.target.value)}
+                        placeholder="2 (分钟)"
+                        className="flex-1 px-2.5 py-1.5 text-[12px] border border-border rounded-lg outline-none focus:border-border-strong" />
+                      <button onClick={saveHeartbeat}
+                        className="px-2.5 py-1.5 text-[11px] font-medium bg-foreground text-canvas rounded-lg hover:opacity-90">{t('save')}</button>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowClaude(!showClaude)} className="text-[11px] font-medium text-muted hover:text-foreground flex items-center gap-1">
+                    <Settings size={11} /> {showClaude ? t('cancel') : '编辑 CLAUDE.md (人设)'}
+                  </button>
+                  {showClaude && (
+                    <div className="mt-2 space-y-2">
+                      <textarea value={claudeMd} onChange={e => setClaudeMd(e.target.value)}
+                        placeholder="# Agent 人设&#10;&#10;用 Markdown 写你的 Agent 性格、工作方式、表达风格。"
+                        rows={10}
+                        className="w-full px-3 py-2 border border-border rounded-lg text-[12px] outline-none focus:border-border-strong font-mono resize-y" />
+                      <button onClick={saveClaude} disabled={claudeSaving}
+                        className="px-3 py-1.5 text-[11px] font-medium bg-foreground text-canvas rounded-lg hover:opacity-90 disabled:opacity-50">
+                        {claudeSaving ? t('saving') : t('save')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>
   );
 }
 
+/** Operations log — shows file Write/Edit/Delete/Bash actions by this agent. */
+function OpsLog({ agentName }: { agentName: string }) {
+  const [ops, setOps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/audit?agent=${agentName}&limit=100`)
+      .then(r => r.json())
+      .then(d => setOps((d.logs || []).filter((l: any) => l.action.startsWith('file.'))))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [agentName]);
+
+  if (loading) return <div className="flex-1 flex items-center justify-center text-[12px] text-muted-foreground">加载中...</div>;
+  if (ops.length === 0) return <div className="flex-1 flex items-center justify-center text-[12px] text-muted-foreground">暂无操作记录</div>;
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      {ops.map((op, i) => (
+        <div key={i} className="px-5 py-2.5 border-b border-border/50 hover:bg-surface/30 flex items-start gap-3">
+          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${
+            op.action === 'file.write' ? 'bg-success-muted text-success' :
+            op.action === 'file.edit' ? 'bg-info-muted text-info' :
+            op.action === 'file.delete' ? 'bg-destructive-muted text-destructive' :
+            op.action === 'file.rename' ? 'bg-amber-50 text-amber-600' :
+            'bg-surface-alt text-muted-foreground'
+          }`}>{op.action.replace('file.', '')}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] text-foreground font-mono truncate">{op.resource || op.details}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{formatTime(op.timestamp)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function formatTime(ts: string): string {
+  if (!ts) return '';
+  try { return new Date(ts).toLocaleString(); } catch { return ts; }
+}
+
 function Toggle({ label, desc, checked, onChange }: { label: string; desc: string; checked: boolean; onChange: () => void }) {
   return (
-    <label className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:border-gray-200 cursor-pointer transition-colors bg-gray-50/30">
-      <div className="relative mt-0.5">
+    <label className="flex items-center gap-2 p-2 rounded-lg hover:bg-canvas/50 cursor-pointer transition-colors">
+      <div className="relative shrink-0">
         <input type="checkbox" checked={checked} onChange={onChange} className="sr-only" />
-        <div className={`w-9 h-5 rounded-full transition-colors ${checked ? 'bg-gray-800' : 'bg-gray-200'}`}>
-          <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform mt-0.5 ml-0.5 ${checked ? 'translate-x-[14px]' : ''}`} />
+        <div className={`w-8 h-4.5 rounded-full transition-colors ${checked ? 'bg-foreground' : 'bg-border'}`}>
+          <div className={`w-3.5 h-3.5 rounded-full bg-canvas shadow-sm transition-transform mt-0.5 ml-0.5 ${checked ? 'translate-x-[13px]' : ''}`} />
         </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-gray-800">{label}</p>
-        <p className="text-[11px] text-gray-400 leading-snug">{desc}</p>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium text-foreground">{label}</p>
+        <p className="text-[10px] text-muted-foreground">{desc}</p>
       </div>
     </label>
+  );
+}
+
+function TasksPanel({ agentName, tasks, onRefresh }: { agentName: string; tasks: any[]; onRefresh: () => void }) {
+  const statusColors: Record<string, string> = {
+    pending: 'bg-surface-alt text-muted',
+    in_progress: 'bg-info-muted text-info',
+    completed: 'bg-success-muted text-success',
+    failed: 'bg-destructive-muted text-destructive',
+    skipped: 'bg-surface-alt text-muted-foreground/50',
+  };
+  const statusLabels: Record<string, string> = {
+    pending: '等待中', in_progress: '执行中', completed: '已完成', failed: '失败', skipped: '已跳过',
+  };
+
+  if (tasks.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <GitBranch size={24} className="text-muted-foreground/30 mx-auto mb-2" />
+          <p className="text-[12px] text-muted-foreground">暂无分配的任务</p>
+          <p className="text-[10px] text-muted-foreground/50 mt-1">工作流引擎会在执行时自动分配任务给 Agent</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+        <span className="text-[12px] font-medium text-foreground">任务 ({tasks.length})</span>
+        <button onClick={onRefresh} className="text-[11px] text-muted-foreground hover:text-muted flex items-center gap-1">
+          <RefreshCw size={11} /> 刷新
+        </button>
+      </div>
+      {tasks.map((task, i) => (
+        <div key={i} className="px-5 py-3 border-b border-border/50 hover:bg-surface/30">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${statusColors[task.status] || 'bg-surface-alt text-muted'}`}>
+                {statusLabels[task.status] || task.status}
+              </span>
+              <span className="text-[12px] font-medium text-foreground">{task.stepId}</span>
+              <span className="text-[10px] text-muted-foreground">· {task.action}</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground/50">#{task.group}</span>
+          </div>
+          {task.prompt && (
+            <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{task.prompt}</p>
+          )}
+          {task.report && (
+            <div className="mt-2 p-2 bg-surface rounded-lg">
+              <p className="text-[11px] text-foreground font-medium">{task.report.summary}</p>
+              {task.report.details && <p className="text-[10px] text-muted-foreground mt-0.5">{task.report.details}</p>}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }

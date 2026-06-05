@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import Markdown from '@/components/markdown';
-import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail, Users as UsersIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail, Users as UsersIcon, Cpu } from 'lucide-react';
 import { useToast } from '@/components/toast';
 
 interface ChatEvent { type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error'; content?: string; toolName?: string; toolInput?: string; toolOutput?: string; timestamp: string; }
@@ -139,7 +139,13 @@ function helpCmd() {
   return COMMANDS.map(c => `- **${c.cmd}** — ${c.desc}`).join('\n');
 }
 
-export default function ChatPanel({ agentName }: { agentName: string }) {
+export interface ChatPanelHandle {
+  scrollToMessage: (index: number) => void;
+  getMessages: () => Msg[];
+  clearMessages: () => void;
+}
+
+const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function ChatPanel({ agentName }, ref) {
   const router = useRouter();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
@@ -152,12 +158,51 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
   const [toastMsg, setToastMsg] = useState('');
   const [activeGroup, setActiveGroup] = useState('');
   const [myGroups, setMyGroups] = useState<string[]>([]);
+  const [thinkingMode, setThinkingMode] = useState(false);
+  const historyRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const msgContainerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const busyRef = useRef(false);
   const inputValueRef = useRef(''); // always has latest value, no stale closure
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const needsFreshRef = useRef(false);
   const [sendReady, setSendReady] = useState(true);
+  const abortRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast; // keep ref current without re-triggering WS reconnect
+
+  // ── localStorage persistence ──
+  const STORAGE_KEY = `chat-msgs-${agentName}`;
+  const MAX_STORED_MSGS = 200; // sliding window: keep last 200 to stay under 5MB quota
+
+  // Save to localStorage whenever msgs change (debounced)
+  const saveRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (msgs.length === 0) return;
+    if (saveRef.current) clearTimeout(saveRef.current);
+    saveRef.current = setTimeout(() => {
+      try {
+        const trimmed = msgs.length > MAX_STORED_MSGS ? msgs.slice(-MAX_STORED_MSGS) : msgs;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+      } catch { /* quota exceeded — ignore */ }
+    }, 500);
+    return () => { if (saveRef.current) clearTimeout(saveRef.current); };
+  }, [msgs]);
+
+  const MODELS = [
+    { id: 'deepseek-v4-pro', label: 'V4 Pro' },
+    { id: 'deepseek-v4-flash', label: 'V4 Flash' },
+    { id: 'claude-sonnet-4-20250514', label: 'Sonnet 4' },
+    { id: 'claude-opus-4-20250514', label: 'Opus 4' },
+  ];
+  const [model, setModel] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'deepseek-v4-pro';
+    return localStorage.getItem(`chat-model-${agentName}`) || 'deepseek-v4-pro';
+  });
+  const setModelPersist = (m: string) => { setModel(m); localStorage.setItem(`chat-model-${agentName}`, m); setShowModels(false); };
+  const [showModels, setShowModels] = useState(false);
 
   const filteredCmds = COMMANDS.filter(c => c.cmd.startsWith(cmdFilter));
 
@@ -180,19 +225,31 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
     } catch {}
   }, [agentName]);
 
-  // Load history + poll every 5s for auto-respond live updates
+  // Load history on mount: localStorage first, API as fallback/backfill
   useEffect(() => {
+    // Load from localStorage immediately (offline-first)
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMsgs(parsed);
+        }
+      }
+    } catch {}
+
+    // Backfill from server (may have newer messages)
     const load = () => {
       fetch(`/api/agents/${agentName}/chat`)
         .then(r => r.json()).then(d => {
-          if (!d.messages) return;
-          // Merge: only append new messages we haven't seen yet
-          setMsgs(prev => {
-            if (prev.length === 0 || d.messages.length > prev.length) {
-              return d.messages; // full refresh if new data
-            }
-            return prev;
-          });
+          if (!d.messages || busyRef.current) return;
+          // Only replace if server has more messages than local
+          let localCount = 0;
+          try { const p = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(p)) localCount = p.length; } catch {}
+          if (d.messages.length > localCount) {
+            setMsgs(d.messages);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d.messages)); } catch {}
+          }
         }).catch(() => {});
     };
     load();
@@ -202,7 +259,6 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
       .then(d => { if (Array.isArray(d)) setEmailCount(d.length); }).catch(() => {});
     loadGroups();
 
-    // Poll for live updates from auto-respond
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [agentName]);
@@ -212,11 +268,59 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
     return () => clearInterval(t);
   }, [checkEmails]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+  // Auto-scroll: only when user hasn't manually scrolled up
+  const scrollLockedRef = useRef(false);
+
+  const isNearBottom = useCallback(() => {
+    const el = endRef.current?.parentElement;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+  }, []);
+
+  // Track manual scroll — lock when user scrolls away from bottom
+  useEffect(() => {
+    const el = endRef.current?.parentElement;
+    if (!el) return;
+    const onScroll = () => {
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+      if (nearBottom) scrollLockedRef.current = false;
+      else scrollLockedRef.current = true;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    // Only auto-scroll if user is already near bottom AND not manually scrolled away.
+    // Never force-scroll just because messages are few — respect user's scroll position.
+    if (!scrollLockedRef.current && isNearBottom()) {
+      endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [msgs]);
+
+  // Expose imperative methods for session sidebar navigation
+  useImperativeHandle(ref, () => ({
+    scrollToMessage: (index: number) => {
+      const el = historyRefs.current.get(index);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Highlight briefly
+        el.style.transition = 'background 0.3s';
+        el.style.background = 'var(--surface-alt)';
+        setTimeout(() => { el.style.background = ''; }, 1200);
+      }
+    },
+    getMessages: () => msgs,
+    clearMessages: () => {
+      setMsgs([]);
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    },
+  }), [msgs]);
 
   // ── WebSocket connection for real-time notifications ──────────────
   useEffect(() => {
-    const wsUrl = `ws://${window.location.hostname}:3001`;
+    const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3001';
+    const wsUrl = `ws://${window.location.hostname}:${wsPort}`;
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
@@ -233,9 +337,9 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'group_message' && data.from && data.message) {
-            toast(`[${data.group}] ${data.from}: ${data.message.slice(0, 80)}`);
+            toastRef.current(`[${data.group}] ${data.from}: ${data.message.slice(0, 80)}`);
           } else if (data.type === 'new_email' && data.from && data.subject) {
-            toast(`New email from ${data.from}: ${data.subject}`);
+            toastRef.current(`New email from ${data.from}: ${data.subject}`);
           }
         } catch { /* ignore malformed messages */ }
       };
@@ -259,26 +363,9 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, [toast]);
+  }, []); // stable ref, no re-connect on re-render
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value; setInput(v); inputValueRef.current = v;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    setSendReady(false);
-    debounceRef.current = setTimeout(() => setSendReady(true), 300);
-    if (v.startsWith('/') && !v.includes(' ')) { setCmdFilter(v); setShowCmds(true); setCmdIdx(0); }
-    else setShowCmds(false);
-  };
   const selectCmd = (cmd: string) => { const v = cmd + ' '; setInput(v); inputValueRef.current = v; setShowCmds(false); inputRef.current?.focus(); };
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (showCmds) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setCmdIdx(i => Math.min(i + 1, filteredCmds.length - 1)); return; }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setCmdIdx(i => Math.max(i - 1, 0)); return; }
-      if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); if (filteredCmds[cmdIdx]) selectCmd(filteredCmds[cmdIdx].cmd); return; }
-      if (e.key === 'Escape') { setShowCmds(false); return; }
-    }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-  };
 
   const send = async () => {
     const t = (inputValueRef.current || input).trim(); // ref has latest, state as fallback
@@ -294,6 +381,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
         if (cmd.cmd === '/clear') {
           await fetch(`/api/agents/${agentName}/chat`, { method: 'DELETE' });
           setMsgs([]);
+          needsFreshRef.current = true;
           return;
         }
         const result = await cmd.handler(agentName);
@@ -306,14 +394,18 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
       // Commands without handlers: pass through to AI
     }
 
-    setBusy(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setBusy(true); busyRef.current = true;
     setMsgs(p => [...p, { role: 'user', content: t, events: [], timestamp: new Date().toISOString() }]);
     setMsgs(p => [...p, { role: 'assistant', content: '', events: [], timestamp: new Date().toISOString() }]);
     try {
-      const body: any = { message: t };
+      const body: any = { message: t, model };
+      if (needsFreshRef.current) { body.fresh = true; needsFreshRef.current = false; }
+      if (thinkingMode) body.thinking = true;
       if (activeGroup) body.group = activeGroup;
-      const r = await fetch(`/api/agents/${agentName}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      const reader = r.body!.getReader(); const dec = new TextDecoder(); let buf = '', done = false;
+      const r = await fetch(`/api/agents/${agentName}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+      const reader = r.body!.getReader(); const dec = new TextDecoder(); let buf = '', done = false, aborted = false;
       while (!done) {
         const { done: d, value } = await reader.read();
         if (d) break;
@@ -326,71 +418,65 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
             if (p === '[DONE]') { done = true; continue; }
             try {
               const evt: ChatEvent = JSON.parse(p);
+              if (evt.type === 'error' && evt.content?.includes('abort')) { aborted = true; done = true; break; }
               setMsgs(prev => { const n = [...prev]; const l = { ...n[n.length - 1] }; l.events = [...l.events, evt]; if (evt.type === 'text') l.content += evt.content || ''; n[n.length - 1] = l; return n; });
             } catch {}
           }
         }
       }
-    } catch (e) {
-      setMsgs(p => { const n = [...p]; const l = { ...n[n.length - 1] }; l.events = [...l.events, { type: 'error', content: String(e), timestamp: new Date().toISOString() }]; n[n.length - 1] = l; return n; });
+      if (aborted) {
+        setMsgs(p => { const n = [...p]; const l = { ...n[n.length - 1] }; l.content += '\n\n_[已中断]_'; n[n.length - 1] = l; return n; });
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        setMsgs(p => { const n = [...p]; const l = { ...n[n.length - 1] }; l.content += '\n\n_[已中断]_'; n[n.length - 1] = l; return n; });
+      } else {
+        setMsgs(p => { const n = [...p]; const l = { ...n[n.length - 1] }; l.events = [...l.events, { type: 'error', content: String(e), timestamp: new Date().toISOString() }]; n[n.length - 1] = l; return n; });
+      }
+    } finally {
+      abortRef.current = null;
+      setBusy(false); busyRef.current = false; inputRef.current?.focus();
     }
-    setBusy(false); inputRef.current?.focus();
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-canvas">
       {toastMsg && (
-        <div className="fixed top-4 right-4 z-50 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-lg animate-in flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center"><Mail size={14} className="text-gray-500" /></div>
-          <div><p className="text-[11px] text-gray-400">New email</p><p className="text-[13px] text-gray-800 font-medium">{toastMsg}</p></div>
+        <div className="fixed top-4 right-4 z-50 bg-canvas border border-border rounded-xl px-4 py-3 shadow-lg animate-in flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-surface flex items-center justify-center"><Mail size={14} className="text-muted" /></div>
+          <div><p className="text-[11px] text-muted-foreground">New email</p><p className="text-[13px] text-foreground font-medium">{toastMsg}</p></div>
         </div>
       )}
 
-      <div className="flex items-center justify-between px-5 py-3 shrink-0 select-none">
-        <div className="flex items-center gap-3">
-          <span className="text-[14px] font-medium text-gray-900">{agentName}</span>
-          {activeGroup && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-white bg-gray-800 px-2.5 py-0.5 rounded-md">
-              <UsersIcon size={10} />{activeGroup}
-              <button onClick={() => { setActiveGroup(''); setMsgs([]); }} className="ml-1 text-white/50 hover:text-white">×</button>
-            </span>
-          )}
-          {myGroups.length > 0 && !activeGroup && (
-            <div className="relative group">
-              <button className="text-[11px] text-gray-400 bg-gray-50 hover:bg-gray-100 px-2.5 py-0.5 rounded-md transition-colors flex items-center gap-1">
-                <UsersIcon size={10} />Groups<ChevronDown size={8} />
-              </button>
-              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 py-1 min-w-[140px]">
-                {myGroups.map(g => (
-                  <button key={g} onClick={() => { setActiveGroup(g); setMsgs([]); }} className="w-full text-left px-4 py-2 text-[12px] text-gray-700 hover:bg-gray-50 transition-colors">{g}</button>
-                ))}
-              </div>
-            </div>
-          )}
-          {emailCount > 0 && (
-            <span className="inline-flex items-center gap-1 text-[11px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-md"><Mail size={10} />{emailCount}</span>
-          )}
+      <div className="flex items-center justify-between px-6 py-2 shrink-0 select-none">
+        <div className="flex items-center gap-2">
+          <span className="w-6 h-6 rounded-full bg-surface-alt flex items-center justify-center text-[10px] font-medium text-muted">{agentName[0]}</span>
+          <span className="text-[13px] font-medium text-foreground">{agentName}</span>
         </div>
-        <button onClick={async () => { await fetch(`/api/agents/${agentName}/chat`, { method: 'DELETE' }); setMsgs([]); }}
-          className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors">Clear</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6 min-h-0">
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Scrollable messages container */}
+
+      <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="max-w-[820px] mx-auto px-6 py-6 space-y-5">
         {msgs.length === 0 && (
-          <div className="flex items-center justify-center h-full text-center">
+          <div className="flex items-center justify-center h-[60vh] text-center">
             <div>
-              <p className="text-[15px] text-gray-400 font-medium">Mind Agency</p>
-              <p className="text-[13px] text-gray-300 mt-1">Start a conversation with {agentName}</p>
-              <p className="text-[12px] text-gray-300 mt-2">Try <code className="text-gray-400">/help</code> for commands</p>
+              <p className="text-[15px] text-muted-foreground font-medium">Mind Agency</p>
+              <p className="text-[13px] text-muted-foreground mt-1">开始和 {agentName} 对话</p>
+              <p className="text-[12px] text-muted-foreground mt-2">输入 <code className="text-muted-foreground">/help</code> 查看命令</p>
             </div>
           </div>
         )}
         {msgs.map((msg, i) => {
           if (msg.role === 'user') {
             return (
-              <div key={i} className="flex justify-end">
-                <div className="max-w-[75%] bg-gray-50 text-gray-800 rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap">
-                  {msg.content}
+              <div key={i} ref={(el) => { if (el) historyRefs.current.set(i, el); }}
+                className="flex justify-end" id={`msg-${i}`}>
+                <div className="max-w-[75%] bg-surface-alt rounded-2xl rounded-br-sm px-4 py-2.5">
+                  <p className="text-[14px] text-foreground leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                 </div>
               </div>
             );
@@ -398,7 +484,7 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
           if (msg.role === 'system') {
             return (
               <div key={i} className="flex justify-start">
-                <div className="max-w-[85%] bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-[13px] text-gray-700 leading-relaxed font-mono">
+                <div className="max-w-[85%] bg-surface border border-border rounded-xl px-4 py-3 text-[13px] text-muted leading-relaxed font-mono">
                   <Markdown text={msg.content} />
                 </div>
               </div>
@@ -419,74 +505,174 @@ export default function ChatPanel({ agentName }: { agentName: string }) {
           );
         })}
         {busy && (
-          <div className="flex items-center gap-2 text-[12px] text-gray-300 py-1">
-            <span className="inline-block w-[6px] h-[6px] rounded-full bg-gray-300 animate-pulse" />Thinking
+          <div className="flex items-center gap-1.5 pl-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         )}
         <div ref={endRef} />
+        </div>
       </div>
 
-      <div className="px-5 py-3 shrink-0 relative">
+      <div className="px-6 py-3 shrink-0 border-t border-border relative">
         {showCmds && filteredCmds.length > 0 && (
-          <div className="absolute bottom-full left-5 right-5 mb-1 bg-white border border-gray-200 rounded-2xl shadow-xl max-h-[280px] overflow-y-auto z-20 py-1">
+          <div className="absolute bottom-[calc(100%+4px)] left-0 right-0 bg-canvas border border-border rounded-2xl shadow-xl max-h-[280px] overflow-y-auto z-20 py-1 mb-1">
             {filteredCmds.map((item, i) => (
               <button key={item.cmd} onClick={() => selectCmd(item.cmd)}
-                className={`w-full text-left px-4 py-2.5 transition-colors flex items-start gap-3 ${i === cmdIdx ? 'bg-gray-50' : 'hover:bg-gray-50/50'}`}>
-                <span className="text-[13px] font-medium text-gray-800 font-mono whitespace-nowrap">{item.cmd}</span>
-                <span className="text-[12px] text-gray-400 leading-snug">{item.desc}</span>
+                className={`w-full text-left px-4 py-2.5 transition-colors flex items-start gap-3 ${i === cmdIdx ? 'bg-surface' : 'hover:bg-surface/50'}`}>
+                <span className="text-[13px] font-medium text-foreground font-mono whitespace-nowrap">{item.cmd}</span>
+                <span className="text-[12px] text-muted-foreground leading-snug">{item.desc}</span>
               </button>
             ))}
           </div>
         )}
-        <div className="flex items-center gap-2 bg-gray-50 rounded-2xl px-4 py-2.5 focus-within:bg-white focus-within:ring-2 focus-within:ring-gray-100 transition-all">
-          <input ref={inputRef} value={input} onChange={handleChange} onKeyDown={handleKey}
-            placeholder={`Message ${agentName}...`}
-            className="flex-1 bg-transparent border-0 outline-none text-[14px] text-gray-800 placeholder:text-gray-300"
-            autoFocus />
-          <button onClick={send} disabled={!input.trim() || busy || !sendReady}
-            className="w-8 h-8 flex items-center justify-center rounded-xl bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-20 transition-colors shrink-0">
-            <ArrowUp size={14} />
-          </button>
+        <div className="max-w-[820px] mx-auto">
+          <div className="flex items-center gap-1.5 mb-1.5 px-1 relative">
+            {/* Model selector dropdown */}
+            <button onClick={() => setShowModels(!showModels)}
+              className="text-[11px] px-2 py-0.5 rounded-md flex items-center gap-1 text-muted-foreground hover:text-muted transition-colors border border-border">
+              <Cpu size={11} /> {MODELS.find(m => m.id === model)?.label || model} <ChevronDown size={10} />
+            </button>
+            {showModels && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowModels(false)} />
+                <div className="absolute bottom-full left-0 mb-1 bg-canvas border border-border rounded-xl shadow-xl z-20 py-1 min-w-[160px]">
+                  {MODELS.map(m => (
+                    <button key={m.id} onClick={() => setModelPersist(m.id)}
+                      className={`w-full text-left px-3 py-2 text-[12px] transition-colors ${model === m.id ? 'bg-surface-alt text-foreground font-medium' : 'text-muted hover:bg-surface-hover'}`}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="w-px h-3 bg-border mx-1" />
+            <button onClick={() => setThinkingMode(!thinkingMode)}
+              className={`text-[11px] px-2 py-0.5 rounded-md transition-colors flex items-center gap-1 ${thinkingMode ? 'bg-primary-muted text-primary font-medium' : 'text-muted-foreground hover:text-muted'}`}>
+              <Brain size={12} /> 深度思考
+            </button>
+          </div>
+          <div className="flex items-end gap-2 bg-canvas border border-border rounded-2xl px-4 py-3 shadow-sm focus-within:border-border-strong focus-within:shadow-md transition-all">
+            <textarea ref={inputRef as any} value={input}
+              onChange={e => {
+                const v = e.target.value; setInput(v); inputValueRef.current = v;
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                setSendReady(false);
+                debounceRef.current = setTimeout(() => setSendReady(true), 300);
+                if (v.startsWith('/') && !/\s/.test(v.slice(0, 30))) { setCmdFilter(v); setShowCmds(true); setCmdIdx(0); }
+                else if (v.startsWith('/')) { setCmdFilter(v); setShowCmds(true); }
+                else setShowCmds(false);
+                const ta = e.target;
+                ta.style.height = 'auto';
+                ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+              }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+              placeholder={`给 ${agentName} 发消息...`}
+              rows={1}
+              className="flex-1 bg-transparent border-0 outline-none text-[14px] text-foreground placeholder:text-muted-foreground resize-none"
+              autoFocus />
+            {busy ? (
+              <button onClick={() => abortRef.current?.abort()}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-destructive text-canvas hover:bg-destructive transition-all shrink-0"
+                title="停止">
+                <span className="w-3 h-3 bg-white rounded-sm" />
+              </button>
+            ) : (
+              <button onClick={send} disabled={!input.trim() || !sendReady}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-foreground text-canvas hover:opacity-90 disabled:opacity-20 transition-all shrink-0">
+                <ArrowUp size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
         </div>
       </div>
     </div>
   );
-}
+});
+
+export default ChatPanel;
 
 function MdText({ text }: { text: string }) {
-  return <div className="text-[14px] text-gray-700 leading-relaxed"><Markdown text={text} /></div>;
+  return <div className="text-[14px] text-muted leading-relaxed"><Markdown text={text} /></div>;
 }
 function Think({ text }: { text: string }) {
   const [on, setOn] = useState(false);
+  if (!text) return null;
   return (
     <div className="text-[12px]">
-      <button onClick={() => setOn(!on)} className="flex items-center gap-1.5 text-gray-400 hover:text-gray-600 transition-colors text-left">
-        {on ? <ChevronDown size={11} /> : <ChevronRight size={11} />}<Brain size={11} className="text-purple-400" /> Thinking
+      <button onClick={() => setOn(!on)} className="flex items-center gap-1.5 text-muted-foreground hover:text-muted transition-colors text-left">
+        {on ? <ChevronDown size={11} /> : <ChevronRight size={11} />}<Brain size={11} className="text-primary" /> Thinking
       </button>
-      {on && <div className="mt-1 ml-6 pl-3 border-l-2 border-gray-100 text-gray-400 leading-relaxed whitespace-pre-wrap">{text}</div>}
+      {on && <div className="mt-1 ml-6 pl-3 border-l-2 border-primary/30 text-muted-foreground leading-relaxed whitespace-pre-wrap">{text}</div>}
     </div>
   );
 }
 function Tool({ name, input }: { name: string; input: string }) {
   const [on, setOn] = useState(false);
+  const short = name.replace(/^mcp__group-chat__/, '');
+
+  // v0.4: Parse file operations for diff display
+  let parsed: any = null;
+  try { parsed = JSON.parse(input); } catch {}
+  const isFileOp = parsed && ['Write', 'Edit', 'Delete', 'Read'].includes(parsed.tool_name || short);
+  const filePath = parsed?.file_path || parsed?.path || '';
+  const isWrite = short === 'Write' || parsed?.tool_name === 'Write';
+  const isEdit = short === 'Edit' || parsed?.tool_name === 'Edit';
+  const isDelete = short === 'Delete' || parsed?.tool_name === 'Delete';
+
   return (
     <div className="text-[12px]">
-      <button onClick={() => setOn(!on)} className="flex items-center gap-1.5 text-gray-400 hover:text-gray-600 transition-colors text-left">
-        {on ? <ChevronDown size={11} /> : <ChevronRight size={11} />}<Wrench size={11} className="text-blue-400" /> {name}
+      <button onClick={() => setOn(!on)} className="flex items-center gap-1.5 text-muted-foreground hover:text-muted transition-colors text-left">
+        {on ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        {isFileOp ? (
+          <FileText size={11} className={isWrite ? 'text-success' : isEdit ? 'text-info' : 'text-destructive'} />
+        ) : (
+          <Wrench size={11} className="text-info" />
+        )}
+        {isFileOp ? (
+          <span className="flex items-center gap-1">
+            <span className={`text-[10px] px-1 py-0.5 rounded ${isWrite ? 'bg-success-muted text-success' : isEdit ? 'bg-info-muted text-info' : 'bg-destructive-muted text-destructive'}`}>
+              {short}
+            </span>
+            <span className="text-muted-foreground truncate max-w-[180px]">{filePath}</span>
+          </span>
+        ) : short}
       </button>
-      {on && <pre className="mt-1 ml-6 pl-3 border-l-2 border-gray-100 text-[11px] text-gray-400 whitespace-pre-wrap max-h-[200px] overflow-y-auto">{input}</pre>}
+      {on && (
+        <div className="mt-1 ml-6 pl-3 border-l-2 border-info/30 max-h-[300px] overflow-y-auto">
+          {isFileOp && filePath && (
+            <div className="text-[11px] text-muted-foreground mb-1 font-mono">{filePath}</div>
+          )}
+          {isEdit && parsed?.old_string && parsed?.new_string ? (
+            <div className="text-[11px] font-mono">
+              <div className="text-destructive/70 bg-destructive/5 rounded px-2 py-1 mb-0.5 whitespace-pre-wrap">{parsed.old_string}</div>
+              <div className="text-success/70 bg-success/5 rounded px-2 py-1 whitespace-pre-wrap">{parsed.new_string}</div>
+            </div>
+          ) : isWrite && parsed?.content ? (
+            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap">{parsed.content.slice(0, 2000)}{parsed.content.length > 2000 ? '\n...(truncated)' : ''}</pre>
+          ) : isDelete ? (
+            <div className="text-[11px] text-destructive">删除文件: {filePath}</div>
+          ) : (
+            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap">{input}</pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 function Result({ output }: { output: string }) {
   const [on, setOn] = useState(false);
+  if (!output) return null;
   return (
     <div className="text-[12px]">
-      <button onClick={() => setOn(!on)} className="flex items-center gap-1.5 text-gray-400 hover:text-gray-600 transition-colors text-left">
-        {on ? <ChevronDown size={11} /> : <ChevronRight size={11} />}<FileText size={11} className="text-green-500" /> Result
+      <button onClick={() => setOn(!on)} className="flex items-center gap-1.5 text-muted-foreground hover:text-muted transition-colors text-left">
+        {on ? <ChevronDown size={11} /> : <ChevronRight size={11} />}<FileText size={11} className="text-success" /> Result
       </button>
-      {on && <pre className="mt-1 ml-6 pl-3 border-l-2 border-gray-100 text-[11px] text-gray-400 whitespace-pre-wrap max-h-[200px] overflow-y-auto">{output}</pre>}
+      {on && <pre className="mt-1 ml-6 pl-3 border-l-2 border-success/30 text-[11px] text-muted-foreground whitespace-pre-wrap max-h-[200px] overflow-y-auto">{output}</pre>}
     </div>
   );
 }
-function Err({ text }: { text: string }) { return <div className="text-[13px] text-red-400">{text}</div>; }
+function Err({ text }: { text: string }) { return <div className="text-[13px] text-destructive">{text}</div>; }

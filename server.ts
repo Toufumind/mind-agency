@@ -26,15 +26,20 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'crypto';
-import { EventBus, EventType, EventBusError, createEvent, WorkflowEngine, parseWorkflowYaml } from './src/lib/event-bus.js';
+import { EventBus, EventType, EventBusError, createEvent, WorkflowEngine, parseWorkflowYaml, setEventBus } from './src/lib/event-bus.js';
 import type { EventMessage, WorkflowRunRecord } from './src/lib/event-bus.js';
-import { startScheduler, stopScheduler, getSchedulerStats } from './src/lib/scheduler.js';
+import { startScheduler, stopScheduler } from './src/lib/scheduler.js';
+import { killAllClaudeProcesses } from './src/lib/chat.js';
+import { closeDb } from './src/lib/workflow-checkpoint.js';
+import { cancelAllWatchers } from './src/lib/workflow-bridge.js';
+import { initConsensusHandlers } from './src/lib/consensus.js';
 
-const PORT = parseInt(process.env.WS_PORT || '3003', 10);
+const PORT = parseInt(process.env.WS_PORT || '3001', 10);
 
 // ── EventBus singleton ───────────────────────────────────────────────────
 
 const bus = new EventBus();
+setEventBus(bus); // v0.4: register singleton for in-process subscribers
 
 // ── WorkflowEngine singleton ───────────────────────────────────────────────
 
@@ -43,6 +48,7 @@ const useChat = process.env.WORKFLOW_EXECUTOR === 'chat';
 const executor = useChat ? new ChatStepExecutor() : undefined;
 const workflowEngine = new WorkflowEngine(bus, executor);
 if (useChat) console.log('[ws] WorkflowEngine using ChatStepExecutor (real AI)');
+initConsensusHandlers();
 
 // ── Per-client state ─────────────────────────────────────────────────────
 
@@ -68,6 +74,20 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(204);
     res.end();
     return;
+  }
+
+  // ── CSRF: Origin header check for mutating requests ─────────────────
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
+    const origin = req.headers.origin;
+    if (origin) {
+      const allowedOrigins = ['http://127.0.0.1:3000', 'http://localhost:3000'];
+      if (!allowedOrigins.includes(origin)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'CSRF: Origin not allowed' }));
+        return;
+      }
+    }
+    // Absent Origin is allowed (non-browser clients like curl, MCP)
   }
 
   // ── GET /events/stats ──────────────────────────────────────────────
@@ -212,9 +232,8 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 
   if (req.method === 'GET' && req.url === '/events/load') {
     const load = workflowEngine.getSystemLoad();
-    const dagStats = getSchedulerStats();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ...load, scheduler: dagStats }, null, 2));
+    res.end(JSON.stringify(load, null, 2));
     return;
   }
 
@@ -251,6 +270,102 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // ── POST /workflows/cancel (v0.4) ───────────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/workflows/cancel') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { runId } = JSON.parse(body);
+        if (!runId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'runId required' }));
+          return;
+        }
+        const ok = workflowEngine.cancel(runId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok, message: ok ? `cancelled ${runId.slice(0, 8)}` : 'run not found' }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── POST /workflows/add-step (v0.4) ────────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/workflows/add-step') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { group, step_id, agent, action, prompt, depends_on, reviewer } = JSON.parse(body);
+        if (!group || !step_id || !agent || !action || !prompt) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'group, step_id, agent, action, prompt required' }));
+          return;
+        }
+        const ok = workflowEngine.addStep(group, { id: step_id, agent, action, prompt, dependsOn: depends_on ? depends_on.split(',').map((s: string) => s.trim()) : [], reviewer });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok, message: ok ? `added step ${step_id}` : 'no running workflow found' }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── POST /workflows/delete-step (v0.4) ─────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/workflows/delete-step') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { group, step_id } = JSON.parse(body);
+        if (!group || !step_id) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'group and step_id required' }));
+          return;
+        }
+        const ok = workflowEngine.deleteStep(group, step_id);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok, message: ok ? `deleted step ${step_id}` : 'step not found or running' }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── POST /workflows/modify-step (v0.4) ─────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/workflows/modify-step') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { group, step_id, agent, action, prompt, reviewer } = JSON.parse(body);
+        if (!group || !step_id) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'group and step_id required' }));
+          return;
+        }
+        const ok = workflowEngine.modifyStep(group, step_id, { agent, action, prompt, reviewer });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok, message: ok ? `modified step ${step_id}` : 'step not found or already running' }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ── POST /workflows/run ───────────────────────────────────────────
 
   if (req.method === 'POST' && req.url === '/workflows/run') {
@@ -268,7 +383,7 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
           res.end(JSON.stringify({ ok: false, error: 'workflow requires name and steps' }));
           return;
         }
-        const run = await workflowEngine.execute(def);
+        const run = await workflowEngine.execute(def, input.group);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, runId: run.runId, status: run.status, stepsCompleted: run.steps.size }));
       } catch (e: any) {
@@ -524,6 +639,17 @@ server.listen(PORT, () => {
   console.log(`[ws]   Workflows: POST http://localhost:${PORT}/workflows/run | GET .../workflows/stats`);
   console.log(`[ws] EventBus v0.3 — DLQ + retry, WorkflowEngine v0.3 — DAG`);
 
+  // ── v0.4: Recover incomplete workflow runs from checkpoints ──
+  try {
+    const recovered = workflowEngine.recoverCheckpoints();
+    if (recovered.length > 0) {
+      console.log(`[ws] Recovered ${recovered.length} interrupted workflow run(s):`);
+      for (const r of recovered) console.log(`  - ${r.workflowName} (${r.runId.slice(0, 8)}) in ${r.group}`);
+    }
+  } catch (e: unknown) {
+    console.error(`[ws] Checkpoint recovery failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   // ── Start background scheduler (poll + DAG loops) ─────────────────
   startScheduler({
     engine: workflowEngine,
@@ -536,8 +662,12 @@ server.listen(PORT, () => {
 
 process.on('SIGINT', () => {
   console.log('[ws] Shutting down...');
+  const killed = killAllClaudeProcesses();
+  if (killed > 0) console.log(`[ws] aborted ${killed} active queries`);
   stopScheduler();
+  cancelAllWatchers();
   bus.destroy();
+  closeDb();
   wss.close();
   server.close();
   process.exit(0);
@@ -545,8 +675,12 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   console.log('[ws] Shutting down...');
+  const killed = killAllClaudeProcesses();
+  if (killed > 0) console.log(`[ws] aborted ${killed} active queries`);
   stopScheduler();
+  cancelAllWatchers();
   bus.destroy();
+  closeDb();
   wss.close();
   server.close();
   process.exit(0);

@@ -1,18 +1,17 @@
 /**
- * Agent Memory — v0.3 CrewAI three-layer adaptation
+ * Agent Memory — v0.4 CrewAI three-layer adaptation
  *
  * Short-term:  chat session.json (existing, managed by chat.ts)
  * Long-term:   .mind/agents/<agent>/memory/<key>.md with frontmatter
  * Entity:      Groups/<group>/TASK_SPEC.md + config.json
  *
- * Provides: write, read, search, list, delete — persistent across restarts.
- * Searches are case-insensitive substring matches across key + content.
+ * v0.4: Semantic search via local all-MiniLM-L6-v2 embedding model.
+ * Falls back to TF-IDF if model not available.
  */
 
 import fs from 'fs';
 import path from 'path';
-
-const MIND_DIR = path.join(process.cwd(), '.mind');
+import { MIND_DIR, AGENTS_DIR, GROUPS_DIR } from './data-dir';
 
 function agentMemDir(agentName: string): string {
   return path.join(MIND_DIR, 'agents', agentName, 'memory');
@@ -66,23 +65,93 @@ export function readMemory(agentName: string, key: string): MemoryEntry | null {
   return parseMemoryFile(mp);
 }
 
-/** Search memories by substring (case-insensitive) */
-export function searchMemory(agentName: string, query: string): MemoryEntry[] {
+/** v0.4: Tokenize text for fallback search (supports Chinese + English) */
+function tokenize(text: string): string[] {
+  const lower = text.toLowerCase();
+  const tokens: string[] = [];
+  for (const m of lower.match(/[a-z0-9_]+/g) || []) tokens.push(m);
+  for (const m of lower.match(/[一-鿿]/g) || []) tokens.push(m);
+  const cn = lower.match(/[一-鿿]+/g) || [];
+  for (const phrase of cn) {
+    for (let i = 0; i < phrase.length - 1; i++) {
+      tokens.push(phrase.slice(i, i + 2));
+    }
+  }
+  return tokens;
+}
+
+/** Fallback: TF-IDF scoring */
+function scoreMatch(query: string, key: string, content: string): number {
+  const qTokens = tokenize(query);
+  if (qTokens.length === 0) return 0;
+  const keyTokens = new Set(tokenize(key));
+  const contentTokens = new Set(tokenize(content));
+  let score = 0;
+  for (const qt of [...new Set(qTokens)]) {
+    const tf = qTokens.filter(t => t === qt).length / qTokens.length;
+    score += tf * ((keyTokens.has(qt) ? 2 : 0) + (contentTokens.has(qt) ? 1 : 0));
+  }
+  if ((key + ' ' + content).toLowerCase().includes(query.toLowerCase())) score += 5;
+  return score;
+}
+
+/** v0.4: Semantic search with local embedding model */
+export async function searchMemory(agentName: string, query: string): Promise<MemoryEntry[]> {
   const dir = agentMemDir(agentName);
   if (!fs.existsSync(dir)) return [];
-  const q = query.toLowerCase();
-  const results: MemoryEntry[] = [];
+
+  const entries: MemoryEntry[] = [];
   for (const f of fs.readdirSync(dir)) {
     if (!f.endsWith('.md')) continue;
     try {
       const entry = parseMemoryFile(path.join(dir, f));
-      if (!entry) continue;
-      if (entry.key.toLowerCase().includes(q) || entry.content.toLowerCase().includes(q)) {
-        results.push(entry);
-      }
+      if (entry) entries.push(entry);
     } catch {}
   }
-  return results.sort((a, b) => b.updated - a.updated).slice(0, 10);
+  if (entries.length === 0) return [];
+
+  // Try embedding search, fall back to TF-IDF
+  try {
+    const { embed, cosineSimilarity } = await import('./embedding');
+    const queryVec = await embed(query);
+    const scored = entries.map(entry => {
+      const text = `${entry.key} ${entry.content}`;
+      // For short text, concatenate key + content for embedding
+      const entryVec$ = embed(text);
+      return { entry, text };
+    });
+
+    // Embed all entries (batch)
+    const texts = entries.map(e => `${e.key} ${e.content}`);
+    const entryVecs = await Promise.all(texts.map(t => embed(t)));
+
+    const results = entries.map((entry, i) => ({
+      entry,
+      score: cosineSimilarity(queryVec, entryVecs[i]),
+    }));
+
+    // Also add TF-IDF substring bonus for exact matches
+    const q = query.toLowerCase();
+    for (const r of results) {
+      if (r.entry.key.toLowerCase().includes(q) || r.entry.content.toLowerCase().includes(q)) {
+        r.score += 0.5;
+      }
+    }
+
+    return results
+      .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
+      .slice(0, 10)
+      .map(r => r.entry);
+  } catch {
+    // Fallback to TF-IDF if embedding model not available
+    const q = query.toLowerCase();
+    const results = entries
+      .map(entry => ({ entry, score: scoreMatch(query, entry.key, entry.content) }))
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
+      .slice(0, 10);
+    return results.map(r => r.entry);
+  }
 }
 
 /** List all memories for an agent */
@@ -121,19 +190,18 @@ export function getMemoryContext(agentName: string): string {
 /** Get entity memory context (group tasks + config) */
 export function getEntityContext(agentName: string): string {
   const parts: string[] = [];
-  const gd = path.join(process.cwd(), 'Groups');
-  if (!fs.existsSync(gd)) return '';
+  if (!fs.existsSync(GROUPS_DIR)) return '';
 
-  for (const g of fs.readdirSync(gd, { withFileTypes: true })) {
+  for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
     if (!g.isDirectory() || g.name.startsWith('.')) continue;
-    const agDir = path.join(gd, g.name, 'Agents');
+    const agDir = path.join(GROUPS_DIR, g.name, 'Agents');
     if (!fs.existsSync(agDir)) continue;
     const isMember = fs.readdirSync(agDir, { withFileTypes: true })
       .some(e => e.isDirectory() && e.name.toLowerCase() === agentName.toLowerCase());
     if (!isMember) continue;
 
     // Read TASK_SPEC if exists
-    const specPath = path.join(gd, g.name, 'TASK_SPEC.md');
+    const specPath = path.join(GROUPS_DIR, g.name, 'TASK_SPEC.md');
     if (fs.existsSync(specPath)) {
       try {
         const spec = fs.readFileSync(specPath, 'utf-8').slice(0, 300);
@@ -142,7 +210,7 @@ export function getEntityContext(agentName: string): string {
     }
 
     // Read workflow.yaml summary if exists
-    const wfPath = path.join(gd, g.name, 'workflow.yaml');
+    const wfPath = path.join(GROUPS_DIR, g.name, 'workflow.yaml');
     if (fs.existsSync(wfPath)) {
       try {
         const raw = fs.readFileSync(wfPath, 'utf-8');

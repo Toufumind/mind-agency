@@ -1,9 +1,66 @@
+/**
+ * Agent auto-respond — Signal-based notification protocol.
+ *
+ * Design:
+ *   1. Check WHAT happened (counts, not content).
+ *   2. Build a SIGNAL prompt — tell the Agent "you have N new things, go look".
+ *   3. Agent uses MCP tools (group_read, email) to pull content itself.
+ *   4. Agent decides whether to respond — system does NOT auto-post replies.
+ *
+ * Channels checked:
+ *   - Personal email:  Agents/<name>/email/
+ *   - Group email:     Groups/<name>/Agents/<name>/email/
+ *   - Group chat:      Groups/<name>/chat/    (new messages since lastCheck)
+ *   - @mentions:       Group chat messages containing @AgentName
+ *
+ * Real-time: fs.watch (new files) + 30s polling fallback (content append).
+ */
+
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { chatOnce } from './chat';
+import { AGENTS_DIR, GROUPS_DIR } from './data-dir';
+import { loadState, saveState, ensureGroup, getAgentGroups, invalidateGroupsCache, type AgentState } from './state';
+import { setActivity, clearActivity } from './agent-activity';
 
-const AGENTS_DIR = path.join(process.cwd(), 'Agents');
+// ── Signal debounce: per-agent last-spawn time ─────────
+
+const lastSpawn = new Map<string, number>();
+const DEBOUNCE_URGENT = 15_000;
+const DEBOUNCE_IDLE   = 60_000;
+const sleepMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+// ── v0.4: Request Queue — prevent duplicate spawns per agent ─────────
+
+const agentQueues = new Map<string, Promise<void>>();
+
+/** Queue a task for an agent — runs one at a time per agent, no duplicates */
+async function enqueueAgent<T>(agent: string, task: () => Promise<T>): Promise<T> {
+  const prev = agentQueues.get(agent) || Promise.resolve();
+  let result!: T;
+  const wrapped = async () => { result = await task(); };
+  const next = prev.then(wrapped, wrapped);
+  agentQueues.set(agent, next.then(() => {}, () => {}).finally(() => {
+    if (agentQueues.get(agent) === next) agentQueues.delete(agent);
+  }));
+  await next;
+  return result;
+}
+
+// ── Types ────────────────────────────────────────────────
+
+interface EmailInfo { from: string; subject: string; filename: string; mtime: number; }
+
+interface Signal {
+  personalEmails: number;
+  groupEmails: Record<string, number>;
+  newMessages: Record<string, number>;
+  mentions: { group: string; from: string; snippet: string }[];
+  invitations?: { group: string; invitedBy: string }[];
+  urgent: boolean;
+  priority: 'critical' | 'normal' | 'low';
+}
 
 interface AgentConfig {
   autoRespondToEmail: boolean;
@@ -12,6 +69,8 @@ interface AgentConfig {
   notifyOnGroupMention: boolean;
 }
 
+// ── Config ───────────────────────────────────────────────
+
 function getConfig(agentName: string): AgentConfig {
   const cf = path.join(AGENTS_DIR, agentName, 'config.json');
   if (!fs.existsSync(cf)) return { autoRespondToEmail: false, autoProcessGroupInvites: false, notifyOnEmail: true, notifyOnGroupMention: true };
@@ -19,248 +78,383 @@ function getConfig(agentName: string): AgentConfig {
   catch { return { autoRespondToEmail: false, autoProcessGroupInvites: false, notifyOnEmail: true, notifyOnGroupMention: true }; }
 }
 
-function getProcessedCache(agentName: string): Set<string> {
-  const cacheFile = path.join(AGENTS_DIR, agentName, '.auto-respond-cache.json');
+// ── Email scanning ──────────────────────────────────────
+
+/** Scan a single email directory, return files newer than `since` (ms timestamp). */
+function scanEmailDir(dir: string, since: number): EmailInfo[] {
+  if (!fs.existsSync(dir)) return [];
+  const results: EmailInfo[] = [];
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.endsWith('.md')) continue;
+    const fp = path.join(dir, f);
+    const st = fs.statSync(fp);
+    if (st.mtimeMs <= since) continue;
+    // Only read content if mtime passes (avoids unnecessary I/O)
+    const raw = fs.readFileSync(fp, 'utf-8');
+    const fm = raw.match(/^---\nfrom:\s*(.+?)\nto:\s*(.+?)\nsubject:\s*(.+?)\n/);
+    if (!fm) continue;
+    results.push({ from: fm[1].trim(), subject: fm[3].trim(), filename: f, mtime: st.mtimeMs });
+  }
+  return results;
+}
+
+// ── Group chat scanning ─────────────────────────────────
+
+/** Parse a chat .md file into individual message blocks. */
+function parseChatMessages(filePath: string): { from: string; date: string; body: string; offset: number }[] {
   try {
-    if (fs.existsSync(cacheFile)) {
-      const data = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
-      return new Set(data.processed || []);
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const msgs: { from: string; date: string; body: string; offset: number }[] = [];
+    // Split on "---\nfrom:" (YAML frontmatter start of each message)
+    const blocks = raw.split(/\n(?=---\nfrom:)/);
+    for (const block of blocks) {
+      const m = block.match(/^---\nfrom:\s*(.+?)\ndate:\s*(.+?)\n---\n\n([\s\S]*)/);
+      if (m) {
+        msgs.push({ from: m[1].trim(), date: m[2].trim(), body: m[3].trim(), offset: raw.indexOf(block) });
+      }
     }
-  } catch {}
-  return new Set();
+    return msgs;
+  } catch { return []; }
 }
 
-function saveProcessedCache(agentName: string, set: Set<string>) {
-  const cacheFile = path.join(AGENTS_DIR, agentName, '.auto-respond-cache.json');
-  const arr = [...set].slice(-80);
-  fs.writeFileSync(cacheFile, JSON.stringify({ processed: arr, updated: new Date().toISOString() }), 'utf-8');
-}
+// ── Signal builder ──────────────────────────────────────
 
-async function getUnprocessedEmails(agentName: string): Promise<{ filename: string; from: string; subject: string; body: string }[]> {
-  const emailDir = path.join(AGENTS_DIR, agentName, 'email');
-  if (!fs.existsSync(emailDir)) return [];
-  const files = fs.readdirSync(emailDir).filter(f => f.endsWith('.md')).sort();
-  const emails: any[] = [];
-  for (const f of files.slice(-5)) {
-    try {
-      const raw = fs.readFileSync(path.join(emailDir, f), 'utf-8');
-      const fm = raw.match(/^---\nfrom:\s*(.+?)\nto:\s*(.+?)\nsubject:\s*(.+?)\ndate:\s*(.+?)\n---\n([\s\S]*)/);
-      if (fm) emails.push({ filename: f, from: fm[1].trim(), subject: fm[3].trim(), body: fm[5].trim() });
-    } catch {}
-  }
-  return emails;
-}
+/**
+ * Scan all channels for an agent and build a signal.
+ *
+ * Returns null if nothing new.
+ */
+function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty: boolean } | null {
+  const state = loadState(agent);
+  let dirty = false;
+  const now = Date.now();
 
-/** Scan group chat for @agent mentions — exclude self, dedup by hash */
-function checkGroupMentions(agentName: string): string {
-  const parts: string[] = [];
-  const groupsDir = path.join(process.cwd(), 'Groups');
-  if (!fs.existsSync(groupsDir)) return '';
-
-  for (const g of fs.readdirSync(groupsDir, { withFileTypes: true })) {
-    if (!g.isDirectory() || g.name.startsWith('.')) continue;
-    const agDir = path.join(groupsDir, g.name, 'Agents');
-    if (!fs.existsSync(agDir)) continue;
-    const match = fs.readdirSync(agDir, { withFileTypes: true })
-      .find(e => e.isDirectory() && e.name.toLowerCase() === agentName.toLowerCase());
-    if (!match) continue;
-    const chatDir = path.join(groupsDir, g.name, 'chat');
-    if (!fs.existsSync(chatDir)) continue;
-
-    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort().slice(-2);
-    for (const f of files) {
-      try {
-        const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-        const blocks = raw.split(/\n(?=---\nfrom:)/);
-        // Collect @mentions from the last 120s only (skip old ones)
-        const now = Date.now();
-        for (const block of blocks) {
-          const from = (block.match(/from:\s*(.+)/)?.[1] || '').trim();
-          if (from.toLowerCase() === agentName.toLowerCase()) continue;
-          // Parse block timestamp
-          const dateMatch = block.match(/date:\s*(.+)/);
-          const blockTs = dateMatch ? new Date(dateMatch[1].trim()).getTime() : 0;
-          // Only process @mentions from the last 60 seconds
-          if (now - blockTs > 60000) continue;
-          const blockLower = block.toLowerCase();
-          if (blockLower.includes('@' + agentName.toLowerCase())) {
-            const body = (block.split('\n---\n\n')[1] || block).slice(0, 200);
-            parts.push(`${g.name}群 ${from}: ${body.substring(0, 200)}`);
-          }
-        }
-      } catch {}
-    }
-  }
-  return parts.join('\n');
-}
-
-/** Proactive check: scan recent group activity for domain-relevant discussions */
-function checkGroupActivity(agentName: string): string {
-  const parts: string[] = [];
-  const groupsDir = path.join(process.cwd(), 'Groups');
-  if (!fs.existsSync(groupsDir)) return '';
-
-  // Domain keywords that trigger proactive engagement
-  const domainKeywords: Record<string, string[]> = {
-    Alice: ['前端', 'UI', 'CSS', 'dashboard', '性能', 'SSE', '页面', 'loading', '路由', '组件', 'frontend', '页面加载'],
-    Bob: ['Redis', '后端', 'API', 'auth', '连接池', 'server', '性能优化', '缓存', '数据库', 'backend', 'database', 'benchmark'],
-    Charlie: ['测试', 'QA', '部署', 'deploy', '审计', 'audit', '稳定性', 'stability', '监控', 'monitoring', 'CI/CD', 'test'],
-    Diana: ['PM', '产品', 'Sprint', '规划', '优先级', '排期', '需求', 'planning', 'roadmap', 'milestone'],
+  const signal: Signal = {
+    personalEmails: 0,
+    groupEmails: {},
+    newMessages: {},
+    mentions: [],
+    urgent: false,
+    priority: 'normal',
   };
 
-  const keywords = domainKeywords[agentName] || [];
-  if (keywords.length === 0) return '';
+  // ── 0. Pending invitations ──────────────────────────
+  if (fs.existsSync(GROUPS_DIR)) {
+    for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
+      if (!g.isDirectory() || g.name.startsWith('.')) continue;
+      const invDir = path.join(GROUPS_DIR, g.name, '.invitations');
+      if (!fs.existsSync(invDir)) continue;
+      const invFile = path.join(invDir, `${agent.toLowerCase()}.json`);
+      if (fs.existsSync(invFile)) {
+        try {
+          const inv = JSON.parse(fs.readFileSync(invFile, 'utf-8'));
+          signal.mentions.push({
+            group: g.name,
+            from: inv.invitedBy || 'unknown',
+            snippet: `邀请你加入 ${g.name} 群组`,
+          });
+          signal.invitations = signal.invitations || [];
+          signal.invitations.push({ group: g.name, invitedBy: inv.invitedBy || 'unknown' });
+          signal.urgent = true;
+          dirty = true;
+        } catch {}
+      }
+    }
+  }
 
-  for (const g of fs.readdirSync(groupsDir, { withFileTypes: true })) {
-    if (!g.isDirectory() || g.name.startsWith('.')) continue;
-    const agDir = path.join(groupsDir, g.name, 'Agents');
-    if (!fs.existsSync(agDir)) continue;
-    const match = fs.readdirSync(agDir, { withFileTypes: true })
-      .find(e => e.isDirectory() && e.name.toLowerCase() === agentName.toLowerCase());
-    if (!match) continue;
-    const chatDir = path.join(groupsDir, g.name, 'chat');
-    if (!fs.existsSync(chatDir)) continue;
+  // ── 1. Personal email ─────────────────────────────
+  const persDir = path.join(AGENTS_DIR, agent, 'email');
+  const newPersEmails = scanEmailDir(persDir, state.emailCheck);
+  if (newPersEmails.length > 0) {
+    signal.personalEmails = newPersEmails.length;
+    state.emailCheck = now;
+    dirty = true;
+  }
 
-    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort().slice(-2);
-    for (const f of files) {
-      try {
-        const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-        const blocks = raw.split(/\n(?=---\nfrom:)/);
-        // Check if any recent block contains domain keywords AND was written by another agent
-        for (const block of blocks.slice(-5)) {
-          const from = (block.match(/from:\s*(.+)/)?.[1] || '').trim();
-          const body = (block.split('\n---\n\n')[1] || block);
-          // Don't self-trigger
-          if (from.toLowerCase() === agentName.toLowerCase()) continue;
-          // Check keyword relevance
-          const matched = keywords.filter(kw => body.toLowerCase().includes(kw.toLowerCase()));
-          if (matched.length >= 2) {
-            parts.push(`${g.name}群 ${from} 讨论了 ${matched.slice(0, 3).join(', ')}: ${body.slice(0, 150)}`);
-            break;
+  // ── 2. Group channels ────────────────────────────
+  const currentGroups = getAgentGroups(agent);
+
+  for (const g of currentGroups) {
+    const gs = ensureGroup(state, g);
+
+    // 2a. Group email
+    const gEmailDir = path.join(GROUPS_DIR, g, 'Agents', agent, 'email');
+    const newGEmails = scanEmailDir(gEmailDir, gs.emailCheck);
+    if (newGEmails.length > 0) {
+      signal.groupEmails[g] = newGEmails.length;
+      gs.emailCheck = now;
+      dirty = true;
+    }
+
+    // 2b. Group chat — new messages since lastCheck
+    const chatDir = path.join(GROUPS_DIR, g, 'chat');
+    if (fs.existsSync(chatDir)) {
+      let newCount = 0;
+      const chatFiles = fs.readdirSync(chatDir)
+        .filter(f => f.endsWith('.md'))
+        .sort();
+
+      for (const cf of chatFiles) {
+        const fp = path.join(chatDir, cf);
+        try {
+          const st = fs.statSync(fp);
+          // File modified since last check → may contain new messages
+          if (st.mtimeMs <= gs.chatCheck) continue;
+        } catch { continue; }
+
+        for (const msg of parseChatMessages(fp)) {
+          const msgTs = new Date(msg.date).getTime();
+          if (msgTs <= gs.chatCheck) continue;
+          if (msg.from.toLowerCase() === agent.toLowerCase()) continue;
+          newCount++;
+
+          // Check for @mention
+          if (msg.body.toLowerCase().includes('@' + agent.toLowerCase())) {
+            // Generate hash for dedup
+            const hash = crypto.createHash('md5').update(g + msg.from + msg.body.slice(0, 100)).digest('hex').slice(0, 12);
+            if (gs.lastMention !== hash) {
+              signal.mentions.push({
+                group: g,
+                from: msg.from,
+                snippet: msg.body.slice(0, 100),
+              });
+              gs.lastMention = hash;
+              gs.chatCheck = now;     // advance only on actual @mention (agent will be spawned)
+              signal.urgent = true;
+              dirty = true;
+            }
           }
         }
-      } catch {}
+      }
+
+      if (newCount > 0) {
+        signal.newMessages[g] = newCount;
+        // Advance chatCheck even if no @mention — prevents re-scanning same files.
+        // The agent won't be spawned, but we won't re-detect these messages next tick.
+        gs.chatCheck = now;
+        dirty = true;
+      }
     }
   }
-  return parts.join('\n');
+
+  // ── 3. Clean up stale groups from state ────────────
+  for (const g of Object.keys(state.groups)) {
+    if (!currentGroups.includes(g)) delete state.groups[g];
+  }
+
+  // ── 3. Nothing new? ───────────────────────────────
+  const totalNew =
+    signal.personalEmails +
+    Object.values(signal.groupEmails).reduce((a, b) => a + b, 0) +
+    Object.values(signal.newMessages).reduce((a, b) => a + b, 0) +
+    signal.mentions.length;
+
+  if (totalNew === 0) return null;
+
+  // DON'T save state here — emailCheck will advance only after the agent
+  // successfully processes the email. If the software is closed before
+  // autoRespond completes, the email stays "unseen" and gets re-detected
+  // on next startup (mtime > old emailCheck).
+  return { signal, state, dirty };
 }
 
-export async function autoRespond(agentName: string): Promise<{
-  triggered: boolean; reply?: string; reason?: string; emailFrom?: string; emailSubject?: string;
+// ── Signal → Prompt ─────────────────────────────────────
+
+function signalToPrompt(agent: string, sig: Signal, groupName?: string): string {
+  const lines: string[] = [];
+
+  lines.push('[系统通知]');
+  lines.push('');
+
+  // Emails
+  const emailParts: string[] = [];
+  if (sig.personalEmails > 0) emailParts.push(`个人邮箱 ${sig.personalEmails} 封新邮件`);
+  for (const [g, n] of Object.entries(sig.groupEmails)) {
+    if (n > 0) emailParts.push(`${g} 群邮箱 ${n} 封`);
+  }
+  if (emailParts.length > 0) lines.push(`📧 ${emailParts.join(' | ')}`);
+
+  // Group chat
+  const chatParts: string[] = [];
+  for (const [g, n] of Object.entries(sig.newMessages)) {
+    if (n > 0) chatParts.push(`${g} 群 ${n} 条`);
+  }
+  if (chatParts.length > 0) lines.push(`💬 群聊新消息: ${chatParts.join(' | ')}`);
+
+  // Invitations
+  if (sig.invitations && sig.invitations.length > 0) {
+    lines.push('📨 群组邀请 (用 decide 接受/拒绝):');
+    for (const inv of sig.invitations) {
+      lines.push(`   ${inv.invitedBy} 邀请你加入 ${inv.group} 群组`);
+    }
+    lines.push('   接受: decide(group, decision="APPROVED", reason="接受邀请")');
+    lines.push('   拒绝: decide(group, decision="REJECTED", reason="拒绝邀请")');
+  }
+
+  // @mentions
+  if (sig.mentions.length > 0) {
+    lines.push(`@提及:`);
+    for (const m of sig.mentions) {
+      lines.push(`  ${m.from} 在 ${m.group} 群 @了你`);
+    }
+  }
+
+  lines.push('');
+  lines.push('步骤:');
+  lines.push('1. group_read 查看上下文 → 检查邮箱');
+  lines.push('2. 如果是需要你投票/审批 → decide(group, decision, reason) 结构化回复');
+  lines.push('3. 如果是普通讨论 → group_send 回复');
+  lines.push('4. 重要信息记到 agent_memory(action="write")');
+  lines.push('自主决定是否回复。中文。');
+
+  return lines.join('\n');
+}
+
+// ── Main entry ──────────────────────────────────────────
+
+export async function autoRespond(
+  agent: string,
+  options?: { groupName?: string; force?: boolean }
+): Promise<{
+  triggered: boolean; reply?: string; reason?: string;
 }> {
-  const config = getConfig(agentName);
+  const config = getConfig(agent);
+  if (!config.autoRespondToEmail && !options?.force) {
+    return { triggered: false, reason: 'autoRespond disabled' };
+  }
 
-  // ── Email check ──
-  const emails = await getUnprocessedEmails(agentName);
-  const processedEmails = getProcessedCache(agentName);
-  const skipSenders = ['system', 'monitoring'];
-  let latestEmail = null;
-  for (const e of emails) {
-    if (skipSenders.includes(e.from.toLowerCase())) continue;
-    if (!processedEmails.has(e.filename)) {
-      latestEmail = e;
-      processedEmails.add(e.filename);
-      saveProcessedCache(agentName, processedEmails);
-      break;
+  // Invalidate stale group cache — new agent may have joined since last scan
+  invalidateGroupsCache(agent);
+
+  // Build signal
+  const result = buildSignal(agent);
+
+  // Nothing to do
+  if (!result) {
+    return { triggered: false, reason: 'no new signals' };
+  }
+
+  const { signal, state, dirty } = result;
+
+  // Only spawn claude for: @mention, new email, or forced.
+  // v0.4: Determine priority based on signal content
+  if (signal.urgent || (signal.invitations && signal.invitations.length > 0)) {
+    signal.priority = 'critical';
+  } else if (signal.mentions.length > 0 || signal.personalEmails > 0) {
+    signal.priority = 'normal';
+  } else {
+    signal.priority = 'low';
+  }
+
+  // Chat-only messages → advance chatCheck (not emailCheck)
+  if (!signal.urgent && signal.personalEmails === 0 &&
+      Object.values(signal.groupEmails).every(n => n === 0) &&
+      !options?.force) {
+    // chatCheck was already advanced in buildSignal — persist that
+    saveState(agent, state);
+    return { triggered: false, reason: 'chat-only, state updated' };
+  }
+
+  // ── Debounce — prevent duplicate spawns from watcher+poll overlap ──
+  // v0.4: Priority-based debounce — critical bypasses, low has longer window
+  const now = Date.now();
+  const last = lastSpawn.get(agent) || 0;
+  const window = signal.priority === 'critical' ? 5_000 : signal.priority === 'low' ? 120_000 : DEBOUNCE_IDLE;
+  if (!options?.force && now - last < window) {
+    // Save state to advance chatCheck (prevent re-scanning) but don't advance emailCheck
+    // so the agent will process emails on next allowed spawn
+    saveState(agent, state);
+    return { triggered: false, reason: `debounced (${now - last}ms < ${window}ms)` };
+  }
+  lastSpawn.set(agent, now);
+
+  // Build prompt and call agent with retry
+  const prompt = signalToPrompt(agent, signal, options?.groupName);
+
+  // v0.4: Queue spawn per agent — one at a time, no duplicates
+  return enqueueAgent(agent, async () => {
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        setActivity(agent, 'processing', signal.urgent ? '处理通知' : '检查更新');
+        const { reply } = await chatOnce(agent, prompt, options?.groupName);
+        clearActivity(agent);
+        saveState(agent, state);
+        return { triggered: true, reply };
+      } catch (e: any) {
+        const isLast = attempt === maxRetries - 1;
+        if (isLast) {
+          return { triggered: false, reason: `all ${maxRetries} attempts failed: ${e.message}` };
+        }
+        const delay = Math.pow(2, attempt + 1) * 1000;
+        console.log(`[autoRespond] ${agent} chatOnce failed (attempt ${attempt + 1}/${maxRetries}): ${e.message}. Retrying in ${delay}ms...`);
+        await sleepMs(delay);
+      }
     }
-  }
-
-  // ── @Mention check ──
-  let groupMentions = '';
-  if (config.autoRespondToEmail) {
-    groupMentions = checkGroupMentions(agentName);
-  }
-
-  // ── Dedup @mentions: hash the FULL mention text (not truncated) ──
-  // Previous bug: slice(0,120) made every @mention hash identical → all skipped.
-  if (groupMentions) {
-    const fullHash = crypto.createHash('md5').update(groupMentions).digest('hex').slice(0, 12);
-    const already = getProcessedCache(agentName);
-    if (already.has('@' + fullHash)) {
-      return { triggered: false, reason: 'already responded to this exact mention' };
-    }
-    // Clean old hashes, keep latest 10
-    const hashes = [...already].filter(k => k.startsWith('@'));
-    if (hashes.length > 10) {
-      for (const h of hashes.slice(0, hashes.length - 10)) already.delete(h);
-    }
-    already.add('@' + fullHash);
-    saveProcessedCache(agentName, already);
-  }
-
-  // ── Proactive scanning DISABLED — too noisy, triggers on stale messages ──
-  // Only @mentions and emails trigger agents now.
-  const proactiveCtx = '';
-
-  // ── Nothing to do ──
-  if (!latestEmail && !groupMentions && !proactiveCtx) {
-    return { triggered: false, reason: 'no triggers' };
-  }
-
-  // ── Nothing to do ──
-  if (!latestEmail && !groupMentions && !proactiveCtx) {
-    return { triggered: false, reason: 'no triggers' };
-  }
-
-  // Skip idle time — proactive keywords are noisy. Only respond if
-  // explicitly @mentioned, or if an email demands action.
-  if (!latestEmail && !groupMentions) {
-    return { triggered: false, reason: 'idle — no @mention or email requiring action' };
-  }
-
-  // ── Build prompt (short, action-first) ──
-  const triggerType = proactiveCtx ? '主动扫描' : (groupMentions ? '@提及' : '新邮件');
-  const emailCtx = latestEmail ? `新邮件 — ${latestEmail.from}: ${latestEmail.subject}\n${latestEmail.body.slice(0, 400)}` : '';
-  const groupCtx = groupMentions ? `群聊有人@了你：\n${groupMentions}\n` : '';
-  const proactiveCtxInfo = proactiveCtx ? `群聊有与你领域相关的讨论：\n${proactiveCtx}\n` : '';
-
-  // 简洁指令：要求立即行动，不要探索
-  const action = groupMentions
-    ? '用 group_send 在群里简短回复（一句话即可），不要读文件、不要分析'
-    : latestEmail
-    ? '读邮件并执行要求的操作。需要时用 group_send 在群里通知相关人'
-    : '用 group_send 在群里自然参与讨论，给专业意见（简短即可）';
-
-  const prompt = `轮询触发 (${triggerType})。\n\n${emailCtx}${groupCtx}${proactiveCtxInfo}\n${action}\n\n用中文。`;
-
-  try {
-    const { reply } = await chatOnce(agentName, prompt);
-
-    // ── Auto-post reply to group chat (agent may forget group_send) ──
-    const mentionCtx = groupMentions || proactiveCtx;
-    if (mentionCtx && reply && !reply.includes('无行动项')) {
-      // Extract the group name from the mention context (e.g. "default群 Alice: ...")
-      const groupMatch = groupMentions.match(/^(\w+)群/);
-      const group = groupMatch ? groupMatch[1] : 'default';
-      const shortReply = reply.length > 500 ? reply.slice(0, 500) + '...' : reply;
-      const chatDir = path.join(process.cwd(), 'Groups', group, 'chat');
-      if (!fs.existsSync(chatDir)) fs.mkdirSync(chatDir, { recursive: true });
-      const date = new Date().toISOString().split('T')[0];
-      const entry = `\n---\nfrom: ${agentName}\ndate: ${new Date().toISOString()}\n---\n\n${shortReply}\n`;
-      fs.appendFileSync(path.join(chatDir, `${date}.md`), entry, 'utf-8');
-    }
-
-    return { triggered: true, reply, emailFrom: latestEmail?.from || 'proactive', emailSubject: latestEmail?.subject || triggerType };
-  } catch (e: any) {
-    return { triggered: false, reason: e.message };
-  }
+    return { triggered: false, reason: 'unreachable' };
+  });
 }
 
-export async function pollAllAgents(): Promise<{ agent: string; triggered: boolean }[]> {
+// ── Heartbeat ────────────────────────────────────────────
+// Periodic wake-up. Enabling autoRespondToEmail fires heartbeat every N seconds.
+// No signal scanning, no task injection — just a gentle "you've been woken" nudge.
+
+const lastHeartbeat = new Map<string, number>();
+
+export async function agentHeartbeat(agent: string, intervalMs: number): Promise<{ triggered: boolean; reply?: string; reason?: string }> {
+  const config = getConfig(agent);
+  if (!config.autoRespondToEmail) return { triggered: false, reason: 'autoRespond disabled' };
+
+  const now = Date.now();
+  const last = lastHeartbeat.get(agent) || 0;
+  if (now - last < intervalMs) {
+    return { triggered: false, reason: `throttled (${now - last}ms < ${intervalMs}ms)` };
+  }
+  lastHeartbeat.set(agent, now);
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      setActivity(agent, 'processing', '心跳检查');
+      const { reply } = await chatOnce(agent, '[Heartbeat] 你被唤醒了。请自主检查是否有需要处理的事项。如果有，在群里同步进展。如果没有，忽略这条消息即可。用中文。');
+      clearActivity(agent);
+      return { triggered: true, reply };
+    } catch (e: any) {
+      if (attempt === 2) return { triggered: false, reason: `all 3 attempts failed: ${e.message}` };
+      await sleepMs(Math.pow(2, attempt + 1) * 1000);
+    }
+  }
+  return { triggered: false, reason: 'unreachable' };
+}
+
+// ── Batch poll ──────────────────────────────────────────
+
+export async function pollAllAgents(groupName?: string): Promise<{ agent: string; triggered: boolean; reason?: string }[]> {
   if (!fs.existsSync(AGENTS_DIR)) return [];
 
   const agents = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-    .filter(e => e.isDirectory() && !e.name.startsWith('.'));
+    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .map(e => e.name);
 
-  // Fire all agents in parallel
   return Promise.all(
-    agents.map(async a => {
+    agents.map(async (a) => {
       try {
-        const result = await autoRespond(a.name);
-        return { agent: a.name, triggered: result.triggered };
+        const result = await autoRespond(a, { groupName });
+        return { agent: a, triggered: result.triggered, reason: result.reason };
       } catch {
-        return { agent: a.name, triggered: false };
+        return { agent: a, triggered: false, reason: 'error' };
       }
     })
   );
+}
+
+// ── Targeted single-agent poll (v0.4: MCP direct notify) ──
+
+/** Poll a single agent — 10x faster than pollAllAgents when you know which agent changed */
+export async function pollAgent(agent: string, groupName?: string): Promise<{ agent: string; triggered: boolean; reason?: string }> {
+  try {
+    const result = await autoRespond(agent, { groupName });
+    return { agent, triggered: result.triggered, reason: result.reason };
+  } catch {
+    return { agent, triggered: false, reason: 'error' };
+  }
 }

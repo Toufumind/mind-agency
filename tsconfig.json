@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "downlevelIteration": true,
@@ -14,9 +18,35 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./src/*"] }
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "mcp"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "next-env.d.ts",
+    "./.next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "mcp",
+    "server.ts",
+    "standalone-server.js",
+    "dist-electron-staging",
+    "dist-exe",
+    "dist-exe-new",
+    "dist-exe-old",
+    "dist-exe-tmp",
+    "dist-installer",
+    "dist-pkg"
+  ]
 }

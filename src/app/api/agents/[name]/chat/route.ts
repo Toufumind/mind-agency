@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createChatStream, getChatHistory, clearChat } from '@/lib/chat';
 import { writeAudit } from '@/lib/audit';
+import { handleCliCommand } from '@/lib/cli-commands';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,10 +49,14 @@ export async function POST(
 
   let message = '';
   let group = '';
+  let model = '';
+  let fresh = false;
   try {
     const body = await request.json();
     message = (body.message || '').trim();
     group = (body.group || '').trim();
+    model = (body.model || '').trim();
+    fresh = body.fresh === true;
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
   }
@@ -61,10 +66,24 @@ export async function POST(
   }
 
   // ── Idempotency check ──
-  const cacheKey = `${name}::${group}::${message}`;
+  const cacheKey = `${name}::${group}::${model}::${fresh}::${message}`;
   const cached = sseCache.get(cacheKey);
   if (cached && (Date.now() - cached.ts) < SSE_CACHE_TTL) {
     return replaySSE(cached.chunks);
+  }
+
+  // ── CLI command handling (e.g. /goal, /plan, /rename) ──
+  const history = getChatHistory(name);
+  const sessionId = history.sessionId || '';
+  const cliResult = handleCliCommand(name, message, sessionId);
+  if (cliResult.handled) {
+    // Direct reply (like /goal confirm, /rename confirm)
+    // Wrapped as SSE so the frontend's existing stream handler consumes it.
+    if (cliResult.directReply) {
+      const sseBody = `data: ${JSON.stringify({ type: 'text', content: cliResult.directReply, timestamp: new Date().toISOString() })}\n\ndata: [DONE]\n\n`;
+      return new Response(sseBody, { headers: sseHeaders });
+    }
+    // Commands with optsOverrides (like /plan) — continue to stream with overrides
   }
 
   // Audit log
@@ -75,8 +94,8 @@ export async function POST(
     details: message.slice(0, 200),
   });
 
-  // SSE stream — pass group for context injection
-  const stream = createChatStream(name, message, group || undefined);
+  // SSE stream — pass group/model/overrides/fresh
+  const stream = createChatStream(name, message, group || undefined, model || undefined, cliResult.optsOverrides, fresh);
 
   // Buffer SSE chunks for caching (lazily, only if the stream completes)
   const chunks: string[] = [];

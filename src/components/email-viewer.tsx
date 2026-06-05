@@ -12,21 +12,21 @@ interface EmailViewerProps {
 
 export default function EmailViewer({ email, onClose, onDelete }: EmailViewerProps) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className="bg-canvas border border-border rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-        <h3 className="text-sm font-medium text-gray-900 truncate mr-2">{email.subject}</h3>
+      <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+        <h3 className="text-sm font-medium text-foreground truncate mr-2">{email.subject}</h3>
         <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => onDelete(email)}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive-muted transition-colors"
             title="Delete"
           >
             <Trash2 size={14} />
           </button>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-gray-300 hover:text-gray-500 hover:bg-gray-50 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-muted hover:bg-surface transition-colors"
           >
             <X size={14} />
           </button>
@@ -34,10 +34,10 @@ export default function EmailViewer({ email, onClose, onDelete }: EmailViewerPro
       </div>
 
       {/* Meta */}
-      <div className="px-5 py-3 border-b border-gray-50">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-gray-500">
-          <span>From <span className="font-medium text-gray-700">{email.from}</span></span>
-          <span>To <span className="font-medium text-gray-700">{email.to}</span></span>
+      <div className="px-5 py-3 border-b border-border">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-muted">
+          <span>From <span className="font-medium text-muted">{email.from}</span></span>
+          <span>To <span className="font-medium text-muted">{email.to}</span></span>
           {email.date && (
             <span>
               {new Date(email.date).toLocaleDateString('zh-CN', {
@@ -48,12 +48,12 @@ export default function EmailViewer({ email, onClose, onDelete }: EmailViewerPro
             </span>
           )}
         </div>
-        <p className="mt-1.5 text-[11px] text-gray-300 font-mono">{email.filename}</p>
+        <p className="mt-1.5 text-[11px] text-muted-foreground font-mono">{email.filename}</p>
       </div>
 
       {/* Body */}
       <div className="px-5 py-6">
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+        <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted">
           {email.body}
         </div>
       </div>

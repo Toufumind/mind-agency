@@ -1,98 +1,134 @@
 /**
- * Background agent scheduler — v0.3
+ * Background scheduler — watcher-driven + polling fallback.
  *
- * Dual-loop: poll (agent triggers every N seconds) + DAG tick (workflow progress).
- * v0.3 auto-trigger: DAG loop scans Groups subdirs for workflow.yaml files
- * and auto-executes any workflow that does not have an active run.
+ * Primary:  fs.watch → debounce 2s → immediate check
+ * Fallback: 30s polling
  *
- * Backward-compatible: accepts number (poll ms) or options object with engine.
+ * Perf: imports at module level (no dynamic import), sequential agent checks.
  */
 
-import { pollAllAgents } from './auto-respond';
-import { emitEvent } from './ws-broadcast';
-import { randomUUID } from 'crypto';
-import fs from 'fs';
 import path from 'path';
-import type { WorkflowEngine, WorkflowDefinition } from './event-bus';
-import { parseWorkflowYaml } from './event-bus';
+import fs from 'fs';
+import { startWatcher, stopWatcher, refreshFileWatchers } from './watcher';
+import { AGENTS_DIR } from './data-dir';
+import { autoRespond, agentHeartbeat } from './auto-respond';
+import { refreshIndex, saveIndex } from './chat-index';
+import { recoverPendingConsensus } from './consensus';
+import { broadcastWs } from './ws-embedded';
+import { loadTriggers, checkTriggers } from './workflow-trigger';
 
-let pollTid: ReturnType<typeof setInterval> | null = null;
-let dagTid: ReturnType<typeof setInterval> | null = null;
-let pollRunning = false; let dagRunning = false;
-let pollMs = 30000; let dagMs = 10000;
-let engine: WorkflowEngine | undefined;
-/** Track last-triggered YAML mtime — only re-trigger if file changed */
-const lastMtime = new Map<string, number>();
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let startupTimer: ReturnType<typeof setTimeout> | null = null;
+let running = false;
+const STARTUP_DELAY = 3000;
+const DEFAULT_HEARTBEAT_MS = 120_000; // 2 min default — can be overridden per-agent via config.json
 
-export function startScheduler(
-  opts?: number | { pollIntervalMs?: number; dagIntervalMs?: number; engine?: WorkflowEngine }
-): void {
-  if (pollTid) return;
-  if (typeof opts === 'number') { pollMs = opts; }
-  else if (opts) { pollMs = opts.pollIntervalMs ?? 30000; dagMs = opts.dagIntervalMs ?? 10000; }
-  console.log(`[scheduler] v0.3 — poll ${pollMs / 1000}s, dag ${dagMs / 1000}s`);
-  tickPoll(); pollTid = setInterval(tickPoll, pollMs);
-  engine = (typeof opts === 'object' ? opts?.engine : undefined);
-  if (engine) { tickDag(); dagTid = setInterval(tickDag, dagMs); }
+const stats = { triggered: 0, checks: 0, lastCheck: 0 };
+
+export function startScheduler(options?: number | {
+  pollIntervalMs?: number; engine?: any; dagIntervalMs?: number;
+}): void {
+  const opts = typeof options === 'number' ? { pollIntervalMs: options } : (options || {});
+  const pollMs = opts.pollIntervalMs ?? 30000;
+
+  startWatcher((dir) => {
+    if (running) return;
+    console.log(`[scheduler] watcher: ${path.basename(dir)}/`);
+    tick('watcher');
+  });
+
+  if (pollTimer) clearInterval(pollTimer);
+  if (startupTimer) clearTimeout(startupTimer);
+
+  console.log(`[scheduler] watcher + ${pollMs / 1000}s poll (first in ${STARTUP_DELAY / 1000}s)`);
+
+  // Recovery: rescan pending consensus + running workflows on startup
+  recoverPendingConsensus();
+  import('./workflow-bridge').then(m => m.recoverRunningWorkflows()).catch((err) => { console.error('[scheduler] recoverRunningWorkflows:', err); });
+
+  // v0.4: Load workflow triggers
+  try { loadTriggers(); } catch (err) { console.error('[scheduler] Failed to load triggers:', err); }
+
+  startupTimer = setTimeout(() => {
+    tick('startup');
+    pollTimer = setInterval(() => tick('poll'), pollMs);
+    heartbeatTimer = setInterval(() => tickHeartbeat(), DEFAULT_HEARTBEAT_MS);
+  }, STARTUP_DELAY);
 }
 
 export function stopScheduler(): void {
-  if (pollTid) { clearInterval(pollTid); pollTid = null; }
-  if (dagTid) { clearInterval(dagTid); dagTid = null; }
-  console.log('[scheduler] Stopped');
+  stopWatcher();
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
+  saveIndex();
+  console.log('[scheduler] stopped, index saved');
 }
 
 export function getSchedulerStats() {
-  return { pollMode: pollTid !== null, dagMode: dagTid !== null, pollIntervalMs: pollMs, dagIntervalMs: dagMs };
+  return { ...stats, running };
 }
 
-async function tickPoll(): Promise<void> {
-  if (pollRunning) return; pollRunning = true; const t0 = Date.now();
+async function tick(source: string): Promise<void> {
+  if (running) return;
+  running = true;
   try {
-    const results = await pollAllAgents(); const tri = results.filter(r => r.triggered);
-    if (tri.length > 0) console.log(`[scheduler] ${tri.length} agents: ${tri.map(r => r.agent).join(', ')}`);
-    emitEvent({ event: 'poll.result', payload: { agent: 'scheduler', duration: Date.now() - t0, triggered: tri.length, polled: results.length }, timestamp: Date.now(), source: 'system', id: randomUUID() });
-  } catch (e: unknown) { console.error(`[scheduler] poll error: ${e instanceof Error ? e.message : String(e)}`); }
-  finally { pollRunning = false; }
-}
+    stats.checks++;
+    stats.lastCheck = Date.now();
 
-/** v0.3: Auto-trigger workflows from Groups subdir workflow.yaml files */
-async function tickDag(): Promise<void> {
-  if (dagRunning || !engine) return; dagRunning = true;
-  try {
-    // Progress existing runs (retries, timeouts)
-    engine.tick();
+    // Refresh chat index + file watchers (catch newly created .md files)
+    try { refreshIndex(); } catch (err) { console.error('[scheduler] refreshIndex:', err); }
+    try { refreshFileWatchers(); } catch (err) { console.error('[scheduler] refreshFileWatchers:', err); }
 
-    // Scan and auto-trigger new workflows
-    const gd = path.join(process.cwd(), 'Groups');
-    if (!fs.existsSync(gd)) return;
-    for (const e of fs.readdirSync(gd, { withFileTypes: true })) {
-      if (!e.isDirectory() || e.name.startsWith('.')) continue;
-      const yp = path.join(gd, e.name, 'workflow.yaml');
-      if (!fs.existsSync(yp)) continue;
+    // v0.4: Check workflow triggers (file change, schedule, event)
+    try { checkTriggers(); } catch (err) { console.error('[scheduler] checkTriggers:', err); }
+
+    if (!fs.existsSync(AGENTS_DIR)) return;
+
+    const agentNames = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => e.name);
+
+    let triggered = 0;
+    for (const name of agentNames) {
       try {
-        const st = fs.statSync(yp);
-        const mtime = st.mtimeMs;
-        const prev = lastMtime.get(yp) || 0;
-        if (mtime === prev) continue; // YAML unchanged — skip
-        lastMtime.set(yp, mtime);
-
-        const raw = fs.readFileSync(yp, 'utf-8');
-        const def = parseWorkflowYaml(raw);
-        if (!def?.name || !def.steps?.length) continue;
-
-        // Check if workflow has an active run — skip if still running
-        const active = engine.listRuns().some(
-          r => r.workflowName === def.name && r.status === 'running'
-        );
-        if (active) continue;
-
-        console.log(`[scheduler] auto-trigger workflow: "${def.name}" (${def.steps.length} steps)`);
-        engine.execute(def);
-      } catch (er: unknown) { /* parse failure, skip */ }
+        const result = await autoRespond(name);
+        if (result.triggered) triggered++;
+      } catch (err) { console.error(`[scheduler] autoRespond(${name}):`, err); }
     }
-  } catch (e: unknown) { console.error(`[scheduler] dag error: ${e instanceof Error ? e.message : String(e)}`); }
-  finally { dagRunning = false; }
+
+    if (triggered > 0) {
+      stats.triggered++;
+      console.log(`[scheduler] ${source}: ${triggered} triggered`);
+    }
+
+    // Push dashboard refresh so live activity feed updates
+    try { broadcastWs('dashboard_refresh', {}); } catch (err) { console.error('[scheduler] broadcastWs:', err); }
+  } catch (err) { console.error('[scheduler] tick error:', err); }
+  finally { running = false; }
 }
 
-export { pollAllAgents } from './auto-respond';
+async function tickHeartbeat(): Promise<void> {
+  if (!fs.existsSync(AGENTS_DIR)) return;
+
+  const agentNames = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .map(e => e.name);
+
+  for (const name of agentNames) {
+    try {
+      // Read per-agent heartbeat interval from config.json, fall back to default
+      let interval = DEFAULT_HEARTBEAT_MS;
+      const cfgPath = path.join(AGENTS_DIR, name, 'config.json');
+      if (fs.existsSync(cfgPath)) {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+          if (cfg.heartbeatIntervalMs) interval = cfg.heartbeatIntervalMs;
+        } catch (err) { console.error(`[scheduler] heartbeat config(${name}):`, err); }
+      }
+
+      await agentHeartbeat(name, interval);
+    } catch (err) { console.error(`[scheduler] heartbeat(${name}):`, err); }
+  }
+}

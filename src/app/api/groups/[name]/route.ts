@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { GROUPS_DIR } from '@/lib/data-dir';
+import { broadcastWs } from '@/lib/ws-embedded';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
-  const groupDir = path.join(process.cwd(), 'Groups', name);
+  const groupDir = path.join(GROUPS_DIR, name);
 
   if (!fs.existsSync(groupDir)) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
@@ -37,7 +39,46 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  return NextResponse.json({ group: name, members, messages, messageCount: messages.length });
+  // Group info from config
+  const { getGroupInfo } = await import('@/lib/group-config');
+  const info = getGroupInfo(name);
+
+  return NextResponse.json({ group: name, members, messages, messageCount: messages.length, info });
+}
+
+// ── POST /api/groups/[name] — send a message directly to group chat ──
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ name: string }> }
+) {
+  const { name } = await params;
+  const groupDir = path.join(GROUPS_DIR, name);
+  if (!fs.existsSync(groupDir)) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+
+  let from = 'system';
+  let message = '';
+  try {
+    const body = await request.json();
+    from = (body.from || 'system').trim();
+    message = (body.message || '').trim();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  if (!message) return NextResponse.json({ error: 'Empty message' }, { status: 400 });
+  if (!/^[a-zA-Z0-9_-]+$/.test(from) && from !== 'system') {
+    return NextResponse.json({ error: 'Invalid sender name' }, { status: 400 });
+  }
+
+  const { writeChatMessage } = await import('@/lib/atomic');
+  writeChatMessage(groupDir, from, message);
+
+  // Push to all connected clients in real time
+  broadcastWs('group_message', { group: name, from, message, date: new Date().toISOString() });
+
+  return NextResponse.json({ success: true, from, date: new Date().toISOString() });
 }
 
 export async function DELETE(
@@ -45,7 +86,7 @@ export async function DELETE(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const groupDir = path.join(process.cwd(), 'Groups', name);
+  const groupDir = path.join(GROUPS_DIR, name);
   if (!fs.existsSync(groupDir)) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }

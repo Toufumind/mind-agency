@@ -33,26 +33,63 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# auto memory (project local)
-.claude/memory/
-MEMORY.md
-
-# personal agent configs
-*.local.md
-
-# mind cache files (runtime-generated)
+# runtime data
 /.mind/
+/.audit/
+/.claude/
 
-# agent runtime data (chat history, sessions, group chat)
+# agent runtime data
 **/chat/
-
-# agent auto-respond cache
 **/.auto-respond-cache.json
-
-# claude code own data
+**/mind-state.json
+**/session.json
+**/.audit/
 **/.claude/
+**/email/
+**/CLAUDE.md
+**/goals.json
+**/.task-reports/
+**/agent-card.json
+**/config.json
 
-# agent startup scripts (contain API keys)
+# workflow runtime data
+**/.decisions/
+**/workflow-state.json
+**/.invitations/
+**/.consensus/
+**/.checkpoints/
+**/.workflow-history/
+
+# build artifacts
+/dist-exe/
+/dist-exe-v2/
+/dist-electron-staging/
+/dist-installer/
+/.next/
+
+# generated logo frames (regenerate: node scripts/gen-logo-frames.mjs)
+public/shaders/frames/
+public/shaders/frames_v2/
+public/shaders/frames_v2_alpha/
+public/shaders/frames_white/
+public/shaders/frames_white_alpha/
+
+# installer scripts
+*.nsi
+/mcp/group-server.mjs
+/mcp/mcp/
+/mcp/src/
+
+# local env & settings (API keys)
+.env*.local
+/.mind/settings.json
 **/start.cmd
 **/start.sh
-**/*.env
+
+# claude code memory
+MEMORY.md
+*.local.md
+
+# cache
+.cache/
+*.tmp

@@ -1,16 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Hash, Users, Activity, Bot, Trash2, X, Shield, GitBranch } from 'lucide-react';
+import { Hash, Users, Activity, Bot, Trash2, X, Shield, User, BarChart3, FileText, Settings, Plus, ChevronDown, PanelLeftClose, PanelLeftOpen, GitBranch } from 'lucide-react';
 import { useSidebarData } from './sidebar-context';
+import { useNotifications } from './notification-provider';
+import { useT } from './i18n';
+import LogoCanvas from './logo-canvas';
 
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { agents, groups, activity, loading, refresh } = useSidebarData();
+  const { agents, groups, activity, loading, refresh, collapsed, setCollapsed } = useSidebarData();
+  const { unreadGroups, unreadEmails } = useNotifications();
   const [confirmDel, setConfirmDel] = useState('');
+  const { t } = useT();
+
+  // Inline creation + section collapse
+  const [creating, setCreating] = useState<'group' | 'agent' | null>(null);
+  const [newName, setNewName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sectionsClosed, setSectionsClosed] = useState<Set<string>>(new Set());
+
+  // Auto-collapse on narrow window
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => { const narrow = window.innerWidth < 768; setIsMobile(narrow); if (narrow) setCollapsed(true); };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  const ts = (key: string) => {
+    setSectionsClosed(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  };
+
+  const createItem = async () => {
+    if (!newName.trim() || !creating || busy) return;
+    setBusy(true);
+    try {
+      if (creating === 'group') {
+        await fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim() }) });
+      } else {
+        await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName.trim(), roles: ['member'], autoRespondToEmail: true, permissions: { canCreateGroup: true, canDeleteGroup: false, canDeploy: false } }) });
+      }
+      setNewName(''); setCreating(null); refresh(); setBusy(false);
+    } catch { setBusy(false); }
+  };
 
   const doDelete = async () => {
     if (!confirmDel) return;
@@ -24,79 +62,211 @@ export default function Sidebar() {
     refresh();
   };
 
-  return (
-    <aside className="w-[220px] bg-[#fafafa] border-r border-gray-100 flex flex-col shrink-0 h-screen overflow-hidden">
-      <Link href="/" prefetch className="px-5 py-4 border-b border-gray-100 flex items-center gap-3 hover:bg-gray-50/50 transition-colors">
-        <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center"><Bot size={14} className="text-white" /></div>
-        <span className="text-[14px] font-semibold text-gray-900 tracking-tight">Mind Agency</span>
+  // Link item helper
+  const NavItem = ({ href, icon: Icon, label, badge }: { href: string; icon: any; label: string; badge?: number }) => {
+    const active = pathname === href;
+    return (
+      <Link href={href} prefetch title={collapsed ? label : undefined}
+        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'} ${collapsed ? 'justify-center px-1.5' : ''}`}>
+        <Icon size={14} className="shrink-0" />
+        {!collapsed && <span className="flex-1 truncate">{label}</span>}
+        {!collapsed && badge != null && badge > 0 && (
+          <span className="text-[9px] bg-destructive text-canvas rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">{badge > 9 ? '9+' : badge}</span>
+        )}
       </Link>
+    );
+  };
 
-      <nav className="flex-1 py-3 px-2.5 space-y-4 overflow-y-auto">
-        <Link href="/" prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${pathname === '/' ? 'bg-white shadow-sm text-gray-900 font-medium border border-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}>
-          <Activity size={14} /> Dashboard
-        </Link>
-        <Link href="/workflows" prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${pathname === '/workflows' ? 'bg-white shadow-sm text-gray-900 font-medium border border-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}>
-          <GitBranch size={14} /> Workflows
-        </Link>
+  return (
+    <>
+      {/* Mobile overlay */}
+      {collapsed === false && (
+        <div className="fixed inset-0 bg-black/30 z-40 md:hidden" onClick={() => setCollapsed(true)} />
+      )}
 
-        <section>
-          <span className="px-2 mb-1 text-[10px] font-medium text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><Hash size={10} /> Teams</span>
-          <div className="space-y-0.5">
-            {groups.map(g => {
-              const active = pathname === `/groups/${g.name}`;
-              return (
-                <div key={g.name} className="group relative">
-                  <Link href={`/groups/${g.name}`} prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-white shadow-sm text-gray-900 font-medium border border-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}>
-                    <span className="w-5 h-5 rounded-md bg-gray-100 flex items-center justify-center text-[9px] font-bold text-gray-500 shrink-0">#</span>
-                    <span className="truncate">{g.name}</span>
+      <aside className={`
+        bg-surface border-r border-border flex flex-col shrink-0 h-full overflow-hidden
+        transition-all duration-200
+        ${collapsed ? 'w-0 -ml-px md:w-[52px] md:ml-0' : 'w-[220px]'}
+        ${collapsed === false ? 'fixed inset-y-0 left-0 z-50 md:static md:z-auto' : 'static'}
+      `}>
+        {/* Header */}
+        <div className={`flex items-center border-b border-border ${collapsed ? 'px-2 py-4 justify-center' : 'px-5 py-4 gap-3'}`}>
+          <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+            {collapsed ? <PanelLeftOpen size={14} className="text-foreground" /> : <LogoCanvas size={28} />}
+          </button>
+          {!collapsed && <span className="text-[14px] font-semibold text-foreground tracking-tight flex-1">Mind Agency</span>}
+          {!collapsed && (
+            <button onClick={() => setCollapsed(true)} className="text-disabled hover:text-muted">
+              <PanelLeftClose size={14} />
+            </button>
+          )}
+        </div>
+
+        <nav className="flex-1 py-3 px-2.5 space-y-4 overflow-y-auto">
+          <NavItem href="/" icon={Activity} label={t('dashboard')} />
+          <NavItem href="/audit" icon={FileText} label={t('audit')} />
+          <NavItem href="/workflows" icon={GitBranch} label={t('workflows')} />
+
+          {/* Teams section */}
+          {!collapsed ? (
+            <section>
+              <div className="px-2 mb-1 flex items-center justify-between group/header cursor-pointer" onClick={() => ts('teams')}>
+                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                  <ChevronDown size={8} className={`transition-transform ${sectionsClosed.has('teams') ? '-rotate-90' : ''}`} />
+                  <Hash size={10} /> {t('teams')}
+                </span>
+                <button onClick={e => { e.stopPropagation(); setCreating('group'); setNewName(''); }}
+                  className="opacity-0 group-hover/header:opacity-100 transition-opacity text-disabled hover:text-muted">
+                  <Plus size={12} />
+                </button>
+              </div>
+              {!sectionsClosed.has('teams') && (
+              <div className="space-y-0.5">
+                {groups.map(g => {
+                  const active = pathname === `/groups/${g.name}`;
+                  return (
+                    <div key={g.name} className="group relative">
+                      <Link href={`/groups/${g.name}`} prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
+                        <span className="w-5 h-5 rounded-md bg-surface-alt flex items-center justify-center text-[9px] font-bold text-muted shrink-0">#</span>
+                        <span className="truncate flex-1">{g.name}</span>
+                        {!active && (unreadGroups[g.name] || 0) > 0 && (
+                          <span className="text-[9px] bg-destructive text-canvas rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">{unreadGroups[g.name]}</span>
+                        )}
+                      </Link>
+                      <button onClick={() => setConfirmDel(`group:${g.name}`)} className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-disabled hover:text-destructive hover:bg-destructive-muted transition-all"><Trash2 size={10} /></button>
+                    </div>
+                  );
+                })}
+                {creating === 'group' && (
+                  <div className="px-2 py-1.5">
+                    <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="group name" autoFocus
+                      className="w-full px-2.5 py-1.5 text-[12px] border border-border rounded-lg outline-none focus:border-border-strong"
+                      onKeyDown={e => { if (e.key === 'Enter') createItem(); if (e.key === 'Escape') { setCreating(null); setNewName(''); } }} />
+                    <div className="flex gap-1 mt-1">
+                      <button onClick={createItem} disabled={!newName.trim()} className="px-2.5 py-1 text-[10px] font-medium bg-foreground text-canvas rounded-md hover:opacity-90 disabled:opacity-40">{t('create')}</button>
+                      <button onClick={() => { setCreating(null); setNewName(''); }} className="px-2 py-1 text-[10px] text-muted-foreground hover:text-muted">{t('cancel')}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              )}
+            </section>
+          ) : (
+            <div className="space-y-0.5">
+              {groups.map(g => {
+                const active = pathname === `/groups/${g.name}`;
+                return (
+                  <Link key={g.name} href={`/groups/${g.name}`} prefetch title={g.name}
+                    className={`flex items-center justify-center px-1 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
+                    <span className="w-5 h-5 rounded-md bg-surface-alt flex items-center justify-center text-[9px] font-bold text-muted shrink-0">#</span>
                   </Link>
-                  <button onClick={() => setConfirmDel(`group:${g.name}`)} className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"><Trash2 size={10} /></button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+                );
+              })}
+            </div>
+          )}
 
-        <section>
-          <span className="px-2 mb-1 text-[10px] font-medium text-gray-400 uppercase tracking-widest flex items-center gap-1.5"><Users size={10} /> Members</span>
-          <div className="space-y-0.5">
-            {agents.map(a => {
-              const active = pathname === `/agents/${a.name}`;
-              const isAdmin = (a as any).config?.roles?.includes('admin');
-              return (
-                <div key={a.name} className="group relative">
-                  <Link href={`/agents/${a.name}`} prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-white shadow-sm text-gray-900 font-medium border border-gray-100' : 'text-gray-500 hover:text-gray-700 hover:bg-white/50'}`}>
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium shrink-0 ${isAdmin ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>{a.name[0]}</span>
-                    <span className="truncate">{a.name}</span>
-                    {/* Activity pulse */}
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ml-auto ${activity[a.name] ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.4)]' : 'bg-gray-200'}`} title={activity[a.name] ? 'Active' : 'Idle'} />
-                    {isAdmin && <Shield size={9} className="text-gray-400 shrink-0" />}
+          {/* Members section */}
+          {!collapsed ? (
+            <section>
+              <div className="px-2 mb-1 flex items-center justify-between group/header cursor-pointer" onClick={() => ts('members')}>
+                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                  <ChevronDown size={8} className={`transition-transform ${sectionsClosed.has('members') ? '-rotate-90' : ''}`} />
+                  <Users size={10} /> {t('members')}
+                </span>
+                <button onClick={e => { e.stopPropagation(); setCreating('agent'); setNewName(''); }}
+                  className="opacity-0 group-hover/header:opacity-100 transition-opacity text-disabled hover:text-muted">
+                  <Plus size={12} />
+                </button>
+              </div>
+              {!sectionsClosed.has('members') && (
+              <div className="space-y-0.5">
+                {agents.filter(a => a.name !== 'me').map(a => {
+                  const active = pathname === `/agents/${a.name}`;
+                  const isAdmin = (a as any).config?.roles?.includes('admin');
+                  return (
+                    <div key={a.name} className="group relative">
+                      <Link href={`/agents/${a.name}`} prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium shrink-0 ${activity[a.name]?.status === 'chatting' || activity[a.name]?.status === 'processing' || activity[a.name]?.status === 'working' ? 'bg-success-muted text-success' : 'bg-surface-alt text-muted'}`}>{a.name[0]}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-[13px]">{a.name}</span>
+                            {isAdmin && <Shield size={9} className="text-muted-foreground shrink-0" />}
+                          </div>
+                        </div>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activity[a.name]?.active ? 'bg-success' : 'bg-border'}`} title={activity[a.name]?.detail || (activity[a.name]?.active ? t('active') : t('idle'))} />
+                      </Link>
+                      <button onClick={() => setConfirmDel(`agent:${a.name}`)} className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-disabled hover:text-destructive hover:bg-destructive-muted transition-all"><Trash2 size={10} /></button>
+                    </div>
+                  );
+                })}
+                {creating === 'agent' && (
+                  <div className="px-2 py-1.5">
+                    <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="agent name" autoFocus
+                      className="w-full px-2.5 py-1.5 text-[12px] border border-border rounded-lg outline-none focus:border-border-strong"
+                      onKeyDown={e => { if (e.key === 'Enter') createItem(); if (e.key === 'Escape') { setCreating(null); setNewName(''); } }} />
+                    <div className="flex gap-1 mt-1">
+                      <button onClick={createItem} disabled={!newName.trim()} className="px-2.5 py-1 text-[10px] font-medium bg-foreground text-canvas rounded-md hover:opacity-90 disabled:opacity-40">{t('create')}</button>
+                      <button onClick={() => { setCreating(null); setNewName(''); }} className="px-2 py-1 text-[10px] text-muted-foreground hover:text-muted">{t('cancel')}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              )}
+            </section>
+          ) : (
+            <div className="space-y-0.5">
+              {agents.filter(a => a.name !== 'me').map(a => {
+                const active = pathname === `/agents/${a.name}`;
+                const isAdmin = (a as any).config?.roles?.includes('admin');
+                return (
+                  <Link key={a.name} href={`/agents/${a.name}`} prefetch title={a.name}
+                    className={`flex items-center justify-center px-1 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium shrink-0 ${'bg-surface-alt text-muted'}`}>{a.name[0]}</span>
                   </Link>
-                  <button onClick={() => setConfirmDel(`agent:${a.name}`)} className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"><Trash2 size={10} /></button>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          )}
+
+          {!collapsed ? (
+            <>
+              <NavItem href="/me" icon={User} label={t('me')} badge={unreadEmails} />
+              <NavItem href="/analytics" icon={BarChart3} label={t('usage')} />
+              <NavItem href="/settings" icon={Settings} label={t('settings')} />
+            </>
+          ) : (
+            <div className="space-y-0.5">
+              <NavItem href="/me" icon={User} label="" badge={unreadEmails} />
+              <NavItem href="/analytics" icon={BarChart3} label="" />
+              <NavItem href="/settings" icon={Settings} label="" />
+            </div>
+          )}
+        </nav>
+
+        {/* Footer */}
+        {!collapsed && (
+          <div className="px-4 py-3 border-t border-border flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span className="w-1.5 h-1.5 rounded-full bg-success" />
+            {loading ? '...' : t('agents_groups_count', { a: agents.length, g: groups.length })}
           </div>
-        </section>
-      </nav>
+        )}
+      </aside>
 
-      <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-2 text-[10px] text-gray-400">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-        {loading ? '...' : `${agents.length} agents · ${groups.length} groups`}
-      </div>
-
+      {/* Delete confirm modal */}
       {confirmDel && (
         <div className="fixed inset-0 bg-black/20 z-50 flex items-center justify-center" onClick={() => setConfirmDel('')}>
-          <div className="bg-white rounded-2xl p-6 shadow-xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3"><h3 className="text-[14px] font-semibold text-gray-900">Delete {confirmDel.split(':')[1]}?</h3><button onClick={() => setConfirmDel('')} className="text-gray-300 hover:text-gray-500"><X size={16} /></button></div>
-            <p className="text-[13px] text-red-400 mb-4">This cannot be undone.</p>
+          <div className="bg-canvas rounded-2xl p-6 shadow-xl max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3"><h3 className="text-[14px] font-semibold text-foreground">{t('delete_confirm_title', { name: confirmDel.split(':')[1] })}</h3><button onClick={() => setConfirmDel('')} className="text-disabled hover:text-muted"><X size={16} /></button></div>
+            <p className="text-[13px] text-destructive mb-4">{t('delete_warning')}</p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setConfirmDel('')} className="px-3 py-1.5 text-[12px] text-gray-500 hover:bg-gray-50 rounded-lg">Cancel</button>
-              <button onClick={doDelete} className="px-4 py-1.5 text-[12px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg">Delete</button>
+              <button onClick={() => setConfirmDel('')} className="px-3 py-1.5 text-[12px] text-muted hover:bg-surface rounded-lg">{t('cancel')}</button>
+              <button onClick={doDelete} className="px-4 py-1.5 text-[12px] font-medium text-canvas bg-destructive hover:bg-destructive rounded-lg">{t('delete')}</button>
             </div>
           </div>
         </div>
       )}
-    </aside>
+    </>
   );
 }

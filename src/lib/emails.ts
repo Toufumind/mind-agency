@@ -1,8 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
-
-const AGENTS_DIR = path.join(process.cwd(), 'Agents');
+import { AGENTS_DIR } from './data-dir';
 
 export interface SendEmailParams {
   from: string;
@@ -57,6 +56,18 @@ ${body}
 `;
 
   fs.writeFileSync(path.join(emailDir, finalFilename), content, 'utf-8');
+
+  // Also save sent copy to sender's email dir (so "Me" can see sent mail)
+  if (from && from !== to) {
+    const senderEmailDir = path.join(AGENTS_DIR, from, 'email');
+    const senderDir = path.join(AGENTS_DIR, from);
+    if (fs.existsSync(senderDir)) {
+      if (!fs.existsSync(senderEmailDir)) fs.mkdirSync(senderEmailDir, { recursive: true });
+      const sentFile = path.join(senderEmailDir, `sent_${finalFilename}`);
+      fs.writeFileSync(sentFile, content, 'utf-8');
+    }
+  }
+
   return { success: true, filename: finalFilename };
 }
 

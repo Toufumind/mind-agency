@@ -3,6 +3,8 @@ import { getAgents, getStats } from '@/lib/agents';
 import fs from 'fs';
 import path from 'path';
 import { writeAudit } from '@/lib/audit';
+import { AGENTS_DIR } from '@/lib/data-dir';
+import { broadcastWs } from '@/lib/ws-embedded';
 
 export async function GET() {
   const agents = getAgents();
@@ -16,7 +18,7 @@ export async function DELETE(request: NextRequest) {
   const name = searchParams.get('name');
   if (!name) return NextResponse.json({ error: 'Agent name required' }, { status: 400 });
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) return NextResponse.json({ error: 'Invalid name' }, { status: 400 });
-  const agentDir = path.join(process.cwd(), 'Agents', name);
+  const agentDir = path.join(AGENTS_DIR, name);
   if (!fs.existsSync(agentDir)) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
 
   writeAudit({ agent: name, action: 'agent.delete', resource: `agent:${name}`, details: 'Agent directory removed' });
@@ -33,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid agent name' }, { status: 400 });
     }
 
-    const agentDir = path.join(process.cwd(), 'Agents', name);
+    const agentDir = path.join(AGENTS_DIR, name);
     if (fs.existsSync(agentDir)) {
       return NextResponse.json({ error: 'Agent already exists' }, { status: 409 });
     }
@@ -56,11 +58,16 @@ export async function POST(request: NextRequest) {
       autoProcessGroupInvites: body.autoProcessGroupInvites ?? false,
       roles: body.roles || ['member'],
       permissions: body.permissions || { canCreateGroup: false, canDeleteGroup: false, canDeploy: false },
+      ...(body.allowedTools ? { allowedTools: body.allowedTools } : {}),
+      ...(body.disallowedTools ? { disallowedTools: body.disallowedTools } : {}),
+      ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
+      ...(body.maxTurns ? { maxTurns: body.maxTurns } : {}),
     };
     fs.writeFileSync(path.join(agentDir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
 
     writeAudit({ agent: name, action: 'agent.create', resource: `agent:${name}`, details: `roles: ${config.roles.join(',')}` });
 
+    broadcastWs('sidebar_refresh', {});
     return NextResponse.json({ success: true, name, config });
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });

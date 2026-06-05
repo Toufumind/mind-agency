@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env node
+#!/usr/bin/env node
 /**
  * Group MCP Server for Mind Agency
  * One instance shared across all agents (agent name passed as CLI arg)
@@ -16,11 +16,34 @@ import path from 'path';
 import http from 'http';
 import { writeAudit, checkPermission } from '../src/lib/audit.js';
 import { writeMemory, readMemory, searchMemory, listMemory, deleteMemory } from '../src/lib/memory.js';
+import { ensureGroupConfig, loadGroupConfig, saveGroupConfig, isGroupAdmin, isGroupOwner, addMember, kickMember, getGroupInfo, setGroupInfo, setGroupAnnouncement, removeGroupAnnouncement, setMemberRole } from '../src/lib/group-config.js';
+import { submitDecision, listPendingRequests } from '../src/lib/consensus.js';
+import { checkToolPermission } from '../src/lib/permission-engine.js';
 import { randomUUID } from 'crypto';
+
+// v0.4: Import modular tool handlers
+import { groupTools, handleGroupTool } from './tools/group.js';
+import { communicationTools, handleCommunicationTool } from './tools/communication.js';
+import { workflowTools, handleWorkflowTool } from './tools/workflow.js';
+import { agentTools, handleAgentTool } from './tools/agent.js';
+import { consensusTools, handleConsensusTool } from './tools/consensus.js';
+import { memoryTools, handleMemoryTool } from './tools/memory.js';
+import { taskTools, handleTaskTool } from './tools/task.js';
 
 const WS_BASE_URL = process.env.WS_BASE_URL || `http://localhost:${process.env.WS_PORT || '3003'}`;
 const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || `${WS_BASE_URL}/broadcast`;
 const WS_EVENTS_URL = process.env.WS_EVENTS_URL || `${WS_BASE_URL}/events`;
+const API_BASE_URL = process.env.MIND_API_URL || 'http://127.0.0.1:3000';
+
+/** 触发 auto-respond 立即检查（不等 30s 轮询） */
+function triggerPoll(agent?: string, group?: string) {
+  if (agent) {
+    // v0.4: 定向触发单个 Agent，比 pollAllAgents 快 10x
+    httpPost(`${API_BASE_URL}/api/poll/agent`, { agent, group, trigger: 'mcp' });
+  } else {
+    httpPost(`${API_BASE_URL}/api/poll`, { trigger: 'mcp' });
+  }
+}
 
 /** Fire-and-forget HTTP POST */
 function httpPost(urlStr: string, body: Record<string, unknown>) {
@@ -72,7 +95,7 @@ function emitBusEvent(
   });
 }
 
-const PROJECT_ROOT = process.env.MIND_PROJECT_ROOT || process.cwd();
+const PROJECT_ROOT = process.env.MIND_DATA_DIR || process.env.MIND_PROJECT_ROOT || process.cwd();
 
 function groupsDir() { return path.join(PROJECT_ROOT, 'Groups'); }
 function exists(p: string) { return fs.existsSync(p); }
@@ -119,31 +142,32 @@ function readGroupChat(groupName: string, limit = 20): ChatMsg[] {
 function appendToChat(group: string, from: string, message: string) {
   const chatDir = path.join(groupsDir(), group, 'chat');
   if (!exists(chatDir)) fs.mkdirSync(chatDir, { recursive: true });
-  const date = new Date().toISOString().split('T')[0];
-  const entry = `\n---\nfrom: ${from}\ndate: ${new Date().toISOString()}\n---\n\n${message}\n`;
-  fs.appendFileSync(path.join(chatDir, `${date}.md`), entry, 'utf-8');
+  // Per-message file: atomic, no append concurrency
+  const ts = Date.now();
+  const safe = from.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+  const fpath = path.join(chatDir, `${ts}_${safe}.md`);
+  const content = `---\nfrom: ${from}\ndate: ${new Date().toISOString()}\n---\n\n${message}\n`;
+  const tmp = fpath + '.tmp';
+  fs.writeFileSync(tmp, content, 'utf-8');
+  fs.renameSync(tmp, fpath);
 }
 
 let agentName = '';
 
+// v0.4: Combine tool definitions from modules
 const tools = [
-  { name: 'group_list', description: '列出你所在的所有群组。', inputSchema: { type: 'object', properties: {}, required: [] } },
-  { name: 'group_send', description: '向群组发送消息。写入 Groups/<group>/chat/YYYY-MM-DD.md。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, message: { type: 'string' } }, required: ['group', 'message'] } },
-  { name: 'group_read', description: '读取群组最近的聊天记录。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, limit: { type: 'number' } }, required: ['group'] } },
-  { name: 'group_join', description: '加入群组。创建 Groups/<group>/Agents/<you>/email/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
-  { name: 'group_create', description: '创建一个新的群组。会在 Groups/<name>/ 下创建完整的目录结构（Agents/<you>/email/ + chat/ + TASK_SPEC.md）。创建者自动加入该群组。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
-  { name: 'group_delete', description: '删除群组（需要 canDeleteGroup 权限）。删除 Groups/<name>/ 整个目录。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
-  { name: 'group_leave', description: '退出群组。删除 Groups/<group>/Agents/<you>/。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
-  { name: 'workflow_trigger', description: '触发群组的工作流（执行 Groups/<group>/workflow.yaml 中的 DAG）。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
-  { name: 'workflow_status', description: '查询群组工作流运行状态。', inputSchema: { type: 'object', properties: { group: { type: 'string', description: '群组名，不传则返回所有活跃运行' } }, required: [] } },
-  { name: 'workflow_approve', description: '审批工作流中的人工审批节点。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, approvalId: { type: 'string' }, decision: { type: 'string', description: 'APPROVED 或 REJECTED' } }, required: ['group', 'approvalId', 'decision'] } },
-  { name: 'agent_memory', description: '管理长期记忆。读/写/搜索/列出记忆。记忆保存为 .mind/agents/<name>/memory/<key>.md，持久化存储。', inputSchema: { type: 'object', properties: { action: { type: 'string', description: 'write | read | search | list | delete' }, key: { type: 'string', description: '记忆键名（write/read/delete 时需要）' }, value: { type: 'string', description: '记忆内容（write 时需要）' }, query: { type: 'string', description: '搜索查询（search 时需要）' } }, required: ['action'] } },
-  { name: 'agent_create', description: '创建新的 AI Agent 并加入团队。需要提供名字和角色（如 "PM"、"Developer"、"QA"）。创建后 Agent 会自动拥有自己的 email 和 CLAUDE.md。Agent 目录在 Agents/<name>/ 下。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Agent 名字（英文名）' }, roles: { type: 'string', description: '角色列表，逗号分隔，如 "PM,Developer"' }, autoRespond: { type: 'boolean', description: '是否启用自动回复，默认 true' } }, required: ['name', 'roles'] } },
+  ...groupTools(),
+  ...communicationTools(),
+  ...workflowTools(),
+  ...agentTools(),
+  ...consensusTools(),
+  ...memoryTools(),
+  ...taskTools(),
 ];
 
 const rl = createInterface({ input: process.stdin });
 
-rl.on('line', (line: string) => {
+rl.on('line', async (line: string) => {
   if (!line.trim()) return;
   let req: any;
   try { req = JSON.parse(line); } catch { return; }
@@ -157,6 +181,34 @@ rl.on('line', (line: string) => {
     if (method === 'tools/call') {
       const name = params?.name;
       const a = params?.arguments || {};
+
+      // ── Unified permission check ──
+      const perm = checkToolPermission(agentName, name, a);
+      if (!perm.allowed) {
+        respond(id, { content: [{ type: 'text', text: perm.message }], isError: true });
+        return;
+      }
+
+      // v0.4: Try modular handlers first — return true if handled.
+      const modHandlers = [handleGroupTool, handleCommunicationTool, handleWorkflowTool, handleAgentTool, handleConsensusTool, handleMemoryTool, handleTaskTool];
+      for (const handler of modHandlers) {
+        try {
+          if (await handler(name, a, agentName, respond, id)) return;
+        } catch {}
+      }
+
+      // ──────────────────────────────────────────────────────────────────────
+      // INLINE TOOL HANDLERS (legacy fallback)
+      //
+      // The modular handlers above (imported from ./tools/*.ts) are the
+      // canonical implementations and are tried FIRST. The inline code below
+      // duplicates their logic and serves only as a fallback in case a tool
+      // is not yet ported to the modular system or a module import fails.
+      //
+      // DO NOT add new tool logic here — add it in the corresponding
+      // ./tools/ module instead. This section should shrink over time as
+      // all tools are migrated.
+      // ──────────────────────────────────────────────────────────────────────
 
       if (name === 'group_list') {
         const groups = getAgentGroups(agentName);
@@ -173,11 +225,13 @@ rl.on('line', (line: string) => {
       if (name === 'group_send') {
         const { group, message } = a;
         if (!group || !message) { respond(id, { content: [{ type: 'text', text: 'group and message required' }], isError: true }); return; }
+        if (!getAgentGroups(agentName).includes(group)) { respond(id, { content: [{ type: 'text', text: `you are not a member of ${group}` }], isError: true }); return; }
         appendToChat(group, agentName, message);
         broadcast({ type: 'group_message', group, from: agentName, message });
+        triggerPoll(agentName, group); // v0.4: 定向触发，不等轮询
         writeAudit({ agent: agentName, action: 'group.send', resource: `group:${group}`, details: message.slice(0, 200) });
         // ── EventBus: message.sent ──
-        const mentions = (message.match(/@(\w+)/g) || []).map((m: string) => m.slice(1));
+        const mentions = (message.match(/@([^\s]+)/g) || []).map((m: string) => m.slice(1));
         emitBusEvent('message.sent', {
           sender: agentName,
           group,
@@ -201,6 +255,7 @@ rl.on('line', (line: string) => {
       if (name === 'group_read') {
         const { group, limit } = a;
         if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
+        if (!getAgentGroups(agentName).includes(group)) { respond(id, { content: [{ type: 'text', text: `you are not a member of ${group}` }], isError: true }); return; }
         const msgs = readGroupChat(group, limit || 20);
         respond(id, { content: [{ type: 'text', text: msgs.length ? JSON.stringify(msgs, null, 2) : `${group} has no messages` }] });
         return;
@@ -213,20 +268,28 @@ rl.on('line', (line: string) => {
         if (!exists(gDir)) { respond(id, { content: [{ type: 'text', text: `group "${group}" not found` }], isError: true }); return; }
         const agDir = path.join(gDir, 'Agents', agentName);
         if (exists(agDir)) { respond(id, { content: [{ type: 'text', text: `already in ${group}` }] }); return; }
+
+        // Require invitation unless inviter is group admin or this is a new group with no members
+        const invDir = path.join(gDir, '.invitations');
+        const invFile = path.join(invDir, `${agentName.toLowerCase()}.json`);
+        const wasInvited = exists(invFile);
+
+        if (!wasInvited) {
+          // Allow join without invitation only if group has no members yet (brand new group)
+          const membersDir = path.join(gDir, 'Agents');
+          const hasMembers = exists(membersDir) && readDir(membersDir).filter(e => e.isDirectory()).length > 0;
+          if (hasMembers) {
+            respond(id, { content: [{ type: 'text', text: `cannot join ${group}: you need an invitation from a group admin` }], isError: true });
+            return;
+          }
+        }
+
+        if (wasInvited) { try { fs.unlinkSync(invFile); } catch {} }
         fs.mkdirSync(path.join(agDir, 'email'), { recursive: true });
-        appendToChat(group, 'system', `${agentName} joined the group`);
-        writeAudit({ agent: agentName, action: 'group.join', resource: `group:${group}` });
-
-        // ── EventBus: task.assigned (agent joining group scope) ──
-        emitBusEvent('task.assigned', {
-          taskId: `group:${group}`,
-          from: 'system',
-          to: agentName,
-          title: `Joined group ${group}`,
-        });
-
-        const others = exists(path.join(gDir, 'Agents')) ? readDir(path.join(gDir, 'Agents')).filter(e => e.isDirectory() && e.name !== agentName).map(e => e.name) : [];
-        respond(id, { content: [{ type: 'text', text: `joined ${group}. members: ${others.join(', ') || 'none'}` }] });
+        appendToChat(group, 'system', `${agentName} ${wasInvited ? '接受了邀请并' : ''}加入了群组`);
+        writeAudit({ agent: agentName, action: 'group.join', resource: `group:${group}`, details: wasInvited ? 'accepted invitation' : 'joined directly' });
+        triggerPoll(agentName, group);
+        respond(id, { content: [{ type: 'text', text: `joined ${group}${wasInvited ? ' (accepted invitation)' : ''}` }] });
         return;
       }
 
@@ -238,6 +301,7 @@ rl.on('line', (line: string) => {
         appendToChat(group, 'system', `${agentName} left the group`);
         fs.rmSync(agDir, { recursive: true, force: true });
         writeAudit({ agent: agentName, action: 'group.leave', resource: `group:${group}` });
+        triggerPoll(agentName, group);
 
         // ── EventBus: task.completed (agent leaving = completed that scope) ──
         emitBusEvent('task.completed', {
@@ -265,7 +329,7 @@ rl.on('line', (line: string) => {
           return;
         }
         if (action === 'search' && query) {
-          const results = searchMemory(agentName, query);
+          const results = await searchMemory(agentName, query);
           respond(id, { content: [{ type: 'text', text: results.length > 0 ? results.map((r, i) => `${i + 1}. **${r.key}**: ${r.content.slice(0, 150)}`).join('\n') : `未找到与 "${query}" 相关的记忆` }] });
           return;
         }
@@ -318,6 +382,51 @@ rl.on('line', (line: string) => {
         return;
       }
 
+      // ── workflow_create ──
+      if (name === 'workflow_create') {
+        const { group, name: wfName, description: wfDesc, steps: stepsJson } = a;
+        if (!group || !wfName || !stepsJson) {
+          respond(id, { content: [{ type: 'text', text: 'group, name and steps required' }], isError: true });
+          return;
+        }
+        const gDir = path.join(groupsDir(), group);
+        if (!exists(gDir)) { respond(id, { content: [{ type: 'text', text: `group "${group}" not found` }], isError: true }); return; }
+
+        // Parse steps
+        let steps: any[];
+        try { steps = JSON.parse(stepsJson); if (!Array.isArray(steps)) throw new Error(); } catch {
+          respond(id, { content: [{ type: 'text', text: 'steps must be a valid JSON array' }], isError: true }); return;
+        }
+
+        // Build workflow.yaml
+        const yamlLines = [
+          `name: ${wfName}`,
+          `description: "${wfDesc || `${wfName} workflow`}"`,
+          'steps:',
+        ];
+        for (const s of steps) {
+          yamlLines.push(`  - id: ${s.id || 'step_' + s.agent}`);
+          yamlLines.push(`    agent: ${s.agent || 'unknown'}`);
+          yamlLines.push(`    action: ${s.action || 'execute'}`);
+          if (s.dependsOn) yamlLines.push(`    dependsOn: [${Array.isArray(s.dependsOn) ? s.dependsOn.join(', ') : s.dependsOn}]`);
+          if (s.condition) yamlLines.push(`    condition: "${s.condition}"`);
+          if (s.prompt) yamlLines.push(`    prompt: |\n      ${s.prompt.replace(/\n/g, '\n      ')}`);
+          if (s.priority) yamlLines.push(`    priority: ${s.priority}`);
+          if (s.retry) yamlLines.push(`    retry: ${s.retry}`);
+          if (s.timeout) yamlLines.push(`    timeout: ${s.timeout}`);
+        }
+
+        fs.writeFileSync(path.join(gDir, 'workflow.yaml'), yamlLines.join('\n') + '\n', 'utf-8');
+        writeAudit({ agent: agentName, action: 'workflow.create', resource: `group:${group}`, details: `workflow: ${wfName}` });
+
+        // Post to group chat
+        appendToChat(group, agentName, `创建了 workflow "${wfName}" (${steps.length} steps)`);
+        triggerPoll(agentName, group);
+
+        respond(id, { content: [{ type: 'text', text: `created workflow "${wfName}" in ${group}. Use workflow_trigger to start it.` }] });
+        return;
+      }
+
       if (name === 'group_create') {
         const { group } = a;
         if (!group) { respond(id, { content: [{ type: 'text', text: 'group name required' }], isError: true }); return; }
@@ -334,12 +443,84 @@ rl.on('line', (line: string) => {
         // Write default TASK_SPEC
         const spec = `# 任务流转规范\n\n任务在 work/<group>/ 下按目录流转，**文件位置即状态**。\n\n## 目录结构\n\n\`\`\`\nwork/<group>/\n├── inbox/                  # 待分配\n├── assigned/<agent>/       # 各 Agent 的工作队列\n└── done/                   # 已完成\n\`\`\`\n\n## 状态流转\n\n\`\`\`\ninbox/ → assigned/<agent>/ → done/\n  ↓           ↓                  ↓\n new      in_progress          done\n\`\`\``;
         fs.writeFileSync(path.join(gDir, 'TASK_SPEC.md'), spec, 'utf-8');
-        // Welcome message in chat
-        const today = new Date().toISOString().split('T')[0];
-        const chatFile = path.join(gDir, 'chat', `${today}.md`);
-        fs.appendFileSync(chatFile, `\n---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n${group} 群组已创建。${agentName} 是创建者。\n`, 'utf-8');
+        // Welcome message in chat (per-message file)
+        appendToChat(group, 'system', `${group} 群组已创建。${agentName} 是创建者。`);
         writeAudit({ agent: agentName, action: 'group.create', resource: `group:${group}` });
-        respond(id, { content: [{ type: 'text', text: `created group "${group}". You are now a member.` }] });
+        // Set creator as owner
+        ensureGroupConfig(group, agentName);
+        respond(id, { content: [{ type: 'text', text: `created group "${group}". You are the owner.` }] });
+        return;
+      }
+
+      // ── group_set_admin ──
+      if (name === 'group_set_admin') {
+        const { group, agent: target, admin } = a;
+        if (!group || !target) { respond(id, { content: [{ type: 'text', text: 'group and agent required' }], isError: true }); return; }
+        if (!isGroupOwner(group, agentName)) {
+          respond(id, { content: [{ type: 'text', text: `permission denied: only the group owner (${loadGroupConfig(group)?.owner}) can set admins` }], isError: true }); return;
+        }
+        const config = loadGroupConfig(group);
+        if (!config) { respond(id, { content: [{ type: 'text', text: 'group config not found' }], isError: true }); return; }
+        if (admin) {
+          if (!config.admins.includes(target)) config.admins.push(target);
+        } else {
+          config.admins = config.admins.filter(a => a !== target);
+        }
+        saveGroupConfig(group, config);
+        writeAudit({ agent: agentName, action: 'group.set_admin', resource: `group:${group}`, details: `${target} ${admin ? 'promoted to admin' : 'removed from admin'}` });
+        respond(id, { content: [{ type: 'text', text: `${target} ${admin ? 'is now an admin' : 'is no longer an admin'} of ${group}` }] });
+        return;
+      }
+
+      // ── group_invite ──
+      if (name === 'group_invite') {
+        const { group, agent: target } = a;
+        if (!group || !target) { respond(id, { content: [{ type: 'text', text: 'group and agent required' }], isError: true }); return; }
+        if (!isGroupAdmin(group, agentName)) {
+          respond(id, { content: [{ type: 'text', text: `permission denied: you are not an admin of ${group}` }], isError: true }); return;
+        }
+        // Check if target already a member
+        const tgtDir = path.join(groupsDir(), group, 'Agents', target);
+        if (exists(tgtDir)) { respond(id, { content: [{ type: 'text', text: `${target} is already in ${group}` }] }); return; }
+
+        // Write invitation file — target's heartbeat/scheduler will detect it
+        const invDir = path.join(groupsDir(), group, '.invitations');
+        if (!exists(invDir)) fs.mkdirSync(invDir, { recursive: true });
+        const invFile = path.join(invDir, `${target.toLowerCase()}.json`);
+        fs.writeFileSync(invFile, JSON.stringify({
+          group, invitedBy: agentName, invitedAt: Date.now(),
+        }, null, 2), 'utf-8');
+
+        appendToChat(group, 'system', `${agentName} 邀请了 ${target} 加入群组（等待 ${target} 接受）`);
+        writeAudit({ agent: agentName, action: 'group.invite', resource: `group:${group}`, details: `invited ${target}` });
+        triggerPoll(target, group); // 通知被邀请的 Agent
+        respond(id, { content: [{ type: 'text', text: `sent invitation to ${target} for ${group}` }] });
+        return;
+      }
+
+      // ── group_kick ──
+      if (name === 'group_kick') {
+        const { group, agent: target } = a;
+        if (!group || !target) { respond(id, { content: [{ type: 'text', text: 'group and agent required' }], isError: true }); return; }
+        if (target.toLowerCase() === agentName.toLowerCase()) {
+          respond(id, { content: [{ type: 'text', text: 'cannot kick yourself. Use group_leave instead.' }], isError: true }); return;
+        }
+        if (!isGroupAdmin(group, agentName)) {
+          respond(id, { content: [{ type: 'text', text: `permission denied: you are not an admin of ${group}` }], isError: true }); return;
+        }
+        // Admins cannot be kicked by non-owners
+        const config = loadGroupConfig(group);
+        if (config && config.admins.includes(target) && !isGroupOwner(group, agentName)) {
+          respond(id, { content: [{ type: 'text', text: `permission denied: only the group owner can kick admins` }], isError: true }); return;
+        }
+        if (kickMember(group, target)) {
+          appendToChat(group, 'system', `${target} 被 ${agentName} 踢出了群组`);
+          writeAudit({ agent: agentName, action: 'group.kick', resource: `group:${group}`, details: `kicked ${target}` });
+          triggerPoll(agentName, group);
+          respond(id, { content: [{ type: 'text', text: `kicked ${target} from ${group}` }] });
+        } else {
+          respond(id, { content: [{ type: 'text', text: `${target} is not in ${group}` }] });
+        }
         return;
       }
 
@@ -347,8 +528,8 @@ rl.on('line', (line: string) => {
       if (name === 'group_delete') {
         const { group } = a;
         if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
-        if (!checkPermission(agentName, 'canDeleteGroup')) {
-          respond(id, { content: [{ type: 'text', text: 'permission denied: need canDeleteGroup' }], isError: true });
+        if (!checkPermission(agentName, 'canDeleteGroup') && !isGroupOwner(group, agentName)) {
+          respond(id, { content: [{ type: 'text', text: 'permission denied: need canDeleteGroup or be group owner' }], isError: true });
           writeAudit({ agent: agentName, action: 'group.delete', resource: `group:${group}`, details: 'permission denied', status: 'error' });
           return;
         }
@@ -367,7 +548,7 @@ rl.on('line', (line: string) => {
         if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
         const wfPath = path.join(groupsDir(), group, 'workflow.yaml');
         if (!exists(wfPath)) { respond(id, { content: [{ type: 'text', text: `no workflow.yaml in ${group}` }], isError: true }); return; }
-        httpPost(`${WS_BASE_URL}/workflows/run`, { yaml: fs.readFileSync(wfPath, 'utf-8') });
+        httpPost(`${WS_BASE_URL}/workflows/run`, { yaml: fs.readFileSync(wfPath, 'utf-8'), group });
         emitBusEvent('task.created', { title: `Workflow triggered for ${group}`, agent: agentName, group });
         respond(id, { content: [{ type: 'text', text: `workflow triggered for group "${group}"` }] });
         return;
@@ -398,6 +579,235 @@ rl.on('line', (line: string) => {
         httpPost(`${WS_BASE_URL}/workflows/approve`, { approvalId, decision });
         emitBusEvent('task.completed', { taskId: `workflow:${group}`, by: agentName, decision, approvalId });
         respond(id, { content: [{ type: 'text', text: `approval ${decision} submitted for ${approvalId}` }] });
+        return;
+      }
+
+      // ── workflow_cancel (v0.4) ──
+      if (name === 'workflow_cancel') {
+        const { group } = a;
+        if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
+        // Get active run for this group, then cancel
+        try {
+          const runsRaw = await fetchJSON(`${WS_BASE_URL}/workflows/stats`);
+          const runs = (runsRaw as any)?.runs || [];
+          const activeRun = runs.find((r: any) => r.group === group && r.status === 'running');
+          if (!activeRun) {
+            respond(id, { content: [{ type: 'text', text: `no active workflow in ${group}` }] });
+            return;
+          }
+          httpPost(`${WS_BASE_URL}/workflows/cancel`, { runId: activeRun.runId });
+          respond(id, { content: [{ type: 'text', text: `workflow cancelled for ${group}` }] });
+        } catch {
+          respond(id, { content: [{ type: 'text', text: 'failed to cancel workflow' }], isError: true });
+        }
+        return;
+      }
+
+      // ── email_send — structured email via MCP (not Write) ──
+      if (name === 'email_send') {
+        const { to, subject, body: emailBody } = a;
+        if (!to || !subject) { respond(id, { content: [{ type: 'text', text: 'to and subject required' }], isError: true }); return; }
+        const recipientDir = path.join(PROJECT_ROOT, 'Agents', to);
+        if (!exists(recipientDir)) { respond(id, { content: [{ type: 'text', text: `agent "${to}" not found` }], isError: true }); return; }
+
+        const emailDir = path.join(recipientDir, 'email');
+        if (!exists(emailDir)) fs.mkdirSync(emailDir, { recursive: true });
+
+        const date = new Date();
+        const dateStr = date.toISOString().split('T')[0];
+        const safeSubject = subject.replace(/[^a-zA-Z0-9一-鿿\s\-_]/g, '').replace(/\s+/g, '_').slice(0, 50);
+        let filename = `${dateStr}_${safeSubject || 'no_subject'}.md`;
+        let c = 1;
+        while (exists(path.join(emailDir, filename))) { filename = `${dateStr}_${safeSubject}_${c++}.md`; }
+
+        const content = `---\nfrom: ${agentName}\nto: ${to}\nsubject: ${subject}\ndate: ${dateStr}\n---\n\n${emailBody || ''}\n`;
+        fs.writeFileSync(path.join(emailDir, filename), content, 'utf-8');
+
+        // Also save sent copy to sender
+        const senderEmailDir = path.join(PROJECT_ROOT, 'Agents', agentName, 'email');
+        if (exists(path.join(PROJECT_ROOT, 'Agents', agentName))) {
+          if (!exists(senderEmailDir)) fs.mkdirSync(senderEmailDir, { recursive: true });
+          fs.writeFileSync(path.join(senderEmailDir, `sent_${filename}`), content, 'utf-8');
+        }
+
+        writeAudit({ agent: agentName, action: 'email.send', resource: `agent:${to}`, details: subject.slice(0, 100) });
+        triggerPoll(to); // 通知收件人
+        respond(id, { content: [{ type: 'text', text: `邮件已发送给 ${to}: ${subject}` }] });
+        return;
+      }
+
+      // ── decide — general-purpose structured decision ──
+      // Works for: consensus votes, workflow approvals, AND group invitations.
+      if (name === 'decide') {
+        const { group, decision, reason, requestId } = a;
+        if (!group || !decision) { respond(id, { content: [{ type: 'text', text: 'group and decision required' }], isError: true }); return; }
+
+        const dec = decision.toUpperCase();
+        if (!['APPROVED','REJECTED'].includes(dec)) {
+          respond(id, { content: [{ type: 'text', text: 'decision must be APPROVED or REJECTED' }], isError: true });
+          return;
+        }
+
+        // ── Path I: Group invitation response ──
+        const invDir = path.join(groupsDir(), group, '.invitations');
+        const invFile = path.join(invDir, `${agentName.toLowerCase()}.json`);
+        if (exists(invFile)) {
+          try {
+            if (dec === 'APPROVED') {
+              // Accept invitation
+              fs.unlinkSync(invFile);
+              const agDir = path.join(groupsDir(), group, 'Agents', agentName);
+              if (!exists(path.join(agDir, 'email'))) fs.mkdirSync(path.join(agDir, 'email'), { recursive: true });
+              appendToChat(group, 'system', `${agentName} 接受了邀请并加入了群组`);
+              writeAudit({ agent: agentName, action: 'group.join', resource: `group:${group}`, details: 'accepted invitation via decide' });
+              respond(id, { content: [{ type: 'text', text: `✅ 已接受 ${group} 的邀请，加入了群组` }] });
+            } else {
+              // Reject invitation
+              fs.unlinkSync(invFile);
+              appendToChat(group, 'system', `${agentName} 拒绝了群组邀请`);
+              writeAudit({ agent: agentName, action: 'group.invite.reject', resource: `group:${group}`, details: 'rejected invitation via decide' });
+              respond(id, { content: [{ type: 'text', text: `❌ 已拒绝 ${group} 的邀请` }] });
+            }
+            triggerPoll(agentName, group);
+            return;
+          } catch { /* fall through to consensus paths */ }
+        }
+
+        // ── Path A: Specific consensus request ID ──
+        if (requestId) {
+          const result = submitDecision(group, requestId, agentName, dec as 'APPROVED' | 'REJECTED');
+          if (result.status === 'approved') {
+            respond(id, { content: [{ type: 'text', text: `✅ 共识 #${requestId} 已批准` }] });
+          } else if (result.status === 'rejected') {
+            respond(id, { content: [{ type: 'text', text: `❌ 共识 #${requestId} 已拒绝` }] });
+          } else if (result.status === 'not_an_approver') {
+            respond(id, { content: [{ type: 'text', text: '你不是该共识请求的审批人' }], isError: true });
+          } else {
+            respond(id, { content: [{ type: 'text', text: `已记录。还需要更多批准 (${Object.keys(result.request?.decisions || {}).length}/${(result.request?.approvers?.length || 0)})` }] });
+          }
+          writeAudit({ agent: agentName, action: 'consensus.decide', resource: `group:${group}`, details: `${dec} on #${requestId}` });
+          return;
+        }
+
+        // ── Path B: Auto-match pending requests for this agent ──
+        const pending = listPendingRequests(group);
+        const myRequests = pending.filter(r =>
+          r.approvers.some(a => a.toLowerCase() === agentName.toLowerCase()) &&
+          !(r.decisions[agentName])
+        );
+
+        if (myRequests.length === 1) {
+          const result = submitDecision(group, myRequests[0].id, agentName, dec as 'APPROVED' | 'REJECTED');
+          const rtext = result.status === 'approved' ? '✅ 已批准' : result.status === 'rejected' ? '❌ 已拒绝' : '已记录';
+          respond(id, { content: [{ type: 'text', text: `${rtext} 共识 #${myRequests[0].id}` }] });
+        } else if (myRequests.length > 1) {
+          const list = myRequests.map(r => `#${r.id}: ${r.description} (需 ${r.approvers.join(',')})`).join('\n');
+          respond(id, { content: [{ type: 'text', text: `有 ${myRequests.length} 个待审批请求，请用 requestId 指定：\n${list}` }], isError: true });
+        } else {
+          // ── Path C: No consensus request found — fall back to legacy .decisions/ ──
+          const decisionsDir = path.join(groupsDir(), group, '.decisions');
+          if (!exists(decisionsDir)) fs.mkdirSync(decisionsDir, { recursive: true });
+          const decFile = path.join(decisionsDir, `${Date.now()}_${agentName}_${dec}.json`);
+          fs.writeFileSync(decFile, JSON.stringify({
+            agent: agentName, group, decision: dec, reason: reason || '', timestamp: Date.now(),
+          }), 'utf-8');
+          appendToChat(group, agentName, `[decision] **${dec}**${reason ? ' (' + reason + ')' : ''}`);
+          respond(id, { content: [{ type: 'text', text: `决策已记录：${dec} → ${group}（无待审批请求，已写入 .decisions/）` }] });
+        }
+
+        writeAudit({ agent: agentName, action: 'workflow.decide', resource: `group:${group}`, details: dec });
+        triggerPoll(agentName, group);
+        return;
+      }
+
+      // ── consensus_list ──
+      if (name === 'consensus_list') {
+        const { group: g } = a;
+        if (g) {
+          const pending = listPendingRequests(g);
+          if (pending.length === 0) {
+            respond(id, { content: [{ type: 'text', text: `${g} 群暂无待审批的共识请求` }] });
+          } else {
+            const list = pending.map(r => `#${r.id}: ${r.description} [需: ${r.approvers.join(',')}] [已批: ${Object.keys(r.decisions).join(',') || '无'}]`).join('\n');
+            respond(id, { content: [{ type: 'text', text: `${g} 群 ${pending.length} 个待审批:\n${list}` }] });
+          }
+        } else {
+          // No group specified: list requests where this agent is an approver
+          const groupsDir = groupsDir();
+          if (!exists(groupsDir)) { respond(id, { content: [{ type: 'text', text: '暂无' }] }); return; }
+          let all: string[] = [];
+          for (const gd of readDir(groupsDir).filter(e => e.isDirectory())) {
+            const pending = listPendingRequests(gd.name);
+            for (const r of pending) {
+              if (r.approvers.some(a => a.toLowerCase() === agentName.toLowerCase())) {
+                all.push(`[${gd.name}] #${r.id}: ${r.description}`);
+              }
+            }
+          }
+          if (all.length === 0) {
+            respond(id, { content: [{ type: 'text', text: '你目前没有待审批的共识请求' }] });
+          } else {
+            respond(id, { content: [{ type: 'text', text: `你有 ${all.length} 个待审批:\n${all.join('\n')}` }] });
+          }
+        }
+        return;
+      }
+
+      // ── group_set_role (owner only) ──
+      if (name === 'group_set_role') {
+        const { group, agent: target, role } = a;
+        if (!group || !target || !role) { respond(id, { content: [{ type: 'text', text: 'group, agent and role required' }], isError: true }); return; }
+        if (!['owner', 'admin', 'member'].includes(role)) { respond(id, { content: [{ type: 'text', text: 'role must be owner, admin, or member' }], isError: true }); return; }
+        if (!isGroupOwner(group, agentName)) { respond(id, { content: [{ type: 'text', text: 'permission denied: only the group owner can set roles' }], isError: true }); return; }
+        const ok = setMemberRole(group, target, role);
+        if (ok) {
+          appendToChat(group, 'system', `${agentName} 将 ${target} 的角色设为 ${role}`);
+          writeAudit({ agent: agentName, action: 'group.set_role', resource: `group:${group}`, details: `${target} → ${role}` });
+          respond(id, { content: [{ type: 'text', text: `${target} 的角色已设为 ${role}` }] });
+        } else {
+          respond(id, { content: [{ type: 'text', text: '群组不存在' }], isError: true });
+        }
+        return;
+      }
+
+      // ── group_get_info ──
+      if (name === 'group_get_info') {
+        const { group } = a;
+        if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
+        const info = getGroupInfo(group);
+        if (!info) { respond(id, { content: [{ type: 'text', text: `group "${group}" not found` }], isError: true }); return; }
+        respond(id, { content: [{ type: 'text', text: JSON.stringify(info, null, 2) }] });
+        return;
+      }
+
+      // ── group_set_info (admin only) ──
+      if (name === 'group_set_info') {
+        const { group, name: newName, description } = a;
+        if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
+        if (!newName && !description) { respond(id, { content: [{ type: 'text', text: '至少提供 name 或 description 之一' }], isError: true }); return; }
+        if (!isGroupAdmin(group, agentName)) { respond(id, { content: [{ type: 'text', text: 'permission denied: need admin role' }], isError: true }); return; }
+        const ok = setGroupInfo(group, { name: newName, description });
+        writeAudit({ agent: agentName, action: 'group.set_info', resource: `group:${group}`, details: `name=${newName || '(unchanged)'} desc=${(description || '').slice(0, 100)}` });
+        respond(id, { content: [{ type: 'text', text: ok ? `群信息已更新` : '群组不存在' }] });
+        return;
+      }
+
+      // ── group_announce (admin only) ──
+      if (name === 'group_announce') {
+        const { group, title, content, clear } = a;
+        if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return; }
+        if (!isGroupAdmin(group, agentName)) { respond(id, { content: [{ type: 'text', text: 'permission denied: need admin role' }], isError: true }); return; }
+        if (clear) {
+          removeGroupAnnouncement(group);
+          writeAudit({ agent: agentName, action: 'group.announce.remove', resource: `group:${group}` });
+          respond(id, { content: [{ type: 'text', text: '公告已移除' }] });
+        } else {
+          if (!title || !content) { respond(id, { content: [{ type: 'text', text: '发布公告需要 title 和 content' }], isError: true }); return; }
+          setGroupAnnouncement(group, title, content, agentName);
+          appendToChat(group, 'system', `📢 新公告: ${title}`);
+          writeAudit({ agent: agentName, action: 'group.announce', resource: `group:${group}`, details: title });
+          respond(id, { content: [{ type: 'text', text: `公告已发布: ${title}` }] });
+        }
         return;
       }
 
