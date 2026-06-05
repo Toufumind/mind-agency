@@ -24,34 +24,47 @@ interface Props {
   onStepMove?: (stepId: string, newAgent: string) => void;
 }
 
-const COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  pending:     { bg: '#f3f4f6', border: '#d1d5db', text: '#6b7280' },
-  in_progress: { bg: '#eff6ff', border: '#3b82f6', text: '#1d4ed8' },
-  completed:   { bg: '#f0fdf4', border: '#22c55e', text: '#15803d' },
-  failed:      { bg: '#fef2f2', border: '#ef4444', text: '#dc2626' },
-  skipped:     { bg: '#f9fafb', border: '#e5e7eb', text: '#9ca3af' },
-  blocked:     { bg: '#fffbeb', border: '#f59e0b', text: '#d97706' },
+const C: Record<string, { bg: string; bd: string; tx: string }> = {
+  pending:     { bg: '#f3f4f6', bd: '#d1d5db', tx: '#6b7280' },
+  in_progress: { bg: '#eff6ff', bd: '#3b82f6', tx: '#1d4ed8' },
+  completed:   { bg: '#f0fdf4', bd: '#22c55e', tx: '#15803d' },
+  failed:      { bg: '#fef2f2', bd: '#ef4444', tx: '#dc2626' },
+  skipped:     { bg: '#f9fafb', bd: '#e5e7eb', tx: '#9ca3af' },
+  blocked:     { bg: '#fffbeb', bd: '#f59e0b', tx: '#d97706' },
 };
 
-const ICONS: Record<string, string> = {
+const IC: Record<string, string> = {
   pending: '○', in_progress: '◉', completed: '✓', failed: '✗', skipped: '–', blocked: '◐',
 };
 
 export default function WorkflowGantt({ steps, progress, onStepClick, onStepDelete, onStepAdd, onStepMove }: Props) {
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [hov, setHov] = useState<string | null>(null);
   const [tip, setTip] = useState({ x: 0, y: 0 });
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; step: StepData } | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState<string | null>(null);
-  const [, forceUpdate] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [ctx, setCtx] = useState<{ x: number; y: number; s: StepData } | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragAgent, setDragAgent] = useState<string | null>(null);
+  const [, rerender] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const refs = useRef<Map<string, HTMLDivElement>>(new Map());
 
+  // Close context menu
   useEffect(() => {
-    const h = () => setContextMenu(null);
-    if (contextMenu) document.addEventListener('click', h);
+    const h = () => setCtx(null);
+    if (ctx) document.addEventListener('click', h);
     return () => document.removeEventListener('click', h);
-  }, [contextMenu]);
+  }, [ctx]);
+
+  // Empty state
+  if (!steps || steps.length === 0) {
+    return (
+      <div className="bg-surface rounded-xl p-8 text-center">
+        <p className="text-[12px] text-muted-foreground">暂无步骤</p>
+        {onStepAdd && (
+          <button onClick={() => onStepAdd()} className="mt-2 text-[11px] text-primary hover:underline">+ 添加第一个步骤</button>
+        )}
+      </div>
+    );
+  }
 
   // Group by agent
   const lanes = useMemo(() => {
@@ -66,63 +79,78 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
 
   // Topological layers
   const layers = useMemo(() => {
-    const result: string[][] = [];
-    const placed = new Set<string>();
+    const r: string[][] = []; const p = new Set<string>();
     const map = new Map(steps.map(s => [s.id, s]));
     let rest = steps.map(s => s.id);
     while (rest.length > 0) {
-      const layer: string[] = []; const next: string[] = [];
+      const l: string[] = []; const n: string[] = [];
       for (const id of rest) {
-        const deps = Array.isArray(map.get(id)?.dependsOn) ? map.get(id)!.dependsOn! : [];
-        if (deps.every(d => placed.has(d)) || deps.length === 0) layer.push(id);
-        else next.push(id);
+        const d = Array.isArray(map.get(id)?.dependsOn) ? map.get(id)!.dependsOn! : [];
+        if (d.every(x => p.has(x)) || d.length === 0) l.push(id); else n.push(id);
       }
-      if (layer.length === 0) break;
-      for (const id of layer) placed.add(id);
-      result.push(layer);
-      rest = next;
+      if (l.length === 0) break;
+      for (const id of l) p.add(id);
+      r.push(l); rest = n;
     }
-    return result;
+    return r;
   }, [steps]);
 
-  // Get card positions from DOM refs (reads live DOM, not cached)
-  const getCardRect = (stepId: string) => {
-    const el = cardRefs.current.get(stepId);
-    const container = containerRef.current;
-    if (!el || !container) return null;
+  const LANE_H = 72;
+  const LANE_GAP = 2;
+  const CARD_H = 44;
+  const LABEL_W = 72;
+  const totalH = lanes.length * (LANE_H + LANE_GAP) + LANE_GAP;
+
+  // Measure card rects from live DOM
+  const measure = (id: string) => {
+    const el = refs.current.get(id);
+    const box = boxRef.current;
+    if (!el || !box) return null;
     const er = el.getBoundingClientRect();
-    const cr = container.getBoundingClientRect();
-    return { left: er.left - cr.left, right: er.right - cr.left, cx: (er.left + er.right) / 2 - cr.left, cy: (er.top + er.height / 2) - cr.top };
+    const br = box.getBoundingClientRect();
+    return { l: er.left - br.left, r: er.right - br.left, cy: (er.top + er.height / 2) - br.top };
   };
 
-  // Drag handlers
-  const handleDragStart = (e: React.DragEvent, step: StepData) => {
-    setDragging(step.id);
-    e.dataTransfer.setData('text/plain', step.id);
+  // Build edges
+  const edges = useMemo(() => {
+    const res: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+    for (const s of steps) {
+      const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
+      for (const d of deps) {
+        const src = measure(d);
+        const tgt = measure(s.id);
+        if (src && tgt) {
+          res.push({ x1: src.r, y1: src.cy, x2: tgt.l, y2: tgt.cy });
+        }
+      }
+    }
+    return res;
+  }, [steps, lanes, rerender]);
+
+  // Drag
+  const onDragStart = (e: React.DragEvent, s: StepData) => {
+    setDragId(s.id);
+    e.dataTransfer.setData('text/plain', s.id);
     e.dataTransfer.effectAllowed = 'move';
   };
-  const handleDragOver = (e: React.DragEvent, agent: string) => {
+  const onDragOver = (e: React.DragEvent, agent: string) => { e.preventDefault(); setDragAgent(agent); };
+  const onDrop = (e: React.DragEvent, agent: string) => {
     e.preventDefault();
-    setDragOver(agent);
+    const id = e.dataTransfer.getData('text/plain');
+    if (id && onStepMove) onStepMove(id, agent);
+    setDragId(null); setDragAgent(null);
+    requestAnimationFrame(() => rerender(n => n + 1));
   };
-  const handleDrop = (e: React.DragEvent, agent: string) => {
-    e.preventDefault();
-    const stepId = e.dataTransfer.getData('text/plain');
-    if (stepId && onStepMove) onStepMove(stepId, agent);
-    setDragging(null);
-    setDragOver(null);
-    // Force re-render after DOM updates to recalculate arrow positions
-    requestAnimationFrame(() => forceUpdate(n => n + 1));
-  };
-  const handleDragEnd = () => { setDragging(null); setDragOver(null); };
+  const onDragEnd = () => { setDragId(null); setDragAgent(null); };
 
   return (
-    <div ref={containerRef} className="bg-surface rounded-xl w-full overflow-x-auto relative select-none">
-      {/* Layer headers */}
+    <div ref={boxRef} className="bg-surface rounded-xl w-full overflow-x-auto relative select-none">
+      {/* Header */}
       <div className="flex border-b border-border bg-surface-alt h-7">
-        {layers.map((layer, i) => (
-          <div key={i} className="flex-1 flex items-center justify-center text-[9px] text-muted-foreground border-r border-border/50 last:border-r-0 px-1">
-            {layer.length === 1 ? layer[0] : `Phase ${i + 1}`}
+        <div className="w-[72px] shrink-0 border-r border-border/50" />
+        {layers.map((_, i) => (
+          <div key={i} className="flex-1 flex items-center justify-center text-[9px] text-muted-foreground border-r border-border/30 last:border-r-0">
+            {layers[i].length === 1 ? layers[i][0] : `Phase ${i + 1}`}
           </div>
         ))}
       </div>
@@ -130,105 +158,74 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
       {/* Lanes */}
       {lanes.map(([agent, agentSteps], li) => (
         <div key={agent}
-          className={`flex border-b border-border/30 transition-colors ${li % 2 === 0 ? 'bg-surface/30' : ''} ${dragOver === agent ? 'bg-primary/5 ring-1 ring-primary/30' : ''}`}
-          onDragOver={e => handleDragOver(e, agent)}
-          onDrop={e => handleDrop(e, agent)}
-          onDragEnd={handleDragEnd}>
-          <div className="w-20 shrink-0 flex items-center px-2 text-[9px] font-semibold text-muted border-r border-border/50">
-            {agent}
-          </div>
+          className={`flex border-b border-border/30 ${li % 2 === 0 ? 'bg-surface/30' : ''} ${dragAgent === agent ? 'bg-primary/5 ring-1 ring-primary/30' : ''}`}
+          onDragOver={e => onDragOver(e, agent)}
+          onDrop={e => onDrop(e, agent)}
+          onDragEnd={onDragEnd}>
+          <div className="w-[72px] shrink-0 flex items-center px-2 text-[9px] font-semibold text-muted border-r border-border/50">{agent}</div>
           <div className="flex-1 flex">
-            {layers.map((layer, li) => {
-              const layerSteps = agentSteps.filter(s => layer.includes(s.id));
-              return (
-                <div key={li} className="flex-1 flex items-center justify-center gap-1.5 px-1 py-1.5 border-r border-border/30 last:border-r-0 min-h-[60px]">
-                  {layerSteps.map(s => {
-                    const status = s.status || 'pending';
-                    const c = COLORS[status] || COLORS.pending;
-                    const hov = hovered === s.id;
-                    const isDragging = dragging === s.id;
-                    return (
-                      <div key={s.id}
-                        ref={el => { if (el) cardRefs.current.set(s.id, el); }}
-                        className={`rounded-lg px-2 py-1.5 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all border ${hov ? 'shadow-md z-10' : 'shadow-sm'} ${isDragging ? 'opacity-50' : ''}`}
-                        style={{ backgroundColor: c.bg, borderColor: c.border, minWidth: 100, flex: 1, maxWidth: 180 }}
-                        draggable
-                        onDragStart={e => handleDragStart(e, s)}
-                        onMouseEnter={e => { setHovered(s.id); setTip({ x: e.clientX, y: e.clientY }); }}
-                        onMouseLeave={() => setHovered(null)}
-                        onClick={() => onStepClick?.(s)}
-                        onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, step: s }); }}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-semibold text-foreground truncate max-w-[70%]">{s.id}</span>
-                          <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
-                            style={{ backgroundColor: c.border, color: '#fff' }}>
-                            {ICONS[status] || '○'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[8px]" style={{ color: c.text }}>
-                          {s.completedAt && s.startedAt && <span className="bg-white/50 px-1 rounded">{fmt(s.completedAt - s.startedAt)}</span>}
-                          {s.reviewer && <span>· review</span>}
-                        </div>
+            {layers.map((layer, li) => (
+              <div key={li} className="flex-1 flex items-center justify-center gap-1 px-1 py-1.5 border-r border-border/30 last:border-r-0 min-h-[60px]">
+                {agentSteps.filter(s => layer.includes(s.id)).map(s => {
+                  const st = s.status || 'pending';
+                  const c = C[st] || C.pending;
+                  const isHov = hov === s.id;
+                  return (
+                    <div key={s.id}
+                      ref={el => { if (el) refs.current.set(s.id, el); }}
+                      className={`rounded-lg px-2 py-1.5 flex flex-col justify-between cursor-grab active:cursor-grabbing transition-all border shrink-0 ${isHov ? 'shadow-md z-10' : 'shadow-sm'} ${dragId === s.id ? 'opacity-40' : ''}`}
+                      style={{ backgroundColor: c.bg, borderColor: c.bd, minWidth: 90, maxWidth: 160 }}
+                      draggable
+                      onDragStart={e => onDragStart(e, s)}
+                      onMouseEnter={e => { setHov(s.id); setTip({ x: e.clientX, y: e.clientY }); }}
+                      onMouseLeave={() => setHov(null)}
+                      onClick={() => onStepClick?.(s)}
+                      onContextMenu={e => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, s }); }}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-semibold text-foreground truncate max-w-[65%]">{s.id}</span>
+                        <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0" style={{ backgroundColor: c.bd, color: '#fff' }}>{IC[st] || '○'}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
+                      <div className="flex items-center gap-1 text-[8px]" style={{ color: c.tx }}>
+                        {s.completedAt && s.startedAt && <span className="bg-white/50 px-1 rounded">{fmt(s.completedAt - s.startedAt)}</span>}
+                        {s.reviewer && <span>· review</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       ))}
 
-      {/* SVG dependency arrows — drawn after layout */}
+      {/* Arrows */}
       <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
         <defs>
           <marker id="ah" markerWidth="7" markerHeight="5" refX="6" refY="2.5" orient="auto">
             <polygon points="0 0, 7 2.5, 0 5" fill="#9ca3af" />
           </marker>
         </defs>
-        {steps.map(s => {
-          const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
-          if (deps.length === 0) return null;
-          const target = getCardRect(s.id);
-          if (!target) return null;
-          return deps.map((depId) => {
-            const source = getCardRect(depId);
-            if (!source) return null;
-            const x1 = source.right;
-            const y1 = source.cy;
-            const x2 = target.left;
-            const y2 = target.cy;
-            const mx = (x1 + x2) / 2;
-            return (
-              <path key={`${s.id}-${depId}`}
-                d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
-                stroke="#9ca3af" strokeWidth="1.5" fill="none" strokeDasharray="5 3"
-                markerEnd="url(#ah)" />
-            );
-          });
+        {edges.map((e, i) => {
+          const mx = (e.x1 + e.x2) / 2;
+          return <path key={i} d={`M${e.x1},${e.y1} C${mx},${e.y1} ${mx},${e.y2} ${e.x2},${e.y2}`} stroke="#9ca3af" strokeWidth="1.5" fill="none" strokeDasharray="5 3" markerEnd="url(#ah)" />;
         })}
       </svg>
 
       {/* Playhead */}
-      <div className="absolute top-0 bottom-0 w-px bg-primary/60 z-30 pointer-events-none"
-        style={{ left: `calc(80px + ${progress * (100 - 8)}%)` }}>
+      <div className="absolute top-0 bottom-0 w-px bg-primary/60 z-30 pointer-events-none" style={{ left: `calc(${LABEL_W}px + ${Math.min(progress, 1) * (100 - 8)}%)` }}>
         <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary" />
         <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-primary" />
       </div>
 
       {/* Tooltip */}
-      {hovered && !contextMenu && (() => {
-        const s = steps.find(x => x.id === hovered);
+      {hov && !ctx && (() => {
+        const s = steps.find(x => x.id === hov);
         if (!s) return null;
-        const c = COLORS[s.status || 'pending'];
+        const c = C[s.status || 'pending'];
         return (
-          <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl p-3 w-64 pointer-events-none"
-            style={{ left: Math.min(tip.x + 16, window.innerWidth - 280), top: tip.y - 8 }}>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: c.border, color: '#fff' }}>{ICONS[s.status || 'pending']}</span>
-              <span className="text-[12px] font-semibold text-foreground">{s.id}</span>
-            </div>
-            <div className="space-y-1 text-[10px] text-muted-foreground">
+          <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl p-3 w-60 pointer-events-none" style={{ left: Math.min(tip.x + 16, window.innerWidth - 260), top: tip.y - 8 }}>
+            <div className="flex items-center gap-2 mb-1"><span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold" style={{ backgroundColor: c.bd, color: '#fff' }}>{IC[s.status || 'pending']}</span><span className="text-[12px] font-semibold text-foreground">{s.id}</span></div>
+            <div className="space-y-0.5 text-[10px] text-muted-foreground">
               <p>{s.agent} · {s.action}</p>
               {s.completedAt && s.startedAt && <p>耗时: {fmt(s.completedAt - s.startedAt)}</p>}
               {s.reviewer && <p>审查: {s.reviewer}</p>}
@@ -239,18 +236,11 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
       })()}
 
       {/* Context menu */}
-      {contextMenu && (
-        <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl py-1 w-40"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={e => e.stopPropagation()}>
-          <button onClick={() => { onStepClick?.(contextMenu.step); setContextMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">✎ 编辑</button>
-          <button onClick={() => { onStepAdd?.(contextMenu.step); setContextMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">+ 添加步骤</button>
-          {onStepDelete && (
-            <button onClick={() => { onStepDelete(contextMenu.step); setContextMenu(null); }}
-              className="w-full text-left px-3 py-1.5 text-[12px] text-destructive hover:bg-destructive-muted">× 删除</button>
-          )}
+      {ctx && (
+        <div className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl py-1 w-36" style={{ left: ctx.x, top: ctx.y }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => { onStepClick?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">✎ 编辑</button>
+          <button onClick={() => { onStepAdd?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">+ 添加步骤</button>
+          {onStepDelete && <button onClick={() => { onStepDelete(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-destructive hover:bg-destructive-muted">× 删除</button>}
         </div>
       )}
     </div>
