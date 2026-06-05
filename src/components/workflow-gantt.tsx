@@ -69,14 +69,16 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
       for (const id of remaining) {
         const s = stepMap.get(id)!;
         const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
+        // Only check deps from PREVIOUS layers (not current)
         if (deps.every(d => placed.has(d)) || deps.length === 0) {
           layer.push(id);
-          placed.add(id);
         } else {
           next.push(id);
         }
       }
       if (layer.length === 0) break;
+      // Mark all steps in this layer as placed AFTER processing
+      for (const id of layer) placed.add(id);
       result.push(layer);
       remaining = next;
     }
