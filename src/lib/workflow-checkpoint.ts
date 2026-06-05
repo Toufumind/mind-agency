@@ -22,6 +22,9 @@ export interface StepCheckpoint {
   error?: string;
   retries: number;
   timestamp: number;
+  startedAt?: number;
+  completedAt?: number;
+  durationMs?: number;
 }
 
 export interface RunCheckpoint {

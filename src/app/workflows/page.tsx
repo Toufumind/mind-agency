@@ -15,7 +15,7 @@ interface WorkflowDef {
 
 interface RunInfo {
   runId: string; group: string; workflowName: string; status: string;
-  stepsTotal: number; stepsDone: number; startedAt: number;
+  stepsTotal: number; stepsDone: number; startedAt: number; completedAt?: number;
   pendingApprovals: ApprovalInfo[];
 }
 
@@ -115,6 +115,49 @@ export default function WorkflowsPage() {
             <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 border border-border rounded-xl text-[12px] text-muted hover:bg-surface"><RefreshCw size={13}/> {t('refresh')}</button>
           </div>
           {approvalMsg && <div className="mb-6 p-3 bg-sky-50 border border-sky-100 rounded-xl text-[12px] text-sky-700 flex items-center justify-between"><span>{approvalMsg}</span><button onClick={() => setApprovalMsg('')} className="text-sky-400 hover:text-sky-600">×</button></div>}
+
+          {/* ── Execution Analytics ── */}
+          {workflows.length > 0 && (() => {
+            const allRuns = workflows.flatMap(wf => (wf.runs || []).map(r => ({ ...r, group: wf.group })));
+            const completed = allRuns.filter(r => r.status === 'completed');
+            const failed = allRuns.filter(r => r.status === 'failed');
+            const avgDuration = completed.length > 0
+              ? Math.round(completed.reduce((sum, r) => sum + ((r.completedAt || 0) - r.startedAt), 0) / completed.length / 1000)
+              : 0;
+            const successRate = allRuns.length > 0 ? Math.round((completed.length / allRuns.length) * 100) : 0;
+            if (allRuns.length === 0) return null;
+            return (
+              <div className="mb-6 bg-surface rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-medium text-muted">执行分析</span>
+                  <span className="text-[10px] text-muted-foreground">{allRuns.length} 次运行</span>
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="text-center">
+                    <p className="text-[18px] font-semibold text-foreground">{allRuns.length}</p>
+                    <p className="text-[10px] text-muted-foreground">总运行</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[18px] font-semibold text-success">{completed.length}</p>
+                    <p className="text-[10px] text-muted-foreground">成功</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[18px] font-semibold text-destructive">{failed.length}</p>
+                    <p className="text-[10px] text-muted-foreground">失败</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[18px] font-semibold text-foreground">{successRate}%</p>
+                    <p className="text-[10px] text-muted-foreground">成功率</p>
+                  </div>
+                </div>
+                {avgDuration > 0 && (
+                  <div className="mt-2 pt-2 border-t border-border text-[10px] text-muted-foreground">
+                    平均耗时: {avgDuration < 60 ? `${avgDuration}s` : `${Math.round(avgDuration / 60)}m ${avgDuration % 60}s`}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Visual overview toggle */}
           <div className="flex items-center gap-2 mb-6">

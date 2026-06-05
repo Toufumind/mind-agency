@@ -789,7 +789,7 @@ export class WorkflowEngine {
 
       // v0.4: Save step checkpoint
       const grp = (run as any)._group as string | undefined;
-      if (grp) saveStepCheckpoint(grp, runId, { stepId: sid, status: 'completed', output: out, retries: node.retryCount, timestamp: Date.now() });
+      if (grp) saveStepCheckpoint(grp, runId, { stepId: sid, status: 'completed', output: out, retries: node.retryCount, timestamp: Date.now(), startedAt: node.startedAt, completedAt: Date.now(), durationMs: Date.now() - node.startedAt });
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output: out, phase }, 'workflow-engine'));
       if (node.step.notify) { const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify]; for (const to of nl) if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_REQUESTED, { taskId: runId, stepId: sid, workflow: run.workflowName, from: node.step.agent, to, title: `${node.step.action}`, prompt: node.step.prompt.slice(0, 200), phase }, 'workflow-engine')); }
 
@@ -819,7 +819,7 @@ export class WorkflowEngine {
       node.status = StepStatus.FAILED; run.steps.set(sid, StepStatus.FAILED); run.rollbacks.push({ stepId: sid, reason: msg, timestamp: Date.now() });
       // v0.4: Save step checkpoint on failure
       const grpFail = (run as any)._group as string | undefined;
-      if (grpFail) saveStepCheckpoint(grpFail, runId, { stepId: sid, status: 'failed', output: node.output, error: msg, retries: node.retryCount, timestamp: Date.now() });
+      if (grpFail) saveStepCheckpoint(grpFail, runId, { stepId: sid, status: 'failed', output: node.output, error: msg, retries: node.retryCount, timestamp: Date.now(), startedAt: node.startedAt, completedAt: Date.now(), durationMs: Date.now() - node.startedAt });
       if (node.onFailure && nodes.has(node.onFailure)) { const cn = nodes.get(node.onFailure)!; run.compensations.push(node.onFailure); if (cn.status === StepStatus.PENDING) { if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: node.onFailure, workflow: run.workflowName, agent: cn.step.agent, action: 'compensation', note: `Triggered by: ${sid}`, phase: WorkflowPhase.COMPENSATION }, 'workflow-engine')); await this.execNode(runId, cn, nodes); } return; }
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true, phase }, 'workflow-engine'));
     }
