@@ -12,6 +12,7 @@
 [![Version](https://img.shields.io/badge/Version-0.4.0-green.svg)](package.json)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 [![GitHub stars](https://img.shields.io/github/stars/Toufumind/mind-agency)](https://github.com/Toufumind/mind-agency)
+[![Website](https://img.shields.io/badge/Website-mindagency.cn-blue.svg)](https://mindagency.cn)
 
 [![中文](https://img.shields.io/badge/中文-文档-blue.svg)](README.zh.md)
 
