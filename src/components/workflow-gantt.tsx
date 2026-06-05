@@ -56,28 +56,53 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
     return [...agentMap.entries()];
   }, [steps]);
 
-  // Calculate step positions (evenly spaced by index, weighted by duration if available)
+  // Topological sort into layers (parallel groups)
+  const layers = useMemo(() => {
+    const result: string[][] = [];
+    const placed = new Set<string>();
+    const stepMap = new Map(steps.map(s => [s.id, s]));
+    let remaining = steps.map(s => s.id);
+
+    while (remaining.length > 0) {
+      const layer: string[] = [];
+      const next: string[] = [];
+      for (const id of remaining) {
+        const s = stepMap.get(id)!;
+        const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
+        if (deps.every(d => placed.has(d)) || deps.length === 0) {
+          layer.push(id);
+          placed.add(id);
+        } else {
+          next.push(id);
+        }
+      }
+      if (layer.length === 0) break;
+      result.push(layer);
+      remaining = next;
+    }
+    return result;
+  }, [steps]);
+
+  // Calculate step positions based on layers
   const stepPositions = useMemo(() => {
     const positions = new Map<string, { left: number; width: number }>();
-    const total = steps.length || 1;
+    if (layers.length === 0) return positions;
 
-    // Calculate durations for each step
-    const durations = steps.map(s => {
-      if (s.startedAt && s.completedAt) return s.completedAt - s.startedAt;
-      if (s.startedAt) return 30000; // default 30s for in-progress
-      return 20000; // default 20s for pending
-    });
-    const totalDuration = durations.reduce((a, b) => a + b, 0);
+    const layerWidth = 100 / layers.length;
+    const stepMap = new Map(steps.map(s => [s.id, s]));
 
-    let cumulative = 0;
-    for (let i = 0; i < steps.length; i++) {
-      const left = (cumulative / totalDuration) * 100;
-      const width = (durations[i] / totalDuration) * 100;
-      positions.set(steps[i].id, { left, width: Math.max(width, 3) });
-      cumulative += durations[i];
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li];
+      const layerLeft = li * layerWidth;
+      const stepWidth = layerWidth * 0.85;
+      const stepLeft = layerLeft + (layerWidth - stepWidth) / 2;
+
+      for (const id of layer) {
+        positions.set(id, { left: stepLeft, width: stepWidth });
+      }
     }
     return positions;
-  }, [steps]);
+  }, [layers, steps]);
 
   const LANE_H = 80;
   const LANE_GAP = 6;
@@ -123,15 +148,22 @@ export default function WorkflowGantt({ steps, progress, onStepClick }: Props) {
         {/* SVG edges */}
         <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
           <defs>
-            <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
-              <polygon points="0 0, 6 2, 0 4" fill="#9ca3af" />
+            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#9ca3af" />
             </marker>
           </defs>
-          {edges.map((e, i) => (
-            <line key={i}
-              x1={`${e.x1}%`} y1={e.y1} x2={`${e.x2}%`} y2={e.y2}
-              stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="4 2" markerEnd="url(#arrowhead)" />
-          ))}
+          {edges.map((e, i) => {
+            // Curved path: cubic bezier
+            const midX = (e.x1 + e.x2) / 2;
+            const dx = Math.abs(e.x2 - e.x1);
+            const curveOffset = Math.min(dx * 0.3, 5);
+            return (
+              <path key={i}
+                d={`M ${e.x1}% ${e.y1} C ${e.x1 + curveOffset}% ${e.y1}, ${e.x2 - curveOffset}% ${e.y2}, ${e.x2}% ${e.y2}`}
+                stroke="#d1d5db" strokeWidth="1.5" fill="none" strokeDasharray="4 2"
+                markerEnd="url(#arrowhead)" />
+            );
+          })}
         </svg>
 
         {/* Agent swimlanes */}
