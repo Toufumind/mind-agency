@@ -6,7 +6,7 @@
 
 ### From Agent to Agency
 
-一个 AI 做不了的事，一群 AI 可以。
+**What one AI can't do, a team of AIs can.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.4.0-green.svg)](package.json)
@@ -17,13 +17,13 @@
 
 ---
 
-## Mind Agency 是什么
+## What is Mind Agency?
 
-Mind Agency 是一个本地运行的多 AI 协作平台。
+Mind Agency is a locally-run multi-AI collaboration platform.
 
-你创建 Agent，或者让 Agent 自己创建 Agent。给它们角色和性格，拉进群组，定义工作流。然后点"运行"——Agent 们自动分工、协作，像一个真正的团队在工作。
+You create AI Agents — or let Agents create each other. Give them roles and personalities, put them in groups, define workflows. Hit "run" — and they collaborate automatically, like a real team.
 
-**不是 API wrapper，不是 prompt template。** 是一个完整的协作系统：Agent 之间通过群聊和邮件通信，通过投票做决策，通过记忆积累经验。每一步都有审计日志，崩溃了可从断点恢复。
+**Not an API wrapper. Not a prompt template.** A full collaboration system: Agents communicate via group chat and email, make decisions through voting, and accumulate experience through memory. Every step is audited. Crashes resume from checkpoints.
 
 <div align="center">
 <img src="assets/dashboard.png" width="800" alt="Dashboard" />
@@ -31,57 +31,57 @@ Mind Agency 是一个本地运行的多 AI 协作平台。
 
 ---
 
-## 为什么叫 Mind Agency
+## Why "Mind Agency"?
 
-**Agent** — 一个 AI 助手，一个独立的个体。
+**Agent** — an AI assistant, an individual.
 
-**Agency** — 一个机构，一个有组织的团队。
+**Agency** — an organization, a team.
 
-从 Agent 到 Agency，就是从"一个 AI 干所有事"到"一群 AI 分工协作"。一个人能写代码，但一个人写不出好代码。AI 也一样。
+From Agent to Agency: from "one AI does everything" to "a team of AIs collaborating." One person can write code, but one person can't write *good* code. AI is the same.
 
 ---
 
-## 协作示例
+## How Agents Collaborate
 
 ```
-你: @Alice 帮我写一个用户注册接口
-Alice: 好的，我来写
-Alice: @Bob 代码写好了，帮我 review 一下
-Bob: 看了一下，有两个问题：1. 缺少输入校验 2. 密码没有加密
-Alice: 改好了，你再看看
-Bob: ✅ 没问题了
-Alice: @Charlie 帮我跑一下测试
-Charlie: 测试全部通过 ✅
+You:    @Alice Build me a user registration endpoint
+Alice:  On it
+Alice:  @Bob Code's done, please review
+Bob:    Found two issues: 1. No input validation 2. Passwords not hashed
+Alice:  Fixed, take another look
+Bob:    ✅ Looks good
+Alice:  @Charlie Run the tests
+Charlie: All tests passed ✅
 ```
 
-Alice 写代码，Bob 审查，Charlie 测试。有分歧？投票决定。需要你批准？自动暂停等你。上次踩过什么坑？Agent 记得，下次不会再犯。
+Alice writes, Bob reviews, Charlie tests. Disagreements? Vote on it. Need human approval? The workflow pauses automatically. Made the same mistake before? Agents remember.
 
 ---
 
-## 功能特性
+## Features
 
-| 功能 | 说明 |
-|------|------|
-| **👥 团队协作** | 创建任意数量的 Agent，各有角色、性格、记忆。通过群聊和邮件协作。 |
-| **🗳️ 共识投票** | AND / OR / 阈值三种投票模式 + 对抗性审查 + 多轮辩论。 |
-| **🔄 工作流引擎** | YAML 定义流水线，条件分支、人工审批、崩溃恢复、热重载。 |
-| **🧠 三层记忆** | 短期会话 + 长期持久 + 项目实体。跨会话经验积累。 |
-| **📡 信号驱动** | 基于文件系统 mtime 的增量扫描，优先级防抖，Agent 自主响应。 |
-| **📋 审计日志** | 每个 Agent 的每个动作都有记录，可追溯。 |
-| **🔒 四层权限** | MCP 工具 → 权限引擎 → 共识引擎 → 对抗性审查。 |
-| **💾 可靠性** | DLQ + Outbox + 断点恢复 + Backpressure。 |
-| **🎨 多主题** | Notion、Minimal White、Warm Wood、Deep Space、Nord。 |
-| **🔌 多供应商** | Claude、DeepSeek、GPT-4o，每个 Agent 可以用不同模型。 |
+| Feature | Description |
+|---------|-------------|
+| **👥 Team Collaboration** | Create any number of Agents with roles, personalities, and memory. Collaborate via group chat and email. |
+| **🗳️ Consensus Voting** | AND / OR / Threshold voting + adversarial review + multi-round debate. |
+| **🔄 Workflow Engine** | YAML-defined pipelines with conditional branching, human approval gates, crash recovery, and hot-reload. |
+| **🧠 Three-Layer Memory** | Session + long-term persistent + entity memory. Cross-session experience accumulation. |
+| **📡 Signal-Driven** | Filesystem mtime-based incremental scanning with priority debouncing. Agents respond autonomously. |
+| **📋 Audit Trail** | Every Agent action is logged and traceable. |
+| **🔒 Four-Layer Permissions** | MCP tools → Permission engine → Consensus engine → Adversarial review. |
+| **💾 Reliability** | DLQ + Outbox + checkpoint recovery + backpressure. |
+| **🎨 Multi-Theme** | Notion, Minimal White, Warm Wood, Deep Space, Nord. |
+| **🔌 Multi-Provider** | Claude, DeepSeek, GPT-4o — each Agent can use a different model. |
 
 ---
 
-## 快速安装
+## Install
 
 ### Windows
 
-从 [Releases](https://github.com/Toufumind/mind-agency/releases) 下载 `Mind-Agency-Setup-0.4.0.exe`，双击安装。
+Download `Mind-Agency-Setup-0.4.0.exe` from [Releases](https://github.com/Toufumind/mind-agency/releases) and run it.
 
-### 从源码
+### From Source
 
 ```bash
 git clone https://github.com/Toufumind/mind-agency.git
@@ -90,44 +90,44 @@ npm install
 npm run dev
 ```
 
-> ⚠️ 当前 exe 仅支持 Windows。macOS / Linux 请从源码运行。跨平台支持在路线图中。
+> ⚠️ The exe currently supports Windows only. For macOS / Linux, run from source. Cross-platform support is on the roadmap.
 
 ---
 
-## 5 分钟上手
+## Quick Start
 
-**1. 配置 API Key**
+**1. Set up your API Key**
 
-打开 `http://localhost:3000`，进入设置页面，填入你的 AI 模型 Key。
+Open `http://localhost:3000`, go to Settings, and enter your AI model key.
 
-支持 [Claude](https://console.anthropic.com/) / [DeepSeek](https://platform.deepseek.com/) / [GPT-4o](https://platform.openai.com/)。DeepSeek 价格最低，几毛钱一天。
+Supports [Claude](https://console.anthropic.com/) / [DeepSeek](https://platform.deepseek.com/) / [GPT-4o](https://platform.openai.com/). DeepSeek is the cheapest — pennies per day.
 
-**2. 创建 Agent**
+**2. Create Agents**
 
-系统自带示例 Agent（Alice / Bob / Charlie / 你），开箱即用。你也可以自己创建，或者让 Agent 通过 `agent_create` 工具自己招募新成员：
+The system ships with sample Agents (Alice / Bob / Charlie / you) — ready to go. You can also create your own, or let Agents recruit new members via the `agent_create` tool:
 
 ```
-名字: Diana
-角色: 前端专家
-性格: 严谨，注重代码质量，喜欢用 React
+Name: Diana
+Role: Frontend specialist
+Personality: Meticulous, quality-focused, loves React
 ```
 
-每个 Agent 有独立的配置、记忆和行为画像。
+Each Agent has its own config, memory, and behavioral profile.
 
-**3. 建立群组**
+**3. Form a Group**
 
-把 Agent 拉进群组。群组有自己的聊天频道、邮件系统和工作流。
+Invite Agents into a group. Each group has its own chat channel, email system, and workflow.
 
-**4. 开始协作**
+**4. Start Collaborating**
 
-给 Agent 分配任务，看它们自动协作。或者定义工作流，让流水线自动跑：
+Assign tasks and watch Agents collaborate. Or define a workflow and let the pipeline run:
 
 ```yaml
 steps:
   - id: write
     agent: Alice
     action: code
-    prompt: 写一个用户注册接口
+    prompt: Build a user registration endpoint
   - id: review
     agent: Bob
     action: review
@@ -143,53 +143,53 @@ steps:
 
 ---
 
-## 技术架构
+## Architecture
 
 ```
-Mind Agency (Electron 桌面应用)
+Mind Agency (Electron Desktop App)
 │
-├── 前端 — Next.js + Tailwind CSS (:3000)
-│   Dashboard / Agent 管理 / 群组 / 工作流 / 设置
+├── Frontend — Next.js + Tailwind CSS (:3000)
+│   Dashboard / Agent Management / Groups / Workflows / Settings
 │
-├── 后端 — Node.js WebSocket (:3001)
-│   EventBus (17 事件类型 + DLQ + Outbox)
-│   WorkflowEngine (DAG + 热重载 + 断点恢复)
+├── Backend — Node.js WebSocket (:3001)
+│   EventBus (17 event types + DLQ + Outbox)
+│   WorkflowEngine (DAG + hot-reload + checkpoint recovery)
 │
-├── AI 层 — Claude Agent SDK
-│   MCP 工具服务器 (31 个工具)
-│   权限引擎 + 共识引擎
+├── AI Layer — Claude Agent SDK
+│   MCP Tool Server (31 tools)
+│   Permission engine + Consensus engine
 │
-└── 数据 — 本地文件系统
+└── Data — Local filesystem
     Agents/  Groups/  .audit/  .mind/
 ```
 
 ---
 
-## 项目结构
+## Project Structure
 
 ```
 mind-agency/
 ├── src/
-│   ├── app/              # Next.js 页面 + 25 个 API 路由
-│   ├── components/       # React 组件
-│   └── lib/              # 核心库
+│   ├── app/              # Next.js pages + 25 API routes
+│   ├── components/       # React components
+│   └── lib/              # Core libraries
 │       ├── event-bus.ts  # EventBus + WorkflowEngine
-│       ├── consensus.ts  # 共识引擎 (AND/OR/阈值 + 对抗性审查)
-│       ├── chat.ts       # AI 集成 (Claude/DeepSeek/Codex)
-│       ├── memory.ts     # 三层记忆系统
-│       ├── auto-respond.ts # 信号驱动自主响应
+│       ├── consensus.ts  # Consensus (AND/OR/threshold + adversarial review)
+│       ├── chat.ts       # AI integration (Claude/DeepSeek/Codex)
+│       ├── memory.ts     # Three-layer memory system
+│       ├── auto-respond.ts # Signal-driven autonomous response
 │       └── ...
-├── mcp/                  # MCP 工具服务器
-├── electron/             # Electron 主进程
+├── mcp/                  # MCP tool server
+├── electron/             # Electron main process
 ├── server.ts             # WebSocket + EventBus + Workflow
-├── Agents/               # Agent 配置和数据
-├── Groups/               # 群组配置和工作流
-└── public/               # 静态资源
+├── Agents/               # Agent configs and data
+├── Groups/               # Group configs and workflows
+└── public/               # Static assets
 ```
 
 ---
 
-## 开发
+## Development
 
 ```bash
 git clone https://github.com/Toufumind/mind-agency.git
@@ -197,10 +197,10 @@ cd mind-agency
 npm install
 npm run dev          # Next.js (:3000)
 npm run dev:ws       # WebSocket (:3001)
-npm run dev:all      # 同时启动
+npm run dev:all      # Both simultaneously
 ```
 
-环境要求：Node.js >= 18
+Requires: Node.js >= 18
 
 ---
 
