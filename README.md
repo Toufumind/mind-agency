@@ -21,7 +21,7 @@
 
 Mind Agency 是一个本地运行的多 AI 协作平台。
 
-你创建 Agent，给它们角色和性格。你把 Agent 拉进群组，定义工作流。然后点"运行"——Agent 们自动分工、协作，像一个真正的团队在工作。
+你创建 Agent，或者让 Agent 自己创建 Agent。给它们角色和性格，拉进群组，定义工作流。然后点"运行"——Agent 们自动分工、协作，像一个真正的团队在工作。
 
 **不是 API wrapper，不是 prompt template。** 是一个完整的协作系统：Agent 之间通过群聊和邮件通信，通过投票做决策，通过记忆积累经验。每一步都有审计日志，崩溃了自动恢复。
 
@@ -108,7 +108,7 @@ npm run dev
 
 **2. 创建 Agent**
 
-系统自带三个示例 Agent（Alice / Bob / Charlie），开箱即用。你也可以自己创建：
+系统自带三个示例 Agent（Alice / Bob / Charlie），开箱即用。你也可以自己创建，或者让 Agent 通过 `agent_create` 工具自己创建新成员：
 
 ```
 名字: Diana
