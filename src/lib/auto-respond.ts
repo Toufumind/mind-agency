@@ -23,6 +23,7 @@ import { chatOnce, getAgentConfig } from './chat';
 import { AGENTS_DIR, GROUPS_DIR } from './data-dir';
 import { loadState, saveState, ensureGroup, getAgentGroups, invalidateGroupsCache, type AgentState } from './state';
 import { setActivity, clearActivity } from './agent-activity';
+import { agentCache } from './cache';
 
 // ── Signal debounce: per-agent last-spawn time ─────────
 
@@ -327,8 +328,9 @@ export async function autoRespond(
     return { triggered: false, reason: 'autoRespond disabled' };
   }
 
-  // Invalidate stale group cache — new agent may have joined since last scan
+  // Invalidate stale caches — new agent may have joined since last scan
   invalidateGroupsCache(agent);
+  agentCache.invalidate('groupChat', agent);
 
   // Build signal
   const result = buildSignal(agent);
