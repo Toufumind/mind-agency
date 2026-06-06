@@ -357,7 +357,7 @@ export default function FlowGPU(props: GPUProps) {
   return (
     <>
       <canvas ref={canvasRef} width={width || 100} height={height || 100}
-        className="absolute inset-0" style={{ background: '#0a0a0f' }} />
+        className="absolute inset-0" style={{ background: 'transparent' }} />
       {/* SVG overlay — ONLY click targets + text labels, no visual rendering */}
       <svg width={width} height={height} className="absolute inset-0" style={{ zIndex: 1 }}>
         <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>

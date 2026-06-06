@@ -35,6 +35,7 @@ interface FlowCanvasProps {
 
 export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selectedGroup, onTrigger }: FlowCanvasProps) {
   const { theme } = useTheme();
+  const isDark = !['notion', 'minimal-white', 'warm-wood', 'solarized-light'].includes(theme);
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   const [zoom, setZoom] = useState(() => { try { return parseFloat(localStorage.getItem('flow-zoom') || '1'); } catch { return 1; } });
   const [pan, setPan] = useState(() => { try { return JSON.parse(localStorage.getItem('flow-pan') || '{"x":0,"y":0}'); } catch { return { x: 0, y: 0 }; } });
@@ -198,7 +199,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
   return (
     <div className="relative flex-1 h-full overflow-hidden"
-      style={{ background: '#0a0a0f', cursor: dragging ? 'grabbing' : 'grab' }}
+      style={{ background: theme === 'notion' ? '#f5f5f0' : theme === 'minimal-white' ? '#faf9f8' : theme === 'warm-wood' ? '#f3ecdf' : theme === 'solarized-light' ? '#f6f4e9' : '#0a0a0f', cursor: dragging ? 'grabbing' : 'grab' }}
       onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel}>
 
       {/* GPU renderer */}
@@ -218,34 +219,34 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
         const status = runs[g]?.[0]?.steps?.[sid] || 'pending';
         return (
           <div className="fixed z-[100] pointer-events-none" style={{ left: hoverPos.x + 16, top: hoverPos.y - 8 }}>
-            <div className="bg-slate-800/95 border border-slate-600/50 rounded-xl px-3 py-2 shadow-xl max-w-[220px] backdrop-blur-sm">
-              <div className="text-[11px] font-medium text-slate-200">{step.id}</div>
-              {step.agent && <div className="text-[10px] text-slate-400 mt-0.5">Agent: {step.agent}</div>}
-              {step.prompt && <div className="text-[9px] text-slate-500 mt-1 line-clamp-2">{step.prompt.slice(0, 100)}</div>}
-              <div className="text-[9px] mt-1.5 text-slate-500">Space 触发 · 点击详情</div>
+            <div className={`border rounded-xl px-3 py-2 shadow-xl max-w-[220px] backdrop-blur-sm ${isDark ? 'bg-slate-800/95 border-slate-600/50' : 'bg-white/95 border-gray-200'}`}>
+              <div className={`text-[11px] font-medium ${isDark ? 'text-slate-200' : 'text-gray-800'}`}>{step.id}</div>
+              {step.agent && <div className={`text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Agent: {step.agent}</div>}
+              {step.prompt && <div className={`text-[9px] mt-1 line-clamp-2 ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>{step.prompt.slice(0, 100)}</div>}
+              <div className={`text-[9px] mt-1.5 ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>Space 触发 · 点击详情</div>
             </div>
           </div>
         );
       })()}
 
       {/* Zoom controls */}
-      <div className="absolute bottom-4 left-4 flex items-center gap-1 bg-slate-900/80 backdrop-blur-md rounded-xl border border-slate-700/50 p-1.5 shadow-lg z-10">
-        <button onClick={() => setZoom(z => Math.min(3, z * 1.2))} className="p-1.5 hover:bg-slate-800 rounded-lg transition"><ZoomIn size={14} className="text-slate-400" /></button>
-        <span className="text-[10px] text-slate-500 w-10 text-center font-mono">{Math.round(zoom * 100)}%</span>
-        <button onClick={() => setZoom(z => Math.max(0.15, z / 1.2))} className="p-1.5 hover:bg-slate-800 rounded-lg transition"><ZoomOut size={14} className="text-slate-400" /></button>
-        <div className="w-px h-4 bg-slate-700 mx-0.5" />
-        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="p-1.5 hover:bg-slate-800 rounded-lg transition"><Maximize2 size={14} className="text-slate-400" /></button>
+      <div className={`absolute bottom-4 left-4 flex items-center gap-1 backdrop-blur-md rounded-xl border p-1.5 shadow-lg z-10 ${isDark ? 'bg-slate-900/80 border-slate-700/50' : 'bg-white/80 border-gray-200'}`}>
+        <button onClick={() => setZoom(z => Math.min(3, z * 1.2))} className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}><ZoomIn size={14} className={isDark ? 'text-slate-400' : 'text-gray-500'} /></button>
+        <span className={`text-[10px] w-10 text-center font-mono ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>{Math.round(zoom * 100)}%</span>
+        <button onClick={() => setZoom(z => Math.max(0.15, z / 1.2))} className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}><ZoomOut size={14} className={isDark ? 'text-slate-400' : 'text-gray-500'} /></button>
+        <div className={`w-px h-4 mx-0.5 ${isDark ? 'bg-slate-700' : 'bg-gray-200'}`} />
+        <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className={`p-1.5 rounded-lg transition ${isDark ? 'hover:bg-slate-800' : 'hover:bg-gray-100'}`}><Maximize2 size={14} className={isDark ? 'text-slate-400' : 'text-gray-500'} /></button>
       </div>
 
       {/* Trigger popup */}
       {triggerPopup && (
         <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
           onClick={() => setTriggerPopup(null)}>
-          <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-5 shadow-2xl w-72" onClick={e => e.stopPropagation()}>
-            <h3 className="text-[13px] font-semibold text-slate-200 mb-3">选择触发入口</h3>
+          <div className={`border rounded-2xl p-5 shadow-2xl w-72 ${isDark ? 'bg-slate-900 border-slate-700/50' : 'bg-white border-gray-200'}`} onClick={e => e.stopPropagation()}>
+            <h3 className={`text-[13px] font-semibold mb-3 ${isDark ? 'text-slate-200' : 'text-gray-800'}`}>选择触发入口</h3>
             {triggerPopup.triggers.map(t => (
               <button key={t.id} onClick={() => { onTrigger(triggerPopup.group, t.id); setTriggerPopup(null); }}
-                className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-slate-800 text-[12px] text-slate-300 flex items-center gap-2.5 mb-1.5 transition">
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-[12px] flex items-center gap-2.5 mb-1.5 transition ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-gray-100 text-gray-700'}`}>
                 {t.id}
                 {t.trigger?.cron && <span className="text-[10px] text-slate-500 ml-auto font-mono">{t.trigger.cron}</span>}
               </button>
