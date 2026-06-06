@@ -51,13 +51,14 @@ class AgentCache {
   }
 
   /**
-   * Evict oldest entries if region exceeds max size (LRU).
+   * Evict oldest entries if region exceeds 80% of max size (batch eviction).
    */
   private evictIfNeeded(region: CacheRegion): void {
-    if (region.data.size <= region.maxSize) return;
-    // Sort by timestamp, delete oldest
+    // Only evict when reaching 80% capacity to amortize the cost
+    if (region.data.size <= Math.floor(region.maxSize * 0.8)) return;
+    // Sort by timestamp, delete oldest 20%
     const entries = [...region.data.entries()].sort((a, b) => a[1].ts - b[1].ts);
-    const toDelete = entries.slice(0, entries.length - region.maxSize);
+    const toDelete = entries.slice(0, Math.floor(region.maxSize * 0.2));
     for (const [key] of toDelete) {
       region.data.delete(key);
     }
@@ -108,10 +109,18 @@ class AgentCache {
   /**
    * Invalidate all caches for a specific agent.
    * Call this when agent config, CLAUDE.md, or membership changes.
+   * Also deletes keys with prefix `agentName:` (e.g., `agentName:baseOptions`).
    */
   invalidateAgent(agentName: string): void {
     for (const region of this.regions.values()) {
+      // Delete exact match
       region.data.delete(agentName);
+      // Delete prefix match (e.g., "Alice:baseOptions", "Alice:rules:group1")
+      for (const key of region.data.keys()) {
+        if (key.startsWith(agentName + ':')) {
+          region.data.delete(key);
+        }
+      }
     }
   }
 
