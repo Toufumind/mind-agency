@@ -357,39 +357,32 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
                       onClick={() => isTrigger ? onTriggerClick(wf.group) : onNodeClick(wf.group, step)}
                     >
                       {/* Glow backdrop */}
-                      <rect x={-NODE_W / 2 - 4} y={-NODE_H / 2 - 4} width={NODE_W + 8} height={NODE_H + 8}
-                        rx={NODE_RX + 4} fill="none" stroke="none" filter={filter} />
+                      <circle r={30} fill="none" stroke="none" filter={filter} />
 
-                      {/* Node body */}
-                      <rect x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={NODE_RX}
+                      {/* Node body — circle */}
+                      <circle r={28}
                         fill={style.fill} stroke={isHovered ? '#e2e8f0' : style.stroke}
-                        strokeWidth={isHovered ? 2 : 1.2}
+                        strokeWidth={isHovered ? 2.5 : 1.5}
                         strokeDasharray={isTrigger ? '6 3' : 'none'}
                         style={{ transition: 'stroke 0.2s, stroke-width 0.2s' }} />
 
                       {/* Active pulse ring */}
                       {isActive && (
-                        <rect x={-NODE_W / 2 - 2} y={-NODE_H / 2 - 2} width={NODE_W + 4} height={NODE_H + 4}
-                          rx={NODE_RX + 2} fill="none" stroke={style.stroke} strokeWidth="1.5"
+                        <circle r={31} fill="none" stroke={style.stroke} strokeWidth="1.5"
                           opacity="0.4" className={style.animClass} />
                       )}
 
-                      {/* Icon */}
-                      <text x={-NODE_W / 2 + 14} y={4} fontSize="16" dominantBaseline="middle">{icon}</text>
+                      {/* Icon — centered */}
+                      <text y={-4} textAnchor="middle" fontSize="16" dominantBaseline="middle">{icon}</text>
 
-                      {/* Step name */}
-                      <text x={-NODE_W / 2 + 34} y={-4} fontSize="11" fontWeight="600" fill="#e2e8f0">
-                        {step.id.length > 11 ? step.id.slice(0, 11) + '…' : step.id}
+                      {/* Step name — below icon */}
+                      <text y={12} textAnchor="middle" fontSize="9" fontWeight="600" fill="#e2e8f0">
+                        {step.id.length > 10 ? step.id.slice(0, 10) + '…' : step.id}
                       </text>
 
-                      {/* Agent */}
-                      {step.agent && (
-                        <text x={-NODE_W / 2 + 34} y={12} fontSize="9" fill="#94a3b8">{step.agent}</text>
-                      )}
-
-                      {/* Status badge */}
+                      {/* Status badge — top right */}
                       {status !== 'pending' && (
-                        <g transform={`translate(${NODE_W / 2 - 8}, ${-NODE_H / 2 + 8})`}>
+                        <g transform="translate(18, -18)">
                           <circle r="5" fill={style.badgeColor} opacity="0.9" />
                           {status === 'completed' && <text y="3.5" textAnchor="middle" fontSize="7" fill="#fff" fontWeight="700">✓</text>}
                           {status === 'failed' && <text y="3.5" textAnchor="middle" fontSize="7" fill="#fff" fontWeight="700">✗</text>}
@@ -397,9 +390,9 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
                         </g>
                       )}
 
-                      {/* Duration label */}
+                      {/* Duration label — right side */}
                       {run && (status === 'in_progress' || status === 'completed') && elapsed > 0 && (
-                        <text x={NODE_W / 2 + 12} y={4} fontSize="8" fill="#64748b" dominantBaseline="middle">
+                        <text x={34} y={4} fontSize="8" fill="#64748b" dominantBaseline="middle">
                           {fmtTime(elapsed)}
                         </text>
                       )}

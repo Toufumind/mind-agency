@@ -52,10 +52,10 @@ const FRAG_SRC = `
   uniform int u_cellNodeCounts[MAX_CELLS];
   uniform vec3 u_cellColors[MAX_CELLS];
 
-  // Metaball field function
+  // Metaball field function — stronger radius for visible effect
   float field(vec2 uv, vec2 pos, float radius) {
     vec2 d = uv - pos;
-    return (radius * radius) / dot(d, d);
+    return (radius * radius) / (dot(d, d) + 0.0001);
   }
 
   void main() {
@@ -70,47 +70,45 @@ const FRAG_SRC = `
       int nodeCount = u_cellNodeCounts[c];
 
       // Accumulate field from all nodes in this cell
+      vec2 worldPos = (uv - u_pan) / u_zoom;
       for (int n = 0; n < MAX_NODES_PER_CELL; n++) {
         if (n >= nodeCount) break;
         int idx = c * MAX_NODES_PER_CELL + n;
         vec2 nodePos = u_cellNodes[idx];
-        // Transform: screen → world → UV
-        vec2 worldPos = (uv - u_pan) / u_zoom;
-        totalField += field(worldPos, nodePos, 120.0);
+        totalField += field(worldPos, nodePos, 180.0);
       }
 
-      // Thresholds for cytoplasm and cell wall
-      float cytoplasm = smoothstep(0.8, 1.2, totalField);
-      float wallInner = smoothstep(1.0, 1.4, totalField);
-      float wallOuter = smoothstep(1.4, 1.8, totalField);
+      // Thresholds — lower values for more visible effect
+      float cytoplasm = smoothstep(0.3, 0.8, totalField);
+      float wallInner = smoothstep(0.6, 1.0, totalField);
+      float wallOuter = smoothstep(1.0, 1.5, totalField);
       float wall = wallInner - wallOuter;
 
       // Pulsing effect for cell wall
-      float pulse = 0.85 + 0.15 * sin(u_time * 0.5 + float(c) * 1.7);
+      float pulse = 0.8 + 0.2 * sin(u_time * 0.8 + float(c) * 2.0);
       wall *= pulse;
 
-      // Cytoplasm: subtle gradient from center
+      // Cytoplasm: gradient from center
       float centerDist = 0.0;
       for (int n = 0; n < MAX_NODES_PER_CELL; n++) {
         if (n >= nodeCount) break;
         int idx = c * MAX_NODES_PER_CELL + n;
         vec2 nodePos = u_cellNodes[idx];
-        vec2 worldPos = (uv - u_pan) / u_zoom;
         centerDist += length(worldPos - nodePos);
       }
       centerDist /= float(nodeCount);
-      float gradient = 1.0 - smoothstep(0.0, 300.0, centerDist);
+      float gradient = 1.0 - smoothstep(0.0, 400.0, centerDist);
 
-      // Compose cell
-      vec3 cytoColor = cellColor * 0.08 * gradient * cytoplasm;
-      vec3 wallColor = cellColor * 0.7 * wall;
+      // Compose cell — BRIGHT colors
+      vec3 cytoColor = cellColor * 0.25 * gradient * cytoplasm;
+      vec3 wallColor = cellColor * 1.2 * wall;
 
-      // Add glow around wall
-      float glow = smoothstep(2.5, 1.0, wallOuter) * 0.15;
+      // Glow around wall
+      float glow = smoothstep(2.0, 0.5, wallOuter) * 0.4;
       vec3 glowColor = cellColor * glow;
 
       vec3 cellResult = cytoColor + wallColor + glowColor;
-      float alpha = max(max(cytoplasm * 0.25, wall * 0.8), glow * 0.5);
+      float alpha = max(max(cytoplasm * 0.4, wall * 1.0), glow * 0.7);
 
       // Additive blending for overlapping cells (but they shouldn't overlap much)
       finalColor.rgb += cellResult * alpha;
