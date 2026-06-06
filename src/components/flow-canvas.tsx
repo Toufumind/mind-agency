@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ForceSimulation, type ForceEdge } from '@/lib/force-simulation';
 import FlowGPU, { CELL_PALETTE } from './flow-gpu';
+import { useTheme } from '@/lib/theme';
 import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 
 // ── Types ──
@@ -33,6 +34,7 @@ interface FlowCanvasProps {
 // ── Component ──
 
 export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selectedGroup, onTrigger }: FlowCanvasProps) {
+  const { theme } = useTheme();
   const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   const [zoom, setZoom] = useState(() => { try { return parseFloat(localStorage.getItem('flow-zoom') || '1'); } catch { return 1; } });
   const [pan, setPan] = useState(() => { try { return JSON.parse(localStorage.getItem('flow-pan') || '{"x":0,"y":0}'); } catch { return { x: 0, y: 0 }; } });
@@ -200,7 +202,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
       onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel}>
 
       {/* GPU renderer */}
-      <FlowGPU width={W} height={H} zoom={zoom} pan={pan} time={time}
+      <FlowGPU width={W} height={H} zoom={zoom} pan={pan} time={time} theme={theme}
         cellNodes={gpuData.cellNodes} cellColors={gpuData.cellColors} cellLabels={gpuData.cellLabels}
         nodeX={gpuData.nodeX} nodeY={gpuData.nodeY} nodeStatus={gpuData.nodeStatus}
         nodeHover={gpuData.nodeHover} nodeLabels={gpuData.nodeLabels}

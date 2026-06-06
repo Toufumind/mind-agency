@@ -9,6 +9,7 @@ import { useEffect, useRef, useCallback } from 'react';
 interface GPUProps {
   width: number; height: number;
   zoom: number; pan: { x: number; y: number };
+  theme: string; // theme ID
   // Cell data: array of workflows, each with node positions + color index
   cellNodes: number[][]; // cellNodes[i] = [x1,y1,x2,y2,...]
   cellColors: number[][]; // cellColors[i] = [r,g,b]
@@ -26,25 +27,31 @@ interface GPUProps {
   time: number;
 }
 
-// ── Theme colors (dark) ──
-const THEME = {
-  bg: [0.039, 0.043, 0.063],      // #0a0a0f
-  grid: [0.09, 0.10, 0.13],        // grid lines
-  cellFill: 0.15,                    // cytoplasm intensity
-  cellWall: 2.0,                     // wall brightness
-  edgeIdle: [0.2, 0.22, 0.27],     // #334155
-  edgeActive: [0.376, 0.647, 0.965], // #60a5fa
-  nodeFill: [0.059, 0.09, 0.165],  // dark circle fill
+// ── Theme-aware colors ──
+// Each theme defines: bg, grid, nodeFill, edgeIdle, edgeActive
+interface ThemeColors {
+  bg: number[]; grid: number[]; nodeFill: number[];
+  edgeIdle: number[]; edgeActive: number[];
+  cellIntensity: number; // 0-1, higher = more visible cells on light themes
+}
+
+const THEMES: Record<string, ThemeColors> = {
+  'deep-space':    { bg: [0.051,0.051,0.071], grid: [0.09,0.09,0.11], nodeFill: [0.059,0.09,0.165], edgeIdle: [0.2,0.22,0.27], edgeActive: [0.298,0.435,0.961], cellIntensity: 0.15 },
+  'nord':          { bg: [0.106,0.118,0.145], grid: [0.14,0.16,0.19], nodeFill: [0.129,0.141,0.173], edgeIdle: [0.23,0.25,0.32], edgeActive: [0.38,0.55,0.78], cellIntensity: 0.18 },
+  'tokyo-night':   { bg: [0.078,0.090,0.118], grid: [0.11,0.12,0.16], nodeFill: [0.090,0.102,0.133], edgeIdle: [0.20,0.22,0.28], edgeActive: [0.42,0.60,0.92], cellIntensity: 0.16 },
+  'dracula':       { bg: [0.114,0.106,0.141], grid: [0.15,0.14,0.18], nodeFill: [0.125,0.118,0.157], edgeIdle: [0.25,0.23,0.30], edgeActive: [0.80,0.55,0.98], cellIntensity: 0.17 },
+  'notion':        { bg: [0.961,0.957,0.949], grid: [0.90,0.89,0.88], nodeFill: [0.933,0.929,0.922], edgeIdle: [0.75,0.74,0.73], edgeActive: [0.298,0.435,0.961], cellIntensity: 0.08 },
+  'minimal-white': { bg: [0.980,0.976,0.973], grid: [0.93,0.92,0.91], nodeFill: [0.957,0.953,0.949], edgeIdle: [0.78,0.77,0.76], edgeActive: [0.298,0.435,0.961], cellIntensity: 0.06 },
+  'warm-wood':     { bg: [0.953,0.925,0.878], grid: [0.88,0.84,0.78], nodeFill: [0.922,0.890,0.835], edgeIdle: [0.72,0.66,0.58], edgeActive: [0.65,0.45,0.25], cellIntensity: 0.10 },
+  'solarized-light': { bg: [0.965,0.957,0.910], grid: [0.90,0.89,0.84], nodeFill: [0.941,0.933,0.886], edgeIdle: [0.70,0.69,0.64], edgeActive: [0.16,0.50,0.55], cellIntensity: 0.07 },
 };
 
-const STATUS_COLORS = [
-  [0.267, 0.275, 0.396], // 0: pending (slate)
-  [0.918, 0.702, 0.031], // 1: waiting (yellow)
-  [0.231, 0.510, 0.965], // 2: running (blue)
-  [0.133, 0.773, 0.369], // 3: done (green)
-  [0.937, 0.267, 0.267], // 4: failed (red)
-  [0.655, 0.545, 0.980], // 5: trigger (violet)
-];
+function hexToRgb01(hex: string): number[] {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return [r, g, b];
+}
 
 const CELL_PALETTE = [
   [0.388, 0.400, 0.945], // indigo
@@ -69,6 +76,14 @@ uniform vec2 u_res;
 uniform float u_time, u_zoom;
 uniform vec2 u_pan;
 
+// Theme colors
+uniform vec3 u_bg;
+uniform vec3 u_grid;
+uniform vec3 u_nodeFill;
+uniform vec3 u_edgeIdle;
+uniform vec3 u_edgeActive;
+uniform float u_cellIntensity;
+
 // Cells
 uniform int u_cellN;
 uniform vec2 u_cellNodes[${MAX_CELLS * 32}];
@@ -86,24 +101,20 @@ uniform int u_edgeN;
 uniform vec4 u_edgeD[${MAX_EDGES}];
 uniform float u_edgeA[${MAX_EDGES}];
 
-vec2 w2s(vec2 wp){return wp*u_zoom+u_pan;}
 vec2 s2w(vec2 sp){return(sp-u_pan)/u_zoom;}
 float metaball(vec2 p,vec2 c,float r){return r*r/dot(p-c,p-c+.001);}
 
-// Simple hash for text
-float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-
 void main(){
   vec2 sp=gl_FragCoord.xy;
-  sp.y=u_res.y-sp.y; // flip Y
+  sp.y=u_res.y-sp.y;
   vec2 wp=s2w(sp);
-  vec3 col=vec3(${THEME.bg[0]},${THEME.bg[1]},${THEME.bg[2]});
+  vec3 col=u_bg;
   float alpha=1.0;
 
   // ══════════ GRID ══════════
   vec2 g=fract(wp/50.0);
   float gl_=step(0.97,g.x)+step(0.97,g.y);
-  col+=vec3(${THEME.grid[0]},${THEME.grid[1]},${THEME.grid[2]})*gl_*0.3;
+  col+=u_grid*gl_*0.3;
 
   // ══════════ CELLS ══════════
   for(int c=0;c<${MAX_CELLS};c++){
@@ -115,7 +126,7 @@ void main(){
       field+=metaball(wp,u_cellNodes[c*32+n],180.0);
     }
     float pulse=.82+.18*sin(u_time*.7+float(c)*2.3);
-    float cy=smoothstep(.2,.6,field)*.3;
+    float cy=smoothstep(.2,.6,field)*u_cellIntensity;
     float wI=smoothstep(.45,.8,field);
     float wO=smoothstep(.8,1.3,field);
     float w=(wI-wO)*pulse;
@@ -138,17 +149,16 @@ void main(){
     float line=1.-smoothstep(0.,lw+1.,dist);
     float flow=t*25.-u_time*4.;
     float dash=act>.5?.5+.5*sin(flow):.3;
-    vec3 lc=act>.5?vec3(${THEME.edgeActive[0]},${THEME.edgeActive[1]},${THEME.edgeActive[2]}):vec3(${THEME.edgeIdle[0]},${THEME.edgeIdle[1]},${THEME.edgeIdle[2]});
+    vec3 lc=act>.5?u_edgeActive:u_edgeIdle;
     float la=line*dash*(act>.5?.85:.35);
     float eg=act>.5?(1.-smoothstep(0.,14.,dist))*.12:0.;
     col+=lc*la+lc*eg;
-    // Particles
     if(act>.5){
       for(int p=0;p<3;p++){
         float pt=fract(u_time*.12+float(p)*.33);
         float pd=length(wp-(a+ba*pt));
         float pa=(1.-smoothstep(0.,5.,pd))*(1.-pt*.6);
-        col+=vec3(.478,.671,.980)*pa*.7;
+        col+=u_edgeActive*pa*.7;
       }
     }
   }
@@ -163,24 +173,19 @@ void main(){
     float circle=1.-smoothstep(24.,27.,d);
     float glowR=st>1.5&&st<2.5?55.:42.;
     float ng=(1.-smoothstep(0.,glowR,d))*.35;
-    // Pulse ring
     float pulse=1.;
     if(st>1.5&&st<2.5){
       pulse=.7+.3*sin(u_time*3.5+float(i)*.7);
       float ring=abs(d-30.);
       float ra=(1.-smoothstep(0.,2.5,ring))*.45*pulse;
-      col+=vec3(.231,.510,.965)*ra;
+      col+=u_edgeActive*ra;
     }
-    // Hover
     float hov=(1.-smoothstep(25.,30.,d))*hv*.5;
-    // Color
     int si=int(st);
     vec3 nc=si==0?vec3(.267,.275,.396):si==1?vec3(.918,.702,.031):si==2?vec3(.231,.510,.965):si==3?vec3(.133,.773,.369):si==4?vec3(.937,.267,.267):vec3(.655,.545,.980);
-    vec3 fill=vec3(.059,.09,.165);
-    col+=fill*circle;
+    col+=u_nodeFill*circle;
     col+=nc*circle*.35;
     col+=nc*(ng+hov)*pulse;
-    // Check/X icons
     if(st>2.5&&st<3.5){
       float ck=abs(wp.x-np.x)+abs(wp.y-np.y-2.);
       col+=vec3(.133,.773,.369)*(1.-smoothstep(2.5,3.5,ck));
@@ -191,9 +196,6 @@ void main(){
       col+=vec3(.937,.267,.267)*max(1.-smoothstep(1.5,2.5,abs(xd)),1.-smoothstep(1.5,2.5,abs(x2)))*.7;
     }
   }
-
-  // ══════════ CELL LABELS (text approximation) ══════════
-  // No text in shader — labels rendered as SVG overlay
 
   gl_FragColor=vec4(col,alpha);
 }`;
@@ -273,8 +275,9 @@ export default function FlowGPU(props: GPUProps) {
     if (!gl || !prog || !buf) return;
 
     try {
+      const tc = THEMES[props.theme] || THEMES['deep-space'];
       gl.viewport(0, 0, width, height);
-      gl.clearColor(THEME.bg[0], THEME.bg[1], THEME.bg[2], 1);
+      gl.clearColor(tc.bg[0], tc.bg[1], tc.bg[2], 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.useProgram(prog);
 
@@ -295,6 +298,13 @@ export default function FlowGPU(props: GPUProps) {
       f('u_time', time * 0.016);
       f('u_zoom', zoom);
       v2('u_pan', pan.x, pan.y);
+      // Theme colors
+      f3('u_bg', tc.bg[0], tc.bg[1], tc.bg[2]);
+      f3('u_grid', tc.grid[0], tc.grid[1], tc.grid[2]);
+      f3('u_nodeFill', tc.nodeFill[0], tc.nodeFill[1], tc.nodeFill[2]);
+      f3('u_edgeIdle', tc.edgeIdle[0], tc.edgeIdle[1], tc.edgeIdle[2]);
+      f3('u_edgeActive', tc.edgeActive[0], tc.edgeActive[1], tc.edgeActive[2]);
+      f('u_cellIntensity', tc.cellIntensity);
 
       // Cells
       i1('u_cellN', Math.min(props.cellNodes.length, MAX_CELLS));
@@ -376,4 +386,4 @@ export default function FlowGPU(props: GPUProps) {
   );
 }
 
-export { STATUS_COLORS, CELL_PALETTE };
+export { CELL_PALETTE };
