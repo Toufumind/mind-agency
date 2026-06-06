@@ -270,7 +270,7 @@ export function emitEvent(type: EventType, payload: Record<string, unknown>, sou
 export enum StepStatus { PENDING = 'pending', BLOCKED = 'blocked', IN_PROGRESS = 'in_progress', COMPLETED = 'completed', SKIPPED = 'skipped', FAILED = 'failed' }
 export enum WorkflowStatus { IDLE = 'idle', RUNNING = 'running', COMPLETED = 'completed', FAILED = 'failed' }
 
-export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; timeout?: number; onFailure?: string; onReject?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
+export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; timeout?: number; onFailure?: string; onReject?: string; onApprove?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
 export interface WorkflowTrigger {
   type: 'manual' | 'file_change' | 'schedule' | 'event';
   /** For schedule: cron expression (e.g. "0 9 * * 1-5") */
@@ -448,6 +448,7 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
     dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined),
     timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined,
     onReject: s.on_reject || s.onReject || undefined,
+    onApprove: s.on_approve || s.onApprove || undefined,
     maxRejectRetries: typeof s.max_reject_retries === 'number' ? Math.min(s.max_reject_retries, 10) : typeof s.maxRejectRetries === 'number' ? Math.min(s.maxRejectRetries, 10) : undefined,
     retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined,
     retryBackoff: s.retry_backoff || s.retryBackoff || undefined,
@@ -490,7 +491,7 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
 
 // ── DAG internal types ──────────────────────────────────────────────
 
-interface DagNode { step: WorkflowStep; deps: string[]; dependents: string[]; status: StepStatus; output: string; error: string; retryCount: number; maxRetries: number; rejectCount: number; maxRejectRetries: number; onFailure?: string; onReject?: string; timeout: number; startedAt: number; }
+interface DagNode { step: WorkflowStep; deps: string[]; dependents: string[]; status: StepStatus; output: string; error: string; retryCount: number; maxRetries: number; rejectCount: number; maxRejectRetries: number; onFailure?: string; onReject?: string; onApprove?: string; timeout: number; startedAt: number; }
 const PRIORITY: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 
 // ═══════════════════════════════════════════════════ WorkflowEngine ═══
@@ -584,7 +585,7 @@ export class WorkflowEngine {
           status: StepStatus.PENDING, output: '', error: '',
           retryCount: 0, maxRetries: s.retry ?? 3,
           rejectCount: 0, maxRejectRetries: s.maxRejectRetries ?? 3,
-          onFailure: s.onFailure, onReject: s.onReject,
+          onFailure: s.onFailure, onReject: s.onReject, onApprove: s.onApprove,
           timeout: s.timeout || 300000, startedAt: 0,
         });
       }
@@ -863,41 +864,64 @@ export class WorkflowEngine {
         }
       }
 
-      // v0.5: Review rejection — if this step is a review and output contains REJECTED,
-      // fail the original step and trigger retry with rejection context
+      // v0.5: Review branching — if this step is a review, route based on APPROVED/REJECTED
       if (sid.endsWith('_review')) {
         const originalId = sid.replace(/_review$/, '');
         const originalNode = nodes.get(originalId);
-        if (originalNode && /REJECTED/i.test(out)) {
-          const onReject = originalNode.onReject || originalNode.step.onReject;
-          console.log(`[wf] Review ${sid} REJECTED → original ${originalId} onReject=${onReject || 'retry'}`);
+        if (originalNode) {
+          if (/REJECTED/i.test(out)) {
+            // ── REJECTED path ──
+            const onReject = originalNode.onReject || originalNode.step.onReject;
+            console.log(`[wf] Review ${sid} REJECTED → original ${originalId} onReject=${onReject || 'retry'}`);
 
-          if (onReject === 'fail') {
-            // Hard fail — mark original as failed, skip downstream
-            originalNode.status = StepStatus.FAILED;
-            originalNode.error = `Review rejected: ${out.slice(0, 500)}`;
-            run.steps.set(originalId, StepStatus.FAILED);
-            // Skip all dependents of the original step
-            for (const depId of originalNode.dependents) {
-              const dep = nodes.get(depId);
-              if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
-                dep.status = StepStatus.SKIPPED;
-                run.steps.set(depId, StepStatus.SKIPPED);
+            if (onReject === 'fail') {
+              // Hard fail — mark original as failed, skip downstream
+              originalNode.status = StepStatus.FAILED;
+              originalNode.error = `Review rejected: ${out.slice(0, 500)}`;
+              run.steps.set(originalId, StepStatus.FAILED);
+              // Skip all dependents of the original step
+              for (const depId of originalNode.dependents) {
+                const dep = nodes.get(depId);
+                if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
+                  dep.status = StepStatus.SKIPPED;
+                  run.steps.set(depId, StepStatus.SKIPPED);
+                }
+              }
+            } else {
+              // Default: retry — reset original step to PENDING with rejection context
+              if (originalNode.rejectCount < originalNode.maxRejectRetries) {
+                originalNode.rejectCount++;
+                originalNode.status = StepStatus.PENDING;
+                originalNode.output = '';  // clear old output
+                // Inject rejection reason into the step prompt
+                originalNode.step = {
+                  ...originalNode.step,
+                  prompt: `${originalNode.step.prompt}\n\n---\n\n【审查反馈】上次提交被拒绝，原因：${out.slice(0, 1000)}\n请根据反馈修改后重新提交。`,
+                };
+                run.steps.set(originalId, StepStatus.PENDING);
+                // Skip the review step's dependents (they'll be re-evaluated after retry)
+                for (const depId of node.dependents) {
+                  const dep = nodes.get(depId);
+                  if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
+                    dep.status = StepStatus.SKIPPED;
+                    run.steps.set(depId, StepStatus.SKIPPED);
+                  }
+                }
+                console.log(`[wf] ${originalId} retry ${originalNode.rejectCount}/${originalNode.maxRejectRetries} with rejection context`);
+              } else {
+                // Max reject retries exhausted — hard fail
+                originalNode.status = StepStatus.FAILED;
+                originalNode.error = `Review rejected ${originalNode.maxRejectRetries} times: ${out.slice(0, 500)}`;
+                run.steps.set(originalId, StepStatus.FAILED);
+                console.log(`[wf] ${originalId} failed after ${originalNode.maxRejectRetries} reject retries`);
               }
             }
-          } else {
-            // Default: retry — reset original step to PENDING with rejection context
-            if (originalNode.rejectCount < originalNode.maxRejectRetries) {
-              originalNode.rejectCount++;
-              originalNode.status = StepStatus.PENDING;
-              originalNode.output = '';  // clear old output
-              // Inject rejection reason into the step prompt
-              originalNode.step = {
-                ...originalNode.step,
-                prompt: `${originalNode.step.prompt}\n\n---\n\n【审查反馈】上次提交被拒绝，原因：${out.slice(0, 1000)}\n请根据反馈修改后重新提交。`,
-              };
-              run.steps.set(originalId, StepStatus.PENDING);
-              // Skip the review step's dependents (they'll be re-evaluated after retry)
+          } else if (/APPROVED/i.test(out)) {
+            // ── APPROVED path — route to onApprove target if specified ──
+            const onApprove = originalNode.onApprove || originalNode.step.onApprove;
+            if (onApprove && nodes.has(onApprove)) {
+              console.log(`[wf] Review ${sid} APPROVED → routing to ${onApprove}`);
+              // Skip default downstream of the review step, route to onApprove target
               for (const depId of node.dependents) {
                 const dep = nodes.get(depId);
                 if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
@@ -905,14 +929,14 @@ export class WorkflowEngine {
                   run.steps.set(depId, StepStatus.SKIPPED);
                 }
               }
-              console.log(`[wf] ${originalId} retry ${originalNode.rejectCount}/${originalNode.maxRejectRetries} with rejection context`);
-            } else {
-              // Max reject retries exhausted — hard fail
-              originalNode.status = StepStatus.FAILED;
-              originalNode.error = `Review rejected ${originalNode.maxRejectRetries} times: ${out.slice(0, 500)}`;
-              run.steps.set(originalId, StepStatus.FAILED);
-              console.log(`[wf] ${originalId} failed after ${originalNode.maxRejectRetries} reject retries`);
+              // Unblock the onApprove target by removing the review step as its dep
+              const target = nodes.get(onApprove);
+              if (target) {
+                target.deps = target.deps.filter(d => d !== sid);
+                // If all deps are now satisfied, it will be picked up in the next iteration
+              }
             }
+            // If no onApprove, default behavior: continue with normal DAG flow
           }
         }
       }

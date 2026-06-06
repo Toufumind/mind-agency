@@ -13,6 +13,7 @@ steps:
       回复: TEST_PASS 或 TEST_FAIL + 失败的测试
     reviewer: Bob
     onReject: retry
+    onApprove: build
     maxRejectRetries: 2
 
   - id: build
@@ -21,9 +22,9 @@ steps:
     prompt: |
       运行 npm run build 确认构建成功。
       回复: BUILD_PASS + 产物大小
-    dependsOn: [test]
     reviewer: Charlie
     onReject: retry
+    onApprove: deploy_staging
     maxRejectRetries: 2
 
   - id: deploy_staging
