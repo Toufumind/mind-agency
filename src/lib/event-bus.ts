@@ -17,6 +17,7 @@ import path from 'path';
 import os from 'os';
 import { AUDIT_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
 import { broadcastWs } from './ws-embedded';
+import { enqueueTask, completeTask } from './task-queue';
 import { checkToolPermission } from './permission-engine';
 import {
   saveRunMeta, saveStepCheckpoint, completeRunCheckpoint,
@@ -731,6 +732,14 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     node.status = StepStatus.WAITING;
     node.notifiedAt = Date.now();
     run.steps.set(sid, StepStatus.WAITING);
+
+    // Add to agent's task queue
+    enqueueTask(node.step.agent, {
+      runId, stepId: sid, workflow: run.workflowName,
+      prompt: node.step.prompt || '',
+      priority: (node.step.priority as any) || 'normal',
+    });
+
     console.log(`[wf] Notified ${node.step.agent} for ${sid} (run ${runId.slice(0, 8)})`);
   }
 
@@ -744,6 +753,10 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     if (!node || node.status !== StepStatus.WAITING) return false;
 
     console.log(`[wf] Callback: ${stepId} ← ${output.slice(0, 100)} (run ${runId.slice(0, 8)})`);
+
+    // Complete task in agent's task queue
+    const isFailed = /FAILED|ERROR/i.test(output);
+    completeTask(node.step.agent, runId, stepId, output.slice(0, 500), isFailed ? 'failed' : 'completed');
 
     // Clean up notification file
     try {

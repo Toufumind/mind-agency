@@ -13,6 +13,7 @@ export interface ToolDef { name: string; description: string; inputSchema: any; 
 
 export function agentTools(): ToolDef[] {
   return [
+    { name: 'agent_tasks', description: '查看自己的任务列表（待处理/已完成）。', inputSchema: { type: 'object', properties: { action: { type: 'string', description: 'list | next | complete' }, runId: { type: 'string', description: '任务 runId（complete 时需要）' }, stepId: { type: 'string', description: '任务 stepId（complete 时需要）' } }, required: ['action'] } },
     { name: 'agent_create', description: '创建新的 AI Agent 并加入团队。可指定 provider（claude/codex）。', inputSchema: { type: 'object', properties: { name: { type: 'string' }, roles: { type: 'string', description: '角色列表，逗号分隔' }, provider: { type: 'string', description: 'AI 提供商：claude（默认）或 codex' }, autoRespond: { type: 'boolean' } }, required: ['name', 'roles'] } },
     { name: 'agent_discover', description: '按能力搜索可用的 Agent。', inputSchema: { type: 'object', properties: { query: { type: 'string', description: '搜索关键词' } }, required: ['query'] } },
     { name: 'agent_get', description: '查看 Agent 详细信息（配置、角色、Provider）。', inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Agent 名字' } }, required: ['name'] } },
@@ -28,6 +29,35 @@ export async function handleAgentTool(
   respond: (id: string, msg: any) => void, id: string
 ): Promise<boolean> {
   const a = args;
+
+  if (name === 'agent_tasks') {
+    const { loadTaskQueue, getPendingTasks, getCompletedTasks, nextTask, completeTask, formatTaskQueue } = await import('../../src/lib/task-queue.js');
+    const action = a.action || 'list';
+
+    if (action === 'list') {
+      const text = formatTaskQueue(agentName);
+      respond(id, { content: [{ type: 'text', text }] });
+      return true;
+    }
+
+    if (action === 'next') {
+      const task = nextTask(agentName);
+      if (!task) { respond(id, { content: [{ type: 'text', text: '无待处理任务' }] }); return true; }
+      respond(id, { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] });
+      return true;
+    }
+
+    if (action === 'complete') {
+      const { runId, stepId, status, summary } = a;
+      if (!runId || !stepId) { respond(id, { content: [{ type: 'text', text: 'runId and stepId required' }], isError: true }); return true; }
+      const ok = completeTask(agentName, runId, stepId, summary || '', status === 'failed' ? 'failed' : 'completed');
+      respond(id, { content: [{ type: 'text', text: ok ? `任务 ${stepId} 已标记完成` : '任务未找到' }] });
+      return true;
+    }
+
+    respond(id, { content: [{ type: 'text', text: `未知 action: ${action}. 使用 list/next/complete` }], isError: true });
+    return true;
+  }
 
   if (name === 'agent_get') {
     const target = (a.name || '').trim();
