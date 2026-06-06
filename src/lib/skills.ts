@@ -116,7 +116,7 @@ export async function searchSkills(query: string): Promise<SkillSearchResult[]> 
 
 // ── Install ──────────────────────────────────────────────
 
-async function downloadRepo(repo: string, repoPath?: string): Promise<{ files: Map<string, string>; hash: string }> {
+async function downloadRepo(repo: string, repoPath?: string): Promise<{ files: Map<string, string>; version: string }> {
   const files = new Map<string, string>();
 
   async function downloadDir(dirPath: string) {
