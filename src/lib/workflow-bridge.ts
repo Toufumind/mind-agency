@@ -196,37 +196,68 @@ function saveWorkflowState(group: string, state: GroupWorkflowState): void {
 async function waitForCompletion(runId: string, group: string): Promise<void> {
   const eng = getEngine();
   const { signal } = _shutdownController;
-  while (!signal.aborted) {
-    await Promise.race([
-      sleep(3000),
-      new Promise<void>(r => signal.addEventListener('abort', () => r(), { once: true })),
-    ]);
-    if (signal.aborted) break;
-    const run = eng.getRun(runId);
-    if (!run) break;
-    if (run.status === WorkflowStatus.COMPLETED) {
-      const s = loadWorkflowState(group);
-      if (s) { s.status = 'completed'; saveWorkflowState(group, s); }
-      break;
-    }
-    if (run.status === WorkflowStatus.FAILED) {
-      const s = loadWorkflowState(group);
-      if (s) { s.status = 'failed'; saveWorkflowState(group, s); }
-      break;
-    }
-    // Update progress
-    const s = loadWorkflowState(group);
-    if (s) {
-      s.status = run.status;
-      // Track completed steps
-      const done: string[] = [];
-      for (const [sid, st] of run.steps) {
-        if (st === 'completed' || st === 'skipped') done.push(sid);
+
+  // Use EventBus for event-driven completion (instead of polling)
+  return new Promise<void>((resolve) => {
+    const cleanup = () => {
+      signal.removeEventListener('abort', onAbort);
+    };
+
+    const onAbort = () => { cleanup(); resolve(); };
+    signal.addEventListener('abort', onAbort, { once: true });
+
+    // Subscribe to task.completed and task.blocked events
+    import('./event-bus').then(({ getEventBus, EventType }) => {
+      const bus = getEventBus();
+      const onTaskComplete = (msg: any) => {
+        if (msg.payload?.taskId === runId || msg.payload?.group === group) {
+          const run = eng.getRun(runId);
+          if (!run) { cleanup(); resolve(); return; }
+
+          if (run.status === WorkflowStatus.COMPLETED) {
+            const s = loadWorkflowState(group);
+            if (s) { s.status = 'completed'; saveWorkflowState(group, s); }
+            cleanup(); resolve();
+          } else if (run.status === WorkflowStatus.FAILED) {
+            const s = loadWorkflowState(group);
+            if (s) { s.status = 'failed'; saveWorkflowState(group, s); }
+            cleanup(); resolve();
+          } else {
+            // Update progress
+            const s = loadWorkflowState(group);
+            if (s) {
+              s.status = run.status;
+              const done: string[] = [];
+              for (const [sid, st] of run.steps) {
+                if (st === 'completed' || st === 'skipped') done.push(sid);
+              }
+              s.currentStep = done.join(',');
+              saveWorkflowState(group, s);
+            }
+          }
+        }
+      };
+
+      bus.subscribe(
+        { event: EventType.TASK_COMPLETED },
+        { scope: 'events' },
+        `wf-wait:${runId}`,
+        onTaskComplete
+      );
+      bus.subscribe(
+        { event: EventType.TASK_BLOCKED },
+        { scope: 'events' },
+        `wf-wait-blocked:${runId}`,
+        onTaskComplete
+      );
+
+      // Fallback: check immediately in case workflow already completed
+      const run = eng.getRun(runId);
+      if (!run || run.status === WorkflowStatus.COMPLETED || run.status === WorkflowStatus.FAILED) {
+        cleanup(); resolve();
       }
-      s.currentStep = done.join(',');
-      saveWorkflowState(group, s);
-    }
-  }
+    });
+  });
 }
 
 // ── Recovery ──────────────────────────────────────────────

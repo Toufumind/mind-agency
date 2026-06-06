@@ -277,6 +277,8 @@ export interface WorkflowTrigger {
   cron?: string;
   /** For event: EventBus event type to listen for */
   eventType?: string;
+  /** For event: optional filter on event payload (e.g., { group: 'dev' }) */
+  eventFilter?: { group?: string; agent?: string };
   /** For file_change: file path to watch */
   watchFile?: string;
   /** For file_change: debounce interval in ms */

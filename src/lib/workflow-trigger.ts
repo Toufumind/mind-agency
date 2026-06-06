@@ -16,6 +16,9 @@ import { GROUPS_DIR } from './data-dir';
 import { parseWorkflowYaml, type WorkflowTrigger } from './event-bus';
 import { triggerWorkflow } from './workflow-bridge';
 
+// Event trigger subscriptions (group → event type)
+const eventSubscriptions = new Map<string, { eventType: string; subId: string }>();
+
 interface TriggerState {
   group: string;
   trigger: WorkflowTrigger;
@@ -83,7 +86,8 @@ export function checkTriggers(): void {
           checkScheduleTrigger(group, state, now);
           break;
         case 'event':
-          // Event triggers are handled by EventBus subscriptions (not implemented yet)
+          // Event triggers are handled by EventBus subscriptions
+          subscribeEventTrigger(group, state);
           break;
       }
     } catch (err) {
@@ -126,6 +130,44 @@ function checkScheduleTrigger(group: string, state: TriggerState, now: number): 
   triggerWorkflow(group).catch(err =>
     console.error(`[trigger] Failed to trigger ${group}: ${err.message}`)
   );
+}
+
+/** Subscribe to EventBus event trigger */
+function subscribeEventTrigger(group: string, state: TriggerState): void {
+  // Avoid duplicate subscriptions
+  if (eventSubscriptions.has(group)) return;
+
+  const eventType = state.trigger.eventType || 'task.completed';
+  const debounce = state.trigger.debounceMs || 5000;
+
+  // Lazy import to avoid circular dependency
+  import('./event-bus').then(({ getEventBus }) => {
+    const bus = getEventBus();
+    const subId = bus.subscribe(
+      { event: eventType as any },
+      { scope: 'events' },
+      `trigger:${group}`,
+      (msg: any) => {
+        const now = Date.now();
+        if (now - state.lastFire < debounce) return; // debounce
+
+        // Optional: check event matches filter
+        if (state.trigger.eventFilter) {
+          const filter = state.trigger.eventFilter;
+          if (filter.group && msg.payload?.group !== filter.group) return;
+          if (filter.agent && msg.payload?.agent !== filter.agent) return;
+        }
+
+        console.log(`[trigger] Event ${eventType} → triggering ${group}`);
+        state.lastFire = now;
+        triggerWorkflow(group).catch(err =>
+          console.error(`[trigger] Failed to trigger ${group}: ${err.message}`)
+        );
+      }
+    );
+    eventSubscriptions.set(group, { eventType, subId });
+    console.log(`[trigger] Subscribed to ${eventType} for ${group}`);
+  });
 }
 
 /**
