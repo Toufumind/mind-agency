@@ -543,7 +543,7 @@ export class WorkflowEngine {
       const r = this.runs.get(runId);
       if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); }
       if (group) {
-        completeRunCheckpoint(group, runId, 'failed');
+        completeRunCheckpoint(group, runId, 'failed', err.message || 'Unknown error');
         const stepsCompleted = [...(r?.steps.values() || [])].filter(s => s === StepStatus.COMPLETED).length;
         const stepsFailed = [...(r?.steps.values() || [])].filter(s => s === StepStatus.FAILED).length;
         appendRunHistory(group, {
@@ -1177,7 +1177,7 @@ export class WorkflowEngine {
       const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
       if (!fs.existsSync(wfPath)) {
         console.log(`[wf-checkpoint] No workflow.yaml in ${group}, marking as failed`);
-        completeRunCheckpoint(group, runId, 'failed');
+        completeRunCheckpoint(group, runId, 'failed', 'workflow.yaml not found');
         continue;
       }
 

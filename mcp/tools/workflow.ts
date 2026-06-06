@@ -37,6 +37,20 @@ export async function handleWorkflowTool(
     try { steps = JSON.parse(stepsJson); } catch { respond(id, { content: [{ type: 'text', text: 'steps must be valid JSON array' }], isError: true }); return true; }
     if (!Array.isArray(steps) || steps.length === 0) { respond(id, { content: [{ type: 'text', text: '错误：steps 不能为空数组。请提供至少一个步骤，格式: [{"id":"step1","agent":"Alice","action":"review","prompt":"..."}]' }], isError: true }); return true; }
 
+    // Validate step ID uniqueness
+    const stepIds = steps.map((s: any) => s.id).filter(Boolean);
+    const dupIds = stepIds.filter((id: string, i: number) => stepIds.indexOf(id) !== i);
+    if (dupIds.length > 0) {
+      respond(id, { content: [{ type: 'text', text: `错误：存在重复的步骤 ID: ${[...new Set(dupIds)].join(', ')}。每个步骤必须有唯一的 ID。` }], isError: true });
+      return true;
+    }
+
+    // Validate each step has required fields
+    for (const step of steps) {
+      if (!step.id) { respond(id, { content: [{ type: 'text', text: '错误：每个步骤必须有 id 字段' }], isError: true }); return true; }
+      if (!step.agent) { respond(id, { content: [{ type: 'text', text: `错误：步骤 "${step.id}" 缺少 agent 字段` }], isError: true }); return true; }
+    }
+
     // v0.4: Validate agent existence
     const agentsDir = path.join(PROJECT_ROOT, 'Agents');
     for (const step of steps) {

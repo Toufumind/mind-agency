@@ -47,6 +47,8 @@ export interface ConsensusRequest {
   timeoutMs: number;
   approvers: string[];
   decisions: Record<string, string>;
+  /** Target agent for actions like group_kick, group_invite, group_set_admin */
+  target?: string;
   status: 'pending' | 'approved' | 'rejected' | 'adversary_review' | 'rebuttal';
   callback?: string;
   /** Adversarial verification: second opinion required */
@@ -108,7 +110,7 @@ export function getRule(action: string, group?: string): ConsensusRule | null {
 /** v0.4: Create consensus request with explicit approvers (used by permission-engine) */
 export function createRequest(opts: {
   action: string; group: string; requestedBy: string;
-  description: string; approvers: string[]; adversary?: string;
+  description: string; approvers: string[]; adversary?: string; target?: string;
 }): string {
   const id = randomUUID().slice(0, 8);
   const group = opts.group || '_global';
@@ -119,7 +121,7 @@ export function createRequest(opts: {
     description: opts.description, createdAt: Date.now(),
     timeoutMs: 86400_000, // 24 hours
     approvers: opts.approvers, decisions: {}, status: 'pending',
-    adversary: opts.adversary,
+    adversary: opts.adversary, target: opts.target,
   };
 
   fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(request, null, 2));
@@ -451,7 +453,7 @@ export function initConsensusHandlers(): void {
   registerHandler('group_delete', async (req) => {
     const d = path.join(GROUPS_DIR, req.group);
     if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
-    console.log(`[consensus] group_delete: ${req.group}`);
+    console.log(`[consensus] group_delete: ${req.group} deleted`);
   });
 
   // deploy: trigger workflow
@@ -462,41 +464,86 @@ export function initConsensusHandlers(): void {
 
   // group_kick: remove member from group
   registerHandler('group_kick', async (req) => {
-    const target = req.description?.match(/kick\s+(\S+)/)?.[1];
-    if (!target) { console.log(`[consensus] group_kick: no target in description`); return; }
+    const target = req.target;
+    if (!target) { console.log(`[consensus] group_kick: no target specified`); return; }
     const agDir = path.join(GROUPS_DIR, req.group, 'Agents', target);
     if (fs.existsSync(agDir)) {
       fs.rmSync(agDir, { recursive: true, force: true });
+      // Post system message to chat
+      const chatDir = path.join(GROUPS_DIR, req.group, 'chat');
+      if (fs.existsSync(chatDir)) {
+        const msg = `${target} has been removed from the group by ${req.requestedBy}`;
+        const ts = Date.now();
+        const f = path.join(chatDir, `${ts}_system_kick.md`);
+        const c = `---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n${msg}\n`;
+        const tmp = f + '.tmp'; fs.writeFileSync(tmp, c, 'utf-8'); fs.renameSync(tmp, f);
+      }
       console.log(`[consensus] group_kick: removed ${target} from ${req.group}`);
+    } else {
+      console.log(`[consensus] group_kick: ${target} not found in ${req.group}`);
     }
   });
 
   // group_invite: create invitation
   registerHandler('group_invite', async (req) => {
-    const target = req.description?.match(/invite\s+(\S+)/)?.[1];
-    if (!target) { console.log(`[consensus] group_invite: no target in description`); return; }
+    const target = req.target;
+    if (!target) { console.log(`[consensus] group_invite: no target specified`); return; }
     const invDir = path.join(GROUPS_DIR, req.group, '.invitations');
     if (!fs.existsSync(invDir)) fs.mkdirSync(invDir, { recursive: true });
     const invFile = path.join(invDir, `${target}.json`);
     fs.writeFileSync(invFile, JSON.stringify({ invitedBy: req.requestedBy, invitedAt: Date.now() }), 'utf-8');
+    // Post system message to chat
+    const chatDir = path.join(GROUPS_DIR, req.group, 'chat');
+    if (fs.existsSync(chatDir)) {
+      const msg = `${target} has been invited to the group by ${req.requestedBy}`;
+      const ts = Date.now();
+      const f = path.join(chatDir, `${ts}_system_invite.md`);
+      const c = `---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n${msg}\n`;
+      const tmp = f + '.tmp'; fs.writeFileSync(tmp, c, 'utf-8'); fs.renameSync(tmp, f);
+    }
     console.log(`[consensus] group_invite: invited ${target} to ${req.group}`);
   });
 
   // group_set_admin: update group config
   registerHandler('group_set_admin', async (req) => {
-    const target = req.description?.match(/set_admin\s+(\S+)/)?.[1];
-    if (!target) return;
+    const target = req.target;
+    if (!target) { console.log(`[consensus] group_set_admin: no target specified`); return; }
     const configPath = path.join(GROUPS_DIR, req.group, 'config.json');
     if (!fs.existsSync(configPath)) return;
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     if (!config.admins) config.admins = [];
     if (!config.admins.includes(target)) config.admins.push(target);
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    // Post system message to chat
+    const chatDir = path.join(GROUPS_DIR, req.group, 'chat');
+    if (fs.existsSync(chatDir)) {
+      const msg = `${target} has been set as admin of the group by ${req.requestedBy}`;
+      const ts = Date.now();
+      const f = path.join(chatDir, `${ts}_system_setadmin.md`);
+      const c = `---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n${msg}\n`;
+      const tmp = f + '.tmp'; fs.writeFileSync(tmp, c, 'utf-8'); fs.renameSync(tmp, f);
+    }
     console.log(`[consensus] group_set_admin: added ${target} as admin of ${req.group}`);
   });
 
+  // workflow_create: create workflow YAML file
+  registerHandler('workflow_create', async (req) => {
+    // Workflow creation is already handled by the MCP tool before consensus.
+    // This handler is called after approval — no additional action needed.
+    console.log(`[consensus] workflow_create: approved for ${req.group}`);
+  });
+
+  // workflow_trigger: trigger workflow execution
+  registerHandler('workflow_trigger', async (req) => {
+    // Workflow trigger is already handled by the MCP tool.
+    // This handler is called after approval — trigger the workflow.
+    const { triggerWorkflow } = await import('./workflow-bridge');
+    triggerWorkflow(req.group).catch(() => {});
+    console.log(`[consensus] workflow_trigger: triggered for ${req.group}`);
+  });
+
   // Other actions: log only
-  for (const a of ['config_change', 'agent_create', 'workflow_step', 'workflow_trigger', 'critical_deploy']) {
+  for (const a of ['config_change', 'agent_create', 'workflow_step', 'critical_deploy']) {
     registerHandler(a, async (req) => { console.log(`[consensus] ${a} done: ${req.group}`); });
   }
 }

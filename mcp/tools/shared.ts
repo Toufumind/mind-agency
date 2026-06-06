@@ -15,7 +15,7 @@ export const WS_BASE_URL = process.env.WS_BASE_URL || 'http://127.0.0.1:3001';
 export const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || `${WS_BASE_URL}/broadcast`;
 export const WS_EVENTS_URL = process.env.WS_EVENTS_URL || `${WS_BASE_URL}/events`;
 export const API_BASE_URL = process.env.MIND_API_URL || 'http://127.0.0.1:3000';
-export const PROJECT_ROOT = process.env.MIND_DATA_DIR || process.env.MIND_PROJECT_ROOT || process.cwd();
+export const PROJECT_ROOT = process.env.MIND_DATA_DIR || process.cwd();
 export const AGENTS_DIR = path.join(PROJECT_ROOT, 'Agents');
 
 // ── File helpers ──────────────────────────────────────────
@@ -50,11 +50,18 @@ export function httpPost(urlStr: string, body: Record<string, unknown>) {
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), 'Connection': 'keep-alive' },
       timeout: 5000,
     }, (res) => { res.resume(); });
-    req.on('error', (e) => { console.warn(`[mcp] httpPost ${urlStr}: ${e.message}`); });
-    req.on('timeout', () => { req.destroy(); console.warn(`[mcp] httpPost ${urlStr}: timeout`); });
+    req.on('error', (e) => {
+      console.error(`[mcp] httpPost FAILED ${urlStr}: ${e.message} (code=${(e as any).code || 'unknown'})`);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      console.error(`[mcp] httpPost TIMEOUT ${urlStr} after 5s`);
+    });
     req.write(data);
     req.end();
-  } catch (e: unknown) { console.warn(`[mcp] httpPost ${urlStr}: ${e instanceof Error ? e.message : String(e)}`); }
+  } catch (e: unknown) {
+    console.error(`[mcp] httpPost EXCEPTION ${urlStr}: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /** Simple JSON fetch with timeout */
@@ -135,12 +142,23 @@ export function emitBusEvent(event: string, payload: Record<string, unknown>, so
 
 // ── Audit ─────────────────────────────────────────────────
 
+/**
+ * Write audit log entry. Delegates to src/lib/audit.ts for consistent JSONL format.
+ * Falls back to local .json write if import fails (e.g., MCP standalone mode).
+ */
 export function writeAudit(entry: { agent: string; action: string; resource: string; details?: string }) {
   try {
-    const auditDir = path.join(PROJECT_ROOT, '.audit');
-    if (!exists(auditDir)) fs.mkdirSync(auditDir, { recursive: true });
-    const today = new Date().toISOString().slice(0, 10);
-    const line = JSON.stringify({ ...entry, timestamp: new Date().toISOString() }) + '\n';
-    fs.appendFileSync(path.join(auditDir, `${today}.json`), line, 'utf-8');
-  } catch { /* ignore */ }
+    // Try to use the unified audit module
+    const { writeAudit: unifiedWrite } = require('../../src/lib/audit');
+    unifiedWrite({ ...entry, status: 'success' as const });
+  } catch {
+    // Fallback: write to .audit/YYYY-MM-DD.json (legacy format)
+    try {
+      const auditDir = path.join(PROJECT_ROOT, '.audit');
+      if (!exists(auditDir)) fs.mkdirSync(auditDir, { recursive: true });
+      const today = new Date().toISOString().slice(0, 10);
+      const line = JSON.stringify({ ...entry, timestamp: new Date().toISOString() }) + '\n';
+      fs.appendFileSync(path.join(auditDir, `${today}.json`), line, 'utf-8');
+    } catch { /* ignore */ }
+  }
 }

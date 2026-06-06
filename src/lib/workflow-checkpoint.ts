@@ -70,12 +70,13 @@ export function saveStepCheckpoint(group: string, runId: string, step: StepCheck
   fs.writeFileSync(path.join(dir, `${step.stepId}.json`), JSON.stringify(step, null, 2), 'utf-8');
 }
 
-export function completeRunCheckpoint(group: string, runId: string, status: string): void {
+export function completeRunCheckpoint(group: string, runId: string, status: string, error?: string): void {
   const metaPath = path.join(runDir(group, runId), 'meta.json');
   try {
     const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
     meta.status = status;
     meta.completedAt = Date.now();
+    if (error) meta.error = error;
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
   } catch {}
 }

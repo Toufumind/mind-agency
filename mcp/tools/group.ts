@@ -119,6 +119,8 @@ export async function handleGroupTool(
     if (!group) { respond(id, { content: [{ type: 'text', text: 'group required' }], isError: true }); return true; }
     const agDir = path.join(groupsDir(), group, 'Agents', agentName);
     if (!exists(agDir)) { respond(id, { content: [{ type: 'text', text: `Not a member of ${group}` }], isError: true }); return true; }
+    // Post system message BEFORE deleting (chat dir is separate from agent dir)
+    appendToChat(group, 'system', `${agentName} left the group`);
     fs.rmSync(agDir, { recursive: true, force: true });
     writeAudit({ agent: agentName, action: 'group.leave', resource: `group:${group}` });
     triggerPoll(agentName, group);
@@ -129,11 +131,17 @@ export async function handleGroupTool(
   if (name === 'group_invite') {
     const { group, agent: target } = a;
     if (!group || !target) { respond(id, { content: [{ type: 'text', text: 'group and agent required' }], isError: true }); return true; }
+    // Invitation creation is handled by the consensus handler after approval.
+    // The permission engine (checkToolPermission) already ran before this point.
+    // If it passed, create directly. If it blocked, the consensus handler will create it.
     const gDir = path.join(groupsDir(), group);
     const invDir = path.join(gDir, '.invitations');
     if (!exists(invDir)) fs.mkdirSync(invDir, { recursive: true });
     const invFile = path.join(invDir, `${target}.json`);
-    fs.writeFileSync(invFile, JSON.stringify({ invitedBy: agentName, invitedAt: Date.now() }), 'utf-8');
+    // Only create if not already pending in consensus
+    if (!exists(invFile)) {
+      fs.writeFileSync(invFile, JSON.stringify({ invitedBy: agentName, invitedAt: Date.now() }), 'utf-8');
+    }
     appendToChat(group, 'system', `${agentName} 邀请了 ${target} 加入群组（等待 ${target} 接受）`);
     writeAudit({ agent: agentName, action: 'group.invite', resource: `group:${group}`, details: `invited ${target}` });
     triggerPoll(target, group);

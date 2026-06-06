@@ -12,6 +12,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
 
+  // Parse limit from query params (default: 20)
+  const limit = Math.min(Math.max(parseInt(request.nextUrl.searchParams.get('limit') || '20', 10) || 20, 1), 200);
+
   // Members
   const agentsDir = path.join(groupDir, 'Agents');
   const members: string[] = [];
@@ -26,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const messages: ChatEntry[] = [];
   const chatDir = path.join(groupDir, 'chat');
   if (fs.existsSync(chatDir)) {
-    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort().slice(-5); // last 5 days
+    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort().slice(-limit);
     for (const f of files) {
       try {
         const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');

@@ -95,7 +95,7 @@ function emitBusEvent(
   });
 }
 
-const PROJECT_ROOT = process.env.MIND_DATA_DIR || process.env.MIND_PROJECT_ROOT || process.cwd();
+const PROJECT_ROOT = process.env.MIND_DATA_DIR || process.cwd();
 
 function groupsDir() { return path.join(PROJECT_ROOT, 'Groups'); }
 function exists(p: string) { return fs.existsSync(p); }
@@ -181,6 +181,28 @@ rl.on('line', async (line: string) => {
     if (method === 'tools/call') {
       const name = params?.name;
       const a = params?.arguments || {};
+
+      // ── Input validation (before permission check) ──
+      if (name === 'agent_create') {
+        const newName = (a.name || '').trim();
+        if (!newName || !/^[a-zA-Z0-9_-]+$/.test(newName) || newName.length > 50) {
+          respond(id, { content: [{ type: 'text', text: 'Invalid agent name: only alphanumeric, underscore, hyphen allowed (max 50 chars)' }], isError: true });
+          return;
+        }
+        // Block path traversal
+        if (newName.includes('/') || newName.includes('\\') || newName.includes('..')) {
+          respond(id, { content: [{ type: 'text', text: 'Invalid agent name: path traversal not allowed' }], isError: true });
+          return;
+        }
+      }
+      // Validate group names for path traversal
+      if (a.group) {
+        const g = (a.group || '').trim();
+        if (g.includes('/') || g.includes('\\') || g.includes('..') || g.length > 50) {
+          respond(id, { content: [{ type: 'text', text: 'Invalid group name' }], isError: true });
+          return;
+        }
+      }
 
       // ── Unified permission check ──
       const perm = checkToolPermission(agentName, name, a);

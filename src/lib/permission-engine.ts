@@ -37,8 +37,8 @@ export function checkToolPermission(agentName: string, toolName: string, context
     return { allowed: true, message: `${agentName} has ${rule.permissionKey}` };
   }
 
-  // Step 2: No approvers defined → pass through
-  if (!rule.approvers || rule.approvers.length === 0) {
+  // Step 2: No approvers defined or quorum=0 → pass through (no approval needed)
+  if (!rule.approvers || rule.approvers.length === 0 || rule.quorum === 0) {
     return { allowed: true, message: 'ok' };
   }
 
@@ -61,6 +61,9 @@ export function checkToolPermission(agentName: string, toolName: string, context
     ? resolveApprovers({ action: '', approvers: [rule.adversary], quorum: 1 }, group)[0]
     : undefined;
 
+  // Extract target agent from context (for group_kick, group_invite, group_set_admin, etc.)
+  const target = context.target || context.agent || undefined;
+
   const requestId = createRequest({
     action: rule.action,
     group,
@@ -68,6 +71,7 @@ export function checkToolPermission(agentName: string, toolName: string, context
     description: formatDescription(rule.description || rule.action, context),
     approvers: resolvedApprovers,
     adversary: adversaryName,
+    target,
   });
 
   return {

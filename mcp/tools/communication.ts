@@ -27,6 +27,8 @@ export async function handleCommunicationTool(
   if (name === 'group_send') {
     const { group, message } = a;
     if (!group || !message) { respond(id, { content: [{ type: 'text', text: 'group and message required' }], isError: true }); return true; }
+    // Reject empty/whitespace-only messages
+    if (!message.trim()) { respond(id, { content: [{ type: 'text', text: 'message cannot be empty or whitespace-only' }], isError: true }); return true; }
     const gDir = path.join(groupsDir(), group);
     if (!exists(gDir)) { respond(id, { content: [{ type: 'text', text: `Group "${group}" not found` }], isError: true }); return true; }
     const agDir = path.join(gDir, 'Agents', agentName);
@@ -36,8 +38,8 @@ export async function handleCommunicationTool(
     triggerPoll(agentName, group);
     writeAudit({ agent: agentName, action: 'group.send', resource: `group:${group}`, details: message.slice(0, 200) });
     emitBusEvent('message.sent', { group, from: agentName, body: message.slice(0, 200) });
-    // Check for @mentions
-    const mentionRe = /@([A-Za-z0-9_一-鿿㐀-䶿]+)/g;
+    // Check for @mentions (supports Chinese and Unicode agent names)
+    const mentionRe = /@([^\s,.;!?，。；！？]+)/g;
     let m;
     while ((m = mentionRe.exec(message)) !== null) {
       const mentioned = m[1];
@@ -76,7 +78,8 @@ export async function handleCommunicationTool(
     const emailDir = path.join(recipientDir, 'email');
     if (!exists(emailDir)) fs.mkdirSync(emailDir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const safeSubject = subject.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, '_').slice(0, 50);
+    // Safe filename: keep Chinese characters, remove only Windows-unsafe chars
+    const safeSubject = subject.replace(/[^a-zA-Z0-9一-鿿\s\-_]/g, '').replace(/\s+/g, '_').slice(0, 50) || 'no_subject';
     const filename = `${ts}_${safeSubject}.md`;
     const content = `---\nfrom: ${agentName}\nto: ${to}\nsubject: ${subject}\ndate: ${new Date().toISOString()}\n---\n\n${emailBody || ''}\n`;
     fs.writeFileSync(path.join(emailDir, filename), content, 'utf-8');
