@@ -152,14 +152,8 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
   try {
     const { embed, cosineSimilarity } = await import('./embedding');
     const queryVec = await embed(query);
-    const scored = entries.map(entry => {
-      const text = `${entry.key} ${entry.content}`;
-      // For short text, concatenate key + content for embedding
-      const entryVec$ = embed(text);
-      return { entry, text };
-    });
 
-    // Embed all entries (batch)
+    // Embed all entries (batch) — single call per entry
     const texts = entries.map(e => `${e.key} ${e.content}`);
     const entryVecs = await Promise.all(texts.map(t => embed(t)));
 

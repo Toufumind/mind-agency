@@ -7,6 +7,8 @@
 import fs from 'fs';
 import path from 'path';
 import { PROJECT_ROOT } from './shared';
+import { invalidateMemoryCache, invalidateSearchCache } from '../../src/lib/memory';
+import { agentCache } from '../../src/lib/cache';
 
 export interface ToolDef { name: string; description: string; inputSchema: any; }
 
@@ -49,6 +51,10 @@ export async function handleMemoryTool(
       }
       const content = `---\nkey: ${key}\ncreated: ${created}\nupdated: ${now}\n---\n\n${value}\n`;
       fs.writeFileSync(fp, content, 'utf-8');
+      // Invalidate caches so next read/search uses fresh data
+      invalidateMemoryCache(agentName);
+      invalidateSearchCache(agentName);
+      agentCache.invalidate('config', agentName + ':baseOptions');
       respond(id, { content: [{ type: 'text', text: `记忆已保存: ${key}` }] });
       return true;
     }
@@ -143,6 +149,10 @@ export async function handleMemoryTool(
       const fp = path.join(mDir, `${safeKey}.md`);
       if (!fs.existsSync(fp)) { respond(id, { content: [{ type: 'text', text: `记忆 "${key}" 不存在` }] }); return true; }
       fs.unlinkSync(fp);
+      // Invalidate caches so deleted memory is not stale
+      invalidateMemoryCache(agentName);
+      invalidateSearchCache(agentName);
+      agentCache.invalidate('config', agentName + ':baseOptions');
       respond(id, { content: [{ type: 'text', text: `记忆已删除: ${key}` }] });
       return true;
     }
