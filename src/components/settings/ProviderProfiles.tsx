@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Check, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Check, Loader2, RefreshCw, Zap } from 'lucide-react';
+import { PROVIDER_PRESETS, type ProviderPreset } from '@/lib/provider-presets';
 
 interface ProviderProfile {
   id: string;
@@ -18,7 +19,7 @@ export default function ProviderProfiles({ lang }: { lang: string }) {
   const [loading, setLoading] = useState(true);
   const [activating, setActivating] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [newProfile, setNewProfile] = useState({ name: '', provider: 'claude' as const, apiKey: '', baseUrl: '', model: '' });
+  const [newProfile, setNewProfile] = useState<{ name: string; provider: 'claude' | 'codex'; apiKey: string; baseUrl: string; model: string }>({ name: '', provider: 'claude', apiKey: '', baseUrl: '', model: '' });
 
   const load = async () => {
     setLoading(true);
@@ -88,8 +89,33 @@ export default function ProviderProfiles({ lang }: { lang: string }) {
       {/* Add form */}
       {showAdd && (
         <div className="p-4 bg-canvas border border-border rounded-xl space-y-3">
+          {/* Preset selector */}
+          <div>
+            <label className="text-[11px] text-muted-foreground mb-1.5 block">
+              {lang === 'zh' ? '快速选择供应商' : 'Quick select provider'}
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {PROVIDER_PRESETS.map(p => (
+                <button key={p.id} onClick={() => setNewProfile({
+                  ...newProfile,
+                  name: p.name,
+                  provider: p.provider,
+                  baseUrl: p.baseUrl,
+                  model: p.model,
+                })}
+                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] border transition-colors text-left
+                    ${newProfile.baseUrl === p.baseUrl && newProfile.name === p.name
+                      ? 'border-foreground/30 bg-surface'
+                      : 'border-border hover:border-border-strong'}`}>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color || '#6B7280' }} />
+                  <span className="truncate">{p.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <input value={newProfile.name} onChange={e => setNewProfile({ ...newProfile, name: e.target.value })}
-            placeholder={lang === 'zh' ? '名称（如 DeepSeek）' : 'Name (e.g. DeepSeek)'}
+            placeholder={lang === 'zh' ? '名称' : 'Name'}
             className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-[12px] outline-none focus:border-foreground/30" />
           <select value={newProfile.provider} onChange={e => setNewProfile({ ...newProfile, provider: e.target.value as any })}
             className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-[12px] outline-none">
@@ -100,10 +126,10 @@ export default function ProviderProfiles({ lang }: { lang: string }) {
             placeholder="API Key" type="password"
             className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-[12px] font-mono outline-none focus:border-foreground/30" />
           <input value={newProfile.baseUrl} onChange={e => setNewProfile({ ...newProfile, baseUrl: e.target.value })}
-            placeholder="Base URL (e.g. https://api.deepseek.com)"
+            placeholder="Base URL"
             className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-[12px] outline-none focus:border-foreground/30" />
           <input value={newProfile.model} onChange={e => setNewProfile({ ...newProfile, model: e.target.value })}
-            placeholder="Model (e.g. deepseek-v4-flash)"
+            placeholder="Model"
             className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-[12px] outline-none focus:border-foreground/30" />
           <div className="flex gap-2 justify-end">
             <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground">
