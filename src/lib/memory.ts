@@ -11,6 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { MIND_DIR, AGENTS_DIR, GROUPS_DIR } from './data-dir';
 import { agentCache } from './cache';
 
@@ -127,7 +128,9 @@ function evictSearchCache(): void {
 
 /** v0.4: Semantic search with local embedding model — cached */
 export async function searchMemory(agentName: string, query: string): Promise<MemoryEntry[]> {
-  const cacheKey = `${agentName}:${query}`;
+  // Use hash of query to reduce memory usage
+  const queryHash = crypto.createHash('md5').update(query).digest('hex').slice(0, 8);
+  const cacheKey = `${agentName}:${queryHash}`;
   const cached = searchCache.get(cacheKey);
   const now = Date.now();
   if (cached && (now - cached.ts) < SEARCH_CACHE_TTL) return cached.results;
@@ -242,7 +245,7 @@ function evictMemoryCache(): void {
   for (const [key] of toDelete) memoryContextCache.delete(key);
 }
 
-/** Get memory context for injection into chat prompt (top 5 most recent) — cached */
+/** Get memory context for injection into chat prompt (top 10 most recent) — cached */
 export function getMemoryContext(agentName: string): string {
   const cached = memoryContextCache.get(agentName);
   const now = Date.now();
@@ -250,7 +253,7 @@ export function getMemoryContext(agentName: string): string {
 
   const mems = listMemory(agentName);
   const result = mems.length === 0 ? '' :
-    '\n[长期记忆]\n' + mems.slice(0, 5).map(m =>
+    '\n[长期记忆]\n' + mems.slice(0, 10).map(m =>
       `- ${m.key}: ${m.content.slice(0, 200)}`
     ).join('\n');
 
