@@ -317,43 +317,66 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
               <feMerge><feMergeNode in="shadow" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
           ))}
+          {/* Cell blob filters — one per workflow color */}
+          {CELL_COLORS.map((c, i) => (
+            <filter key={`cell-${i}`} id={`cell-blob-${i}`} x="-40%" y="-40%" width="180%" height="180%"
+              colorInterpolationFilters="sRGB">
+              {/* Blur the source circles into a blob */}
+              <feGaussianBlur in="SourceGraphic" stdDeviation="50" result="blur" />
+              {/* Threshold: convert blurred alpha to sharp edge */}
+              <feColorMatrix in="blur" type="matrix"
+                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="blob" />
+              {/* Composite: fill with cytoplasm color */}
+              <feFlood floodColor={c.fill} floodOpacity="1" result="fill" />
+              <feComposite in="fill" in2="blob" operator="in" result="cytoplasm" />
+              {/* Extract edge for cell wall */}
+              <feMorphology in="blob" operator="dilate" radius="3" result="dilated" />
+              <feGaussianBlur in="dilated" stdDeviation="2" result="dilatedBlur" />
+              <feComposite in="dilated" in2="dilatedBlur" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="edge" />
+              <feFlood floodColor={c.wall} floodOpacity="0.6" result="wallColor" />
+              <feComposite in="wallColor" in2="edge" operator="in" result="wall" />
+              {/* Merge: cytoplasm + wall */}
+              <feMerge>
+                <feMergeNode in="cytoplasm" />
+                <feMergeNode in="wall" />
+              </feMerge>
+            </filter>
+          ))}
         </defs>
 
         {/* Grid background */}
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* ── Cell hulls (workflow containers) ── */}
+          {/* ── Cell blobs (shader-based organic shapes) ── */}
           {workflows.map((wf, wi) => {
-            const pts = wf.steps
+            const cellPts = wf.steps
               .map(s => positions.get(`${wf.group}:${s.id}`))
               .filter(Boolean) as { x: number; y: number }[];
-            if (pts.length < 2) return null;
-            const hull = convexHull(pts);
-            const expanded = expandHull(hull, 80);
-            const path = hullPath(expanded);
-            if (!path) return null;
+            if (cellPts.length === 0) return null;
             const colors = CELL_COLORS[wi % CELL_COLORS.length];
             const isCurrent = wf.group === selectedGroup;
-            const opacity = selectedGroup ? (isCurrent ? 1 : 0.08) : 0.8;
+            const opacity = selectedGroup ? (isCurrent ? 1 : 0.08) : 1;
+
+            // Calculate center for label
+            const cx = cellPts.reduce((s, p) => s + p.x, 0) / cellPts.length;
+            const cy = cellPts.reduce((s, p) => s + p.y, 0) / cellPts.length;
 
             return (
               <g key={`cell-${wf.group}`} opacity={opacity} style={{ transition: 'opacity 0.6s ease' }}>
-                {/* Cell glow */}
-                <path d={path} fill={colors.glow} stroke="none" filter="url(#glow-blue)" opacity="0.3" />
-                {/* Cell cytoplasm */}
-                <path d={path} fill={colors.fill} stroke={colors.wall}
-                  strokeWidth={isCurrent ? 1.5 : 0.8} strokeDasharray={isCurrent ? 'none' : '4 4'}
-                  opacity={isCurrent ? 0.8 : 0.4}
-                  style={{ transition: 'stroke-width 0.3s, opacity 0.3s' }} />
-                {/* Cell label */}
-                <text x={pts[0].x} y={expanded.reduce((s, p) => s + p.y, 0) / expanded.length - 20}
-                  textAnchor="middle" fontSize="12" fontWeight="700" letterSpacing="0.5"
-                  fill={colors.wall} opacity={isCurrent ? 1 : 0.5}>
+                {/* Blob source: large circles at each node position */}
+                <g filter={`url(#cell-blob-${wi % CELL_COLORS.length})`}>
+                  {cellPts.map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r={70} fill={colors.fill} stroke="none" />
+                  ))}
+                </g>
+                {/* Label on top */}
+                <text x={cx} y={cy - 20} textAnchor="middle" fontSize="12" fontWeight="700"
+                  letterSpacing="0.5" fill={colors.wall} opacity={isCurrent ? 1 : 0.4}>
                   {wf.name}
                 </text>
-                <text x={pts[0].x} y={expanded.reduce((s, p) => s + p.y, 0) / expanded.length - 6}
-                  textAnchor="middle" fontSize="9" fill={colors.wall} opacity={isCurrent ? 0.6 : 0.25}>
+                <text x={cx} y={cy - 6} textAnchor="middle" fontSize="9"
+                  fill={colors.wall} opacity={isCurrent ? 0.6 : 0.2}>
                   {wf.steps.length} steps · #{wf.group}
                 </text>
               </g>
