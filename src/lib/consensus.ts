@@ -140,8 +140,7 @@ export function resolveApprovers(rule: ConsensusRule, group: string, stepAgent?:
       case 'group_owner': if (gc?.owner) approvers.add(gc.owner); break;
       case 'group_admin': if (gc) { if (gc.owner) approvers.add(gc.owner); for (const admin of gc.admins) approvers.add(admin); } break;
       case 'role': {
-        const ad = path.join(path.resolve(process.cwd()), 'Agents');
-        if (fs.existsSync(ad)) for (const d of fs.readdirSync(ad, { withFileTypes: true })) { if (!d.isDirectory() || d.name.startsWith('.')) continue; try { const cfg = JSON.parse(fs.readFileSync(path.join(ad, d.name, 'config.json'), 'utf-8')); if (cfg.roles?.includes(a.role!)) approvers.add(d.name); } catch {} }
+        if (fs.existsSync(AGENTS_DIR)) for (const d of fs.readdirSync(AGENTS_DIR, { withFileTypes: true })) { if (!d.isDirectory() || d.name.startsWith('.')) continue; try { const cfg = JSON.parse(fs.readFileSync(path.join(AGENTS_DIR, d.name, 'config.json'), 'utf-8')); if (cfg.roles?.includes(a.role!)) approvers.add(d.name); } catch {} }
         break;
       }
     }

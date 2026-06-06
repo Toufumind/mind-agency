@@ -382,7 +382,7 @@ function buildBaseOptions(agentName: string) {
     permissionMode: agentConfig.permissionMode || 'bypassPermissions',
     allowedTools: agentConfig.allowedTools?.length ? agentConfig.allowedTools : ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch', 'WebSearch'],
     ...(agentConfig.disallowedTools?.length ? { disallowedTools: agentConfig.disallowedTools } : {}),
-    maxTurns: agentConfig.maxTurns || 20,
+    maxTurns: agentConfig.maxTurns || 50,
   };
 
   (opts as any).__ts = Date.now();
