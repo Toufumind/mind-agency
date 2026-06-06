@@ -251,14 +251,13 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
   const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
   if (fs.existsSync(notifDir)) {
     const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
-    if (notifFiles.length > 0) {
-      // Read the first notification
+    for (const f of notifFiles) {
       try {
-        const notif = JSON.parse(fs.readFileSync(path.join(notifDir, notifFiles[0]), 'utf-8'));
+        const notif = JSON.parse(fs.readFileSync(path.join(notifDir, f), 'utf-8'));
         signal.mentions.push({
           group: 'workflow',
           from: 'workflow-engine',
-          snippet: `[工作流任务] ${notif.stepId}: ${(notif.prompt || '').slice(0, 100)}`,
+          snippet: `[工作流任务] runId=${notif.runId} stepId=${notif.stepId}\n${notif.prompt || ''}`,
         });
         signal.urgent = true;
         dirty = true;
@@ -329,7 +328,7 @@ function signalToPrompt(agent: string, sig: Signal, groupName?: string): string 
   lines.push('2. 如果是需要你投票/审批 → decide(group, decision, reason) 结构化回复');
   lines.push('3. 如果是普通讨论 → group_send 回复');
   lines.push('4. 重要信息记到 agent_memory(action="write")');
-  lines.push('5. 如果是工作流任务 → 完成后用 workflow_callback 报告结果');
+  lines.push('5. 如果是工作流任务（包含 runId= 和 stepId=）→ 完成任务后调用 workflow_callback(runId, stepId, status, summary) 报告结果');
   lines.push('自主决定是否回复。中文。');
 
   return lines.join('\n');
