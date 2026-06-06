@@ -329,12 +329,12 @@ export async function autoRespond(
   }
 
   // Invalidate stale caches — new agent may have joined since last scan
-  invalidateGroupsCache(agent);
-  // Invalidate groupChat cache for all groups this agent is a member of
+  // First get current groups (before invalidation), then invalidate all related caches
   const agentGroups = getAgentGroups(agent);
   for (const g of agentGroups) {
     agentCache.invalidate('groupChat', g);
   }
+  invalidateGroupsCache(agent);
 
   // v0.5: Move buildSignal inside enqueueAgent to prevent race condition
   // where two concurrent calls read the same state and overwrite each other
