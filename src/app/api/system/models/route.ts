@@ -27,13 +27,20 @@ export async function GET() {
     return NextResponse.json({ models: getDefaultModels(), source: 'default' });
   }
 
-  // v0.4: Directly query API — no availability check, just fetch
+  // v0.4: Query API, but if it fails, use the configured model as the only option
   try {
     const models = await fetchModels(baseUrl, apiKey);
-    return NextResponse.json({ models, source: 'api' });
-  } catch {
-    return NextResponse.json({ models: getDefaultModels(), source: 'default' });
+    if (models.length > 0) {
+      return NextResponse.json({ models, source: 'api' });
+    }
+  } catch {}
+
+  // API query failed — use the configured model from settings
+  const configuredModel = settings.model || '';
+  if (configuredModel) {
+    return NextResponse.json({ models: [{ id: configuredModel, label: configuredModel }], source: 'configured' });
   }
+  return NextResponse.json({ models: getDefaultModels(), source: 'default' });
 }
 
 function getDefaultModels() {
