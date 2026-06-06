@@ -1,15 +1,19 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Sidebar from '@/components/sidebar';
-import { Settings, Key, Palette, Server, Cpu, Save, Loader2, ChevronRight } from 'lucide-react';
+import { Settings, Key, Palette, Server, Cpu, Save, Loader2, ChevronRight, Zap, Puzzle } from 'lucide-react';
 import { useT } from '@/components/i18n';
 import { useTheme, THEMES, type ThemeId } from '@/lib/theme';
+import ProviderProfiles from '@/components/settings/ProviderProfiles';
+import SkillsPanel from '@/components/settings/SkillsPanel';
 
-type Tab = 'appearance' | 'api' | 'system' | 'agent';
+type Tab = 'appearance' | 'providers' | 'skills' | 'api' | 'system' | 'agent';
 
 const TABS: { id: Tab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
   { id: 'appearance', icon: <Palette size={15}/>, labelZh: '外观', labelEn: 'Appearance' },
-  { id: 'api',       icon: <Key size={15}/>,      labelZh: 'API',   labelEn: 'API' },
+  { id: 'providers',  icon: <Zap size={15}/>,    labelZh: '供应商', labelEn: 'Providers' },
+  { id: 'skills',     icon: <Puzzle size={15}/>, labelZh: 'Skills', labelEn: 'Skills' },
+  { id: 'api',        icon: <Key size={15}/>,    labelZh: 'API',    labelEn: 'API' },
   { id: 'system',    icon: <Server size={15}/>,   labelZh: '系统', labelEn: 'System' },
   { id: 'agent',     icon: <Cpu size={15}/>,      labelZh: 'Agent', labelEn: 'Agent' },
 ];
@@ -137,6 +141,14 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   </div>
+                )}
+
+                {tab === 'providers' && (
+                  <ProviderProfiles lang={lang} />
+                )}
+
+                {tab === 'skills' && (
+                  <SkillsPanel lang={lang} />
                 )}
 
                 {tab === 'api' && (

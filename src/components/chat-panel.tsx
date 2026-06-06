@@ -52,7 +52,7 @@ const COMMANDS: { cmd: string; desc: string; handler?: (agentName: string) => Pr
   { cmd: '/agents', desc: 'List configured sub-agents' },
   { cmd: '/hooks', desc: 'View active hook configs' },
   { cmd: '/mcp', desc: 'Manage MCP server connections' },
-  { cmd: '/skills', desc: 'List available skills' },
+  { cmd: '/skills', desc: 'List installed skills', handler: skillsCmd },
   { cmd: '/usage', desc: 'Show token usage and cost' },
 
   // ── Tool-specific ──
@@ -102,6 +102,26 @@ async function contextCmd(_agentName: string) {
     parts.push(`**Total emails:** ${total}`);
     parts.push(`**Model:** DeepSeek-V4-Pro`);
     parts.push(`\n\`\`\`\nSystem prompt: ~1.5k tokens\nTools: ~17k tokens\nMessages: session-dependent\n\`\`\``);
+  } catch { parts.push('(unable to fetch)'); }
+  return parts.join('\n');
+}
+
+async function skillsCmd(_agentName: string) {
+  const parts: string[] = ['## /skills\n'];
+  try {
+    const r = await fetch('/api/system/skills');
+    const d = await r.json();
+    const skills = d.skills || [];
+    if (skills.length === 0) {
+      parts.push('No skills installed.');
+      parts.push('\nInstall skills from Settings → Skills tab.');
+    } else {
+      parts.push(`**Installed:** ${skills.length}\n`);
+      for (const s of skills) {
+        parts.push(`- **${s.name}** (${s.repo})`);
+        if (s.description) parts.push(`  ${s.description.slice(0, 80)}`);
+      }
+    }
   } catch { parts.push('(unable to fetch)'); }
   return parts.join('\n');
 }
