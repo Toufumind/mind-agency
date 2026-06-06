@@ -44,7 +44,7 @@ setEventBus(bus); // v0.4: register singleton for in-process subscribers
 // ── WorkflowEngine singleton ───────────────────────────────────────────────
 
 import { ChatStepExecutor } from './src/lib/event-bus.js';
-const useChat = process.env.WORKFLOW_EXECUTOR === 'chat';
+const useChat = true; // process.env.WORKFLOW_EXECUTOR === 'chat';
 const executor = useChat ? new ChatStepExecutor() : undefined;
 const workflowEngine = new WorkflowEngine(bus, executor);
 if (useChat) console.log('[ws] WorkflowEngine using ChatStepExecutor (real AI)');

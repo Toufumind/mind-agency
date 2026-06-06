@@ -440,7 +440,48 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
     };
   }
 
-  return { name: p.name || 'unnamed', description: p.description, concurrency: typeof p.concurrency === 'number' ? p.concurrency : undefined, trigger, steps: sl.map((s: any, i: number) => ({ id: s.id || `step_${i}`, agent: s.agent || 'unknown', action: s.action || 'execute', prompt: s.prompt || '', notify: s.notify, condition: s.condition, dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined), timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined, retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined, retryBackoff: s.retry_backoff || s.retryBackoff || undefined, priority: s.priority || undefined, reviewer: s.reviewer || undefined, reviewPrompt: s.review_prompt || s.reviewPrompt || undefined })) };
+  const steps = sl.map((s: any, i: number) => ({
+    id: s.id || `step_${i}`, agent: s.agent || 'unknown', action: s.action || 'execute',
+    prompt: s.prompt || '', notify: s.notify, condition: s.condition,
+    dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined),
+    timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined,
+    retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined,
+    retryBackoff: s.retry_backoff || s.retryBackoff || undefined,
+    priority: s.priority || undefined, reviewer: s.reviewer || undefined,
+    reviewPrompt: s.review_prompt || s.reviewPrompt || undefined,
+  }));
+
+  // v0.4: Validate — duplicate step IDs
+  const ids = steps.map(s => s.id);
+  const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+  if (dupes.length > 0) throw new Error(`重复的步骤 ID: ${[...new Set(dupes)].join(', ')}`);
+
+  // v0.4: Validate — circular dependencies
+  const stepMap = new Map(steps.map(s => [s.id, s]));
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const colors = new Map<string, number>();
+  const dfs = (id: string): boolean => {
+    colors.set(id, GRAY);
+    const s = stepMap.get(id);
+    if (s) {
+      const deps = Array.isArray(s.dependsOn) ? s.dependsOn : [];
+      for (const dep of deps) {
+        if (!stepMap.has(dep)) continue;
+        const c = colors.get(dep);
+        if (c === GRAY) return true; // cycle
+        if (c === undefined && dfs(dep)) return true;
+      }
+    }
+    colors.set(id, BLACK);
+    return false;
+  };
+  for (const s of steps) {
+    if (!colors.has(s.id) && dfs(s.id)) {
+      throw new Error(`检测到循环依赖，请检查步骤之间的依赖关系`);
+    }
+  }
+
+  return { name: p.name || 'unnamed', description: p.description, concurrency: typeof p.concurrency === 'number' ? p.concurrency : undefined, trigger, steps };
 }
 
 // ── DAG internal types ──────────────────────────────────────────────

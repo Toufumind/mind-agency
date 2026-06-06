@@ -76,7 +76,7 @@ export async function handleCommunicationTool(
     const emailDir = path.join(recipientDir, 'email');
     if (!exists(emailDir)) fs.mkdirSync(emailDir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const safeSubject = subject.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+    const safeSubject = subject.replace(/[^a-zA-Z0-9一-鿿\s\-_]/g, '').replace(/\s+/g, '_').slice(0, 50);
     const filename = `${ts}_${safeSubject}.md`;
     const content = `---\nfrom: ${agentName}\nto: ${to}\nsubject: ${subject}\ndate: ${new Date().toISOString()}\n---\n\n${emailBody || ''}\n`;
     fs.writeFileSync(path.join(emailDir, filename), content, 'utf-8');
