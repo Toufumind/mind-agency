@@ -41,6 +41,10 @@ export interface ForceConfig {
   linkDistance: number;
   centerX: number;
   centerY: number;
+  /** Extra repulsion multiplier between different groups */
+  interGroupRepulsion: number;
+  /** Force pulling nodes toward their group's center */
+  groupGravity: number;
 }
 
 const DEFAULT_CONFIG: ForceConfig = {
@@ -52,6 +56,8 @@ const DEFAULT_CONFIG: ForceConfig = {
   linkDistance: 160,
   centerX: 0,
   centerY: 0,
+  interGroupRepulsion: 5,
+  groupGravity: 0.03,
 };
 
 export class ForceSimulation {
@@ -115,7 +121,7 @@ export class ForceSimulation {
   private tick(): void {
     if (!this.running) return;
 
-    const { repulsion, attraction, gravity, damping, maxVelocity, linkDistance, centerX, centerY } = this.config;
+    const { repulsion, attraction, gravity, damping, maxVelocity, linkDistance, centerX, centerY, interGroupRepulsion, groupGravity } = this.config;
     const nodeArr = [...this.nodes.values()];
 
     // Reset forces
@@ -134,9 +140,9 @@ export class ForceSimulation {
         let dy = a.y - b.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; dist = 1; }
-        // Inter-group repulsion: 3x stronger between different workflows
+        // Inter-group repulsion: much stronger between different workflows
         const sameGroup = a.group && b.group && a.group === b.group;
-        const forceMultiplier = sameGroup ? 1 : 3;
+        const forceMultiplier = sameGroup ? 1 : interGroupRepulsion;
         const force = (repulsion * forceMultiplier) / (dist * dist);
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
@@ -160,11 +166,29 @@ export class ForceSimulation {
       if (b.fx === undefined) { b.vx -= fx; b.vy -= fy; }
     }
 
-    // 3. Gravity — toward center
+    // 3. Gravity — toward global center
     for (const n of nodeArr) {
       if (n.fx !== undefined) continue;
       n.vx += (centerX - n.x) * gravity;
       n.vy += (centerY - n.y) * gravity;
+    }
+
+    // 4. Group gravity — pull each node toward its group's center of mass
+    const groupCenters = new Map<string, { x: number; y: number; count: number }>();
+    for (const n of nodeArr) {
+      if (!n.group) continue;
+      const existing = groupCenters.get(n.group) || { x: 0, y: 0, count: 0 };
+      existing.x += n.x; existing.y += n.y; existing.count++;
+      groupCenters.set(n.group, existing);
+    }
+    for (const [, c] of groupCenters) { c.x /= c.count; c.y /= c.count; }
+
+    for (const n of nodeArr) {
+      if (n.fx !== undefined || !n.group) continue;
+      const center = groupCenters.get(n.group);
+      if (!center) continue;
+      n.vx += (center.x - n.x) * groupGravity;
+      n.vy += (center.y - n.y) * groupGravity;
     }
 
     // 4. Apply velocity with damping

@@ -206,7 +206,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
   // ── Build simulation ──
   useEffect(() => {
-    const sim = new ForceSimulation({ repulsion: 1800, attraction: 0.025, gravity: 0.008, linkDistance: 200, damping: 0.92, maxVelocity: 6 });
+    const sim = new ForceSimulation({ repulsion: 1800, attraction: 0.025, gravity: 0.008, linkDistance: 200, damping: 0.92, maxVelocity: 6, interGroupRepulsion: 8, groupGravity: 0.04 });
     const allNodes: { id: string; group: string }[] = [];
     const allEdges: ForceEdge[] = [];
 
