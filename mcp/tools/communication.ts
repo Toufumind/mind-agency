@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { groupsDir, exists, readDir, readGroupChat, appendToChat, triggerPoll, emitBusEvent, writeAudit, broadcast, PROJECT_ROOT, AGENTS_DIR } from './shared';
+import { agentCache } from '../../src/lib/cache';
 
 export interface ToolDef { name: string; description: string; inputSchema: any; }
 
@@ -34,6 +35,8 @@ export async function handleCommunicationTool(
     const agDir = path.join(gDir, 'Agents', agentName);
     if (!exists(agDir)) { respond(id, { content: [{ type: 'text', text: `You are not a member of ${group}. Use group_join first.` }], isError: true }); return true; }
     appendToChat(group, agentName, message);
+    // Invalidate groupChat cache so other agents see the new message
+    agentCache.invalidate('groupChat', group);
     broadcast({ type: 'group_message', group, from: agentName, message });
     triggerPoll(agentName, group);
     writeAudit({ agent: agentName, action: 'group.send', resource: `group:${group}`, details: message.slice(0, 200) });
@@ -88,6 +91,9 @@ export async function handleCommunicationTool(
     if (exists(senderEmailDir)) {
       fs.writeFileSync(path.join(senderEmailDir, `sent_${filename}`), content, 'utf-8');
     }
+    // Invalidate email caches for both sender and recipient
+    agentCache.invalidate('emails', to);
+    agentCache.invalidate('emails', agentName);
     writeAudit({ agent: agentName, action: 'email.send', resource: `agent:${to}`, details: subject.slice(0, 100) });
     triggerPoll(to);
     respond(id, { content: [{ type: 'text', text: `邮件已发送给 ${to}: ${subject}` }] });
