@@ -607,17 +607,16 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   const groupChatCtx = buildGroupChatContext(agentName, groupName);
   const goalsCtx = loadGoalContext(agentName);
 
-  // Skills: RAG uses full context (userMessage + recent conversation)
+  // Skills: RAG uses full accumulated context
   let skillsCtx = '';
   try {
     const skillsMod = require('./skills');
-    // Build RAG context: user message + last 3 assistant messages
+    // Build RAG context: full conversation history + user message
     const history = getChatHistory(agentName);
-    const recentContext = history.messages
-      .slice(-6) // last 3 turns (user+assistant pairs)
-      .map(m => m.content.slice(0, 200))
+    const fullContext = history.messages
+      .map(m => `[${m.role}] ${m.content.slice(0, 300)}`)
       .join('\n');
-    const ragContext = recentContext ? recentContext + '\n' + userMessage : userMessage;
+    const ragContext = fullContext ? fullContext + '\n[user] ' + userMessage : userMessage;
     skillsCtx = skillsMod.loadSkillsContext(agentName, ragContext);
   } catch {}
 
