@@ -1,0 +1,184 @@
+/**
+ * Signal Collector — Event-driven signal collection for scheduler.
+ *
+ * Collects signals from file changes (via watcher) and periodic scans.
+ * Replaces the per-agent scan in autoRespond with a centralized queue.
+ */
+
+import fs from 'fs';
+import path from 'path';
+import { AGENTS_DIR, GROUPS_DIR } from './data-dir';
+import { loadState, type AgentState } from './state';
+import { getAgentGroups } from './state';
+import { getAgentConfig } from './chat';
+
+export interface Signal {
+  agent: string;
+  type: 'mention' | 'email' | 'group_chat' | 'invitation' | 'heartbeat';
+  priority: 'critical' | 'normal' | 'low';
+  group?: string;
+  from?: string;
+  snippet?: string;
+  timestamp: number;
+}
+
+// Priority levels for scheduling
+export const SIGNAL_PRIORITY = {
+  critical: 0,  // @mention, human_approval, consensus
+  normal: 1,    // new email, group chat
+  low: 2,       // heartbeat, periodic scan
+} as const;
+
+// In-memory signal queue (sorted by priority)
+const signalQueue: Signal[] = [];
+const MAX_QUEUE_SIZE = 100;
+
+// Per-agent last scan time (to avoid duplicate signals)
+const lastScanTime = new Map<string, number>();
+const SCAN_COOLDOWN = 10_000; // 10s cooldown between scans for same agent
+
+/**
+ * Add a signal to the queue (called by watcher or periodic scan)
+ */
+export function enqueueSignal(signal: Signal): void {
+  // Deduplicate: don't add if same agent+type within cooldown
+  const lastScan = lastScanTime.get(`${signal.agent}:${signal.type}`) || 0;
+  if (Date.now() - lastScan < SCAN_COOLDOWN) return;
+
+  // Don't exceed queue size
+  if (signalQueue.length >= MAX_QUEUE_SIZE) {
+    // Remove lowest priority signal
+    const lowestIdx = signalQueue.reduce((minIdx, s, idx, arr) =>
+      SIGNAL_PRIORITY[s.priority] > SIGNAL_PRIORITY[arr[minIdx].priority] ? idx : minIdx, 0);
+    signalQueue.splice(lowestIdx, 1);
+  }
+
+  signalQueue.push(signal);
+  // Sort by priority (critical first)
+  signalQueue.sort((a, b) => SIGNAL_PRIORITY[a.priority] - SIGNAL_PRIORITY[b.priority]);
+  lastScanTime.set(`${signal.agent}:${signal.type}`, Date.now());
+}
+
+/**
+ * Get next signal from queue (for scheduler to consume)
+ */
+export function dequeueSignal(): Signal | undefined {
+  return signalQueue.shift();
+}
+
+/**
+ * Peek at queue size
+ */
+export function queueSize(): number {
+  return signalQueue.length;
+}
+
+/**
+ * Scan a single agent for signals (extracted from autoRespond's buildSignal)
+ */
+export function scanAgentSignals(agentName: string): Signal[] {
+  const signals: Signal[] = [];
+  const now = Date.now();
+
+  // Check if agent has autoRespond enabled
+  const config = getAgentConfig(agentName);
+  if (!config) return signals;
+
+  const state = loadState(agentName);
+
+  // Check for @mentions in group chats
+  const groups = getAgentGroups(agentName);
+  for (const groupName of groups) {
+    const chatDir = path.join(GROUPS_DIR, groupName, 'chat');
+    if (!fs.existsSync(chatDir)) continue;
+
+    // Check for new messages since last scan
+    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md'));
+    for (const f of files) {
+      try {
+        const stat = fs.statSync(path.join(chatDir, f));
+        if (stat.mtimeMs <= (state.emailCheck || 0)) continue;
+
+        const content = fs.readFileSync(path.join(chatDir, f), 'utf-8');
+        if (content.toLowerCase().includes(`@${agentName.toLowerCase()}`)) {
+          signals.push({
+            agent: agentName,
+            type: 'mention',
+            priority: 'critical',
+            group: groupName,
+            from: content.match(/from:\s*(.+)/)?.[1]?.trim() || 'unknown',
+            snippet: content.slice(0, 100),
+            timestamp: now,
+          });
+        }
+      } catch {}
+    }
+  }
+
+  // Check for new emails
+  const emailDir = path.join(AGENTS_DIR, agentName, 'email');
+  if (fs.existsSync(emailDir)) {
+    const files = fs.readdirSync(emailDir).filter(f => f.endsWith('.md') && !f.startsWith('sent_'));
+    for (const f of files) {
+      try {
+        const stat = fs.statSync(path.join(emailDir, f));
+        if (stat.mtimeMs <= (state.emailCheck || 0)) continue;
+
+        signals.push({
+          agent: agentName,
+          type: 'email',
+          priority: 'normal',
+          snippet: f,
+          timestamp: now,
+        });
+      } catch {}
+    }
+  }
+
+  return signals;
+}
+
+/**
+ * Scan all agents for signals (periodic fallback)
+ */
+export function scanAllAgents(): Signal[] {
+  const signals: Signal[] = [];
+  if (!fs.existsSync(AGENTS_DIR)) return signals;
+
+  const agentNames = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
+    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+    .map(e => e.name);
+
+  for (const name of agentNames) {
+    try {
+      signals.push(...scanAgentSignals(name));
+    } catch {}
+  }
+
+  return signals;
+}
+
+/**
+ * Process file change event from watcher
+ */
+export function onFileChange(dir: string): void {
+  // Extract agent name from path
+  const match = dir.match(/Agents\/([^/]+)/);
+  if (!match) return;
+  const agentName = match[1];
+
+  const signals = scanAgentSignals(agentName);
+  for (const sig of signals) {
+    enqueueSignal(sig);
+  }
+}
+
+/**
+ * Get queue stats for monitoring
+ */
+export function getQueueStats(): { size: number; critical: number; normal: number; low: number } {
+  const critical = signalQueue.filter(s => s.priority === 'critical').length;
+  const normal = signalQueue.filter(s => s.priority === 'normal').length;
+  const low = signalQueue.filter(s => s.priority === 'low').length;
+  return { size: signalQueue.length, critical, normal, low };
+}

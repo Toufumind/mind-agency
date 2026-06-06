@@ -1,10 +1,10 @@
 /**
- * Background scheduler — watcher-driven + polling fallback.
+ * Background scheduler — event-driven + polling fallback.
  *
- * Primary:  fs.watch → debounce 2s → immediate check
- * Fallback: 30s polling
+ * Primary:  fs.watch → signal collector → priority queue → dispatch
+ * Fallback: 5min polling (only for watcher-missed changes)
  *
- * Perf: imports at module level (no dynamic import), sequential agent checks.
+ * v0.5: Event-driven signals, priority queue, global dispatch.
  */
 
 import path from 'path';
@@ -16,43 +16,53 @@ import { refreshIndex, saveIndex } from './chat-index';
 import { recoverPendingConsensus } from './consensus';
 import { broadcastWs } from './ws-embedded';
 import { loadTriggers, checkTriggers } from './workflow-trigger';
+import { onFileChange, dequeueSignal, queueSize, getQueueStats, scanAllAgents, type Signal } from './signal-collector';
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
+let dispatchTimer: ReturnType<typeof setInterval> | null = null;
 let running = false;
+let dispatching = false;
 const STARTUP_DELAY = 3000;
-const DEFAULT_HEARTBEAT_MS = 120_000; // 2 min default — can be overridden per-agent via config.json
+const FALLBACK_POLL_MS = 300_000; // 5min fallback polling (reduced from 30s)
+const DISPATCH_INTERVAL = 1_000; // Check queue every 1s
+const DEFAULT_HEARTBEAT_MS = 120_000; // 2 min default
 
-const stats = { triggered: 0, checks: 0, lastCheck: 0 };
+const stats = { triggered: 0, checks: 0, dispatched: 0, lastCheck: 0 };
 
 export function startScheduler(options?: number | {
   pollIntervalMs?: number; engine?: any; dagIntervalMs?: number;
 }): void {
   const opts = typeof options === 'number' ? { pollIntervalMs: options } : (options || {});
-  const pollMs = opts.pollIntervalMs ?? 30000;
 
+  // Watcher triggers signal collection (not direct tick)
   startWatcher((dir) => {
-    if (running) return;
     console.log(`[scheduler] watcher: ${path.basename(dir)}/`);
-    tick('watcher');
+    onFileChange(dir);
   });
 
   if (pollTimer) clearInterval(pollTimer);
+  if (dispatchTimer) clearInterval(dispatchTimer);
   if (startupTimer) clearTimeout(startupTimer);
 
-  console.log(`[scheduler] watcher + ${pollMs / 1000}s poll (first in ${STARTUP_DELAY / 1000}s)`);
+  console.log(`[scheduler] event-driven + ${FALLBACK_POLL_MS / 1000}s fallback (first in ${STARTUP_DELAY / 1000}s)`);
 
   // Recovery: rescan pending consensus + running workflows on startup
   recoverPendingConsensus();
   import('./workflow-bridge').then(m => m.recoverRunningWorkflows()).catch((err) => { console.error('[scheduler] recoverRunningWorkflows:', err); });
 
-  // v0.4: Load workflow triggers
+  // Load workflow triggers
   try { loadTriggers(); } catch (err) { console.error('[scheduler] Failed to load triggers:', err); }
 
   startupTimer = setTimeout(() => {
-    tick('startup');
-    pollTimer = setInterval(() => tick('poll'), pollMs);
+    // Initial scan
+    fallbackScan('startup');
+    // Fallback polling (5min, only for watcher-missed changes)
+    pollTimer = setInterval(() => fallbackScan('fallback'), FALLBACK_POLL_MS);
+    // Dispatch queue every 1s
+    dispatchTimer = setInterval(() => dispatch(), DISPATCH_INTERVAL);
+    // Heartbeat
     heartbeatTimer = setInterval(() => tickHeartbeat(), DEFAULT_HEARTBEAT_MS);
   }, STARTUP_DELAY);
 }
@@ -60,6 +70,7 @@ export function startScheduler(options?: number | {
 export function stopScheduler(): void {
   stopWatcher();
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (dispatchTimer) { clearInterval(dispatchTimer); dispatchTimer = null; }
   if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
   if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
   saveIndex();
@@ -67,46 +78,73 @@ export function stopScheduler(): void {
 }
 
 export function getSchedulerStats() {
-  return { ...stats, running };
+  return { ...stats, running, queue: getQueueStats() };
 }
 
-async function tick(source: string): Promise<void> {
+/**
+ * Fallback scan — only for watcher-missed changes (5min interval)
+ */
+async function fallbackScan(source: string): Promise<void> {
   if (running) return;
   running = true;
   try {
     stats.checks++;
     stats.lastCheck = Date.now();
 
-    // Refresh chat index + file watchers (catch newly created .md files)
+    // Refresh chat index + file watchers
     try { refreshIndex(); } catch (err) { console.error('[scheduler] refreshIndex:', err); }
     try { refreshFileWatchers(); } catch (err) { console.error('[scheduler] refreshFileWatchers:', err); }
 
-    // v0.4: Check workflow triggers (file change, schedule, event)
+    // Check workflow triggers
     try { checkTriggers(); } catch (err) { console.error('[scheduler] checkTriggers:', err); }
 
-    if (!fs.existsSync(AGENTS_DIR)) return;
-
-    const agentNames = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-      .map(e => e.name);
-
-    let triggered = 0;
-    for (const name of agentNames) {
-      try {
-        const result = await autoRespond(name);
-        if (result.triggered) triggered++;
-      } catch (err) { console.error(`[scheduler] autoRespond(${name}):`, err); }
+    // Scan all agents for signals and enqueue
+    const signals = scanAllAgents();
+    for (const sig of signals) {
+      const { enqueueSignal } = await import('./signal-collector');
+      enqueueSignal(sig);
     }
 
-    if (triggered > 0) {
-      stats.triggered++;
-      console.log(`[scheduler] ${source}: ${triggered} triggered`);
+    if (signals.length > 0) {
+      console.log(`[scheduler] ${source}: ${signals.length} signals enqueued`);
     }
-
-    // Push dashboard refresh so live activity feed updates
-    try { broadcastWs('dashboard_refresh', {}); } catch (err) { console.error('[scheduler] broadcastWs:', err); }
-  } catch (err) { console.error('[scheduler] tick error:', err); }
+  } catch (err) { console.error('[scheduler] fallbackScan error:', err); }
   finally { running = false; }
+}
+
+/**
+ * Dispatch — process signals from queue
+ */
+async function dispatch(): Promise<void> {
+  if (dispatching) return;
+  dispatching = true;
+  try {
+    let dispatched = 0;
+    while (queueSize() > 0) {
+      const signal = dequeueSignal();
+      if (!signal) break;
+
+      try {
+        const result = await autoRespond(signal.agent, {
+          groupName: signal.group,
+          force: signal.priority === 'critical',
+        });
+        if (result.triggered) {
+          dispatched++;
+          stats.dispatched++;
+        }
+      } catch (err) {
+        console.error(`[scheduler] dispatch(${signal.agent}):`, err);
+      }
+    }
+
+    if (dispatched > 0) {
+      stats.triggered++;
+      console.log(`[scheduler] dispatched ${dispatched} signals`);
+      try { broadcastWs('dashboard_refresh', {}); } catch {}
+    }
+  } catch (err) { console.error('[scheduler] dispatch error:', err); }
+  finally { dispatching = false; }
 }
 
 async function tickHeartbeat(): Promise<void> {
