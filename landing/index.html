@@ -10,114 +10,125 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#fff;--tx:#0f172a;--td:#64748b;--tl:#94a3b8;--ac:#2563eb;--gd:linear-gradient(135deg,#2563eb,#7c3aed);--bd:#e0e4eb}
-html{scroll-behavior:smooth}
-body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+:root{--bg:#fff;--sf:#f6f8fb;--bd:#e0e4eb;--tx:#0f172a;--td:#64748b;--tl:#94a3b8;--ac:#2563eb;--gn:#16a34a;--gnb:rgba(22,163,74,.08);--yw:#d97706;--ywb:rgba(217,119,6,.08);--pp:#7c3aed;--gd:linear-gradient(135deg,#2563eb,#7c3aed);--r:16px;--ss:0 1px 3px rgba(0,0,0,.04);--sm:0 4px 16px rgba(0,0,0,.06);--sl:0 12px 40px rgba(0,0,0,.08);--tr:.25s cubic-bezier(.4,0,.2,1)}
+html{scroll-behavior:smooth;scroll-padding-top:60px}
+body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--tx);line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 
-/* Nav */
-nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--bd)}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.85);backdrop-filter:blur(16px) saturate(180%);border-bottom:1px solid var(--bd)}
 .ni{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px}
 .nl{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
 .nl canvas{border-radius:6px}
-.nk{display:flex;gap:28px}
-.nk a{font-size:13px;font-weight:500;color:var(--td);transition:color .2s}
+.nk{display:flex;align-items:center;gap:24px}
+.nk a{font-size:13px;font-weight:500;color:var(--td);transition:color var(--tr)}
 .nk a:hover{color:var(--tx)}
-.nc{background:var(--gd);color:#fff;font-weight:600;font-size:13px;padding:8px 20px;border-radius:8px}
+.nk .gh{display:flex;align-items:center;gap:5px}
+.nk .gh svg{width:16px;height:16px}
+.nk .sep{width:1px;height:16px;background:var(--bd)}
 
-/* Slide — 每个板块一屏 */
-.slide{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;padding:80px 24px}
-.slide-inner{max-width:1080px;width:100%;display:grid;gap:64px;align-items:center}
-.slide-inner.center{text-align:center;justify-content-items:center}
-.slide-inner.two{grid-template-columns:1fr 1fr}
-.slide-inner.two.rv{direction:rtl}
-.slide-inner.two.rv>*{direction:ltr}
+/* 每个板块 = 一屏 */
+.slide{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:80px 24px}
+.slide-inner{max-width:1080px;width:100%;margin:0 auto}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.two.rv{direction:rtl}.two.rv>*{direction:ltr}
+.ct{text-align:center}
 
-/* Typography */
-.hero-title{font-size:clamp(48px,8vw,96px);font-weight:900;line-height:1;letter-spacing:-.04em}
-.hero-title .gd{background:var(--gd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.hero-sub{font-size:20px;color:var(--td);margin-top:16px;max-width:480px;line-height:1.6}
-.hero-sub.center{margin:16px auto 0}
-.big-title{font-size:clamp(36px,5vw,56px);font-weight:800;line-height:1.1;letter-spacing:-.03em}
-.big-sub{font-size:17px;color:var(--td);margin-top:12px;max-width:440px;line-height:1.7}
-.big-sub.center{margin:12px auto 0}
-.label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--ac);margin-bottom:12px}
+/* 排版 */
+.hero-t{font-size:clamp(48px,8vw,88px);font-weight:900;line-height:1;letter-spacing:-.04em}
+.hero-t .gd{background:var(--gd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero-s{font-size:18px;color:var(--td);margin-top:16px;max-width:460px;line-height:1.6}
+.hero-s.ct{margin:16px auto 0}
+.big-t{font-size:clamp(32px,4.5vw,48px);font-weight:800;line-height:1.12;letter-spacing:-.03em}
+.big-s{font-size:16px;color:var(--td);margin-top:12px;max-width:420px;line-height:1.7}
+.big-s.ct{margin:12px auto 0}
+.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--ac);margin-bottom:10px}
 
-/* Buttons */
-.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:32px}
-.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;border-radius:10px;padding:12px 24px;transition:all .2s}
+/* 按钮 */
+.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;border-radius:10px;padding:12px 24px;transition:all var(--tr)}
 .bp{background:var(--gd);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.2)}
 .bp:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(37,99,235,.3)}
-.bs{background:#fff;color:var(--tx);border:1px solid var(--bd)}
-.bs:hover{border-color:var(--ac)}
+.bs{background:#fff;color:var(--tx);border:1px solid var(--bd);box-shadow:var(--ss)}
+.bs:hover{border-color:var(--ac);box-shadow:var(--sm)}
 
 /* Logo */
 .hero-logo{display:inline-block;position:relative}
 .hero-logo canvas{border-radius:20px}
-.hero-glow{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:60%;height:60px;background:radial-gradient(ellipse,rgba(37,99,235,.08),transparent 70%);pointer-events:none}
+.hero-glow{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:60%;height:60px;background:radial-gradient(ellipse,rgba(37,99,235,.1),transparent 70%);pointer-events:none}
 .logo-anim{display:inline-block;border-radius:6px;image-rendering:pixelated}
 
-/* Demo card */
-.demo{background:#fff;border:1px solid var(--bd);border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.08)}
-.demo-bar{padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:6px;background:#f6f8fb}
+/* Demo 卡片 */
+.demo{background:#fff;border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sl)}
+.demo-bar{padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:6px;background:var(--sf)}
 .dot{width:8px;height:8px;border-radius:50%}
 .dr{background:#ef4444}.dy{background:#eab308}.dg{background:#22c55e}
-.demo-label{font-size:11px;color:var(--tl);margin-left:6px;font-weight:500}
+.demo-lbl{font-size:11px;color:var(--tl);margin-left:6px;font-weight:500}
 .demo-body{padding:16px 20px;font-size:13px;line-height:1.8}
-.line{display:flex;gap:10px;padding:5px 0}
-.line+.line{border-top:1px solid #f1f5f9}
-.time{color:var(--tl);font-family:'JetBrains Mono',monospace;font-size:10px;min-width:36px;padding-top:2px}
-.agent{font-weight:700;color:var(--ac);min-width:50px}
-.human{font-weight:700;color:#7c3aed;min-width:50px}
+.dl{display:flex;gap:10px;padding:5px 0}.dl+.dl{border-top:1px solid #f1f5f9}
+.dm{color:var(--tl);font-family:'JetBrains Mono',monospace;font-size:10px;min-width:36px;padding-top:2px}
+.da{font-weight:700;color:var(--ac);min-width:50px}
+.dh{font-weight:700;color:var(--pp);min-width:50px}
 .tag{display:inline-block;padding:1px 8px;border-radius:100px;font-size:10px;font-weight:600}
-.tag-ok{background:#f0fdf4;color:#16a34a}
-.tag-run{background:#eff6ff;color:#2563eb}
-.tag-wait{background:#fffbeb;color:#d97706}
+.tag-ok{background:var(--gnb);color:var(--gn)}
+.tag-wait{background:var(--ywb);color:var(--yw)}
+.tag-pending{background:var(--sf);color:var(--tl)}
 
 /* Steps */
-.steps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:48px}
-.step-card{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:24px;transition:all .25s}
-.step-card:hover{border-color:var(--ac);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.06)}
-.step-n{font-size:40px;font-weight:900;background:var(--gd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;opacity:.2;line-height:1}
-.step-card h3{font-size:15px;font-weight:700;margin:8px 0 4px}
-.step-card p{font-size:13px;color:var(--td);line-height:1.5}
-.step-card code{display:block;margin-top:10px;background:#f6f8fb;border:1px solid var(--bd);border-radius:6px;padding:8px 12px;font-size:11px;color:var(--ac);font-family:'JetBrains Mono',monospace}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:40px}
+.step{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:20px;transition:all var(--tr);box-shadow:var(--ss)}
+.step:hover{border-color:var(--ac);transform:translateY(-2px);box-shadow:var(--sm)}
+.step-n{font-size:36px;font-weight:900;background:var(--gd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;opacity:.15;line-height:1}
+.step h3{font-size:14px;font-weight:700;margin:6px 0 4px}
+.step p{font-size:12px;color:var(--td);line-height:1.5}
+.step code{display:block;margin-top:8px;background:var(--sf);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--ac);font-family:'JetBrains Mono',monospace;line-height:1.5}
 
-/* Feature row */
-.feat{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:40px}
-.feat-item{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:20px 24px;width:200px;text-align:center;transition:all .25s}
-.feat-item:hover{border-color:var(--ac);transform:translateY(-2px)}
-.feat-icon{font-size:28px;margin-bottom:8px}
-.feat-item h4{font-size:14px;font-weight:700;margin-bottom:4px}
-.feat-item p{font-size:12px;color:var(--td);line-height:1.5}
+/* Feature 六宫格 */
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
+.fi{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:20px;transition:all var(--tr);box-shadow:var(--ss)}
+.fi:hover{border-color:var(--ac);transform:translateY(-2px);box-shadow:var(--sm)}
+.fi-icon{font-size:24px;margin-bottom:8px}
+.fi h4{font-size:14px;font-weight:700;margin-bottom:4px}
+.fi p{font-size:12px;color:var(--td);line-height:1.5}
+
+/* Workflow 步骤 */
+.wf{display:flex;align-items:center;gap:12px;padding:8px 0}.wf+.wf{border-top:1px solid #f1f5f9}
+.wf-n{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.wf-info{flex:1;min-width:0}
+.wf-name{font-weight:600;font-size:13px}
+.wf-desc{font-size:11px;color:var(--td);margin-top:1px}
+
+/* Memory 卡片 */
+.mem{background:var(--sf);border-radius:var(--r-sm,10px);padding:14px;border:1px solid var(--bd);margin-bottom:10px}
+.mem:last-child{margin-bottom:0}
+.mem-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ac);margin-bottom:4px}
+.mem-text{font-size:13px;line-height:1.5}
+.mem-meta{font-size:10px;color:var(--tl);margin-top:6px}
 
 /* FAQ */
 .fq{border-bottom:1px solid var(--bd)}
-.fqq{font-size:15px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:20px 0;transition:color .2s}
+.fqq{font-size:15px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:20px 0;transition:color var(--tr)}
 .fqq:hover{color:var(--ac)}
-.fqq .ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:#f1f5f9;color:var(--td);transition:all .2s}
+.fqq .ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--sf);color:var(--td);transition:all var(--tr);flex-shrink:0}
 .fq.open .fqq .ic{background:rgba(37,99,235,.1);color:var(--ac);transform:rotate(45deg)}
 .fqa{max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s ease;font-size:14px;color:var(--td);line-height:1.7}
 .fq.open .fqa{max-height:160px;padding-bottom:20px}
 
 /* Footer */
-footer{border-top:1px solid var(--bd);padding:48px 0 24px;background:#f6f8fb}
+footer{border-top:1px solid var(--bd);padding:48px 0 24px;background:var(--sf)}
 .ft{max-width:1080px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px}
-.ft-brand p{color:var(--td);font-size:13px;margin-top:10px;line-height:1.6}
-.ft-col h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tl);margin-bottom:12px}
-.ft-col a{display:block;font-size:13px;color:var(--td);padding:3px 0;transition:color .2s}
-.ft-col a:hover{color:var(--ac)}
-.ft-bottom{border-top:1px solid var(--bd);margin-top:32px;padding-top:16px;display:flex;justify-content:space-between;font-size:12px;color:var(--tl);max-width:1080px;margin-left:auto;margin-right:auto;padding-left:24px;padding-right:24px}
+.ft p{color:var(--td);font-size:13px;margin-top:10px;line-height:1.6}
+.ftc h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tl);margin-bottom:12px}
+.ftc a{display:block;font-size:13px;color:var(--td);padding:3px 0;transition:color var(--tr)}
+.ftc a:hover{color:var(--ac)}
+.ftb{border-top:1px solid var(--bd);margin-top:32px;padding-top:16px;display:flex;justify-content:space-between;font-size:12px;color:var(--tl);max-width:1080px;margin-left:auto;margin-right:auto;padding-left:24px;padding-right:24px}
 
-/* Reveal */
+/* 动画 */
 .rv{opacity:0;transform:translateY(20px);transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1)}
 .rv.vis{opacity:1;transform:translateY(0)}
 
 @media(max-width:768px){
-  .slide-inner.two{grid-template-columns:1fr;gap:40px}
-  .steps-grid{grid-template-columns:1fr 1fr}
-  .feat{flex-direction:column;align-items:center}
-  .feat-item{width:100%}
+  .two{grid-template-columns:1fr;gap:36px}
+  .steps,.feat{grid-template-columns:1fr 1fr}
   .ft{grid-template-columns:1fr 1fr}
   .nk{display:none}
   .slide{min-height:auto;padding:60px 24px}
@@ -126,140 +137,144 @@ footer{border-top:1px solid var(--bd);padding:48px 0 24px;background:#f6f8fb}
 </head>
 <body>
 
-<!-- ═══ Nav ═══ -->
 <nav><div class="ni">
   <a href="#" class="nl"><canvas class="logo-anim" data-size="28" width="56" height="56"></canvas>Mind Agency</a>
-  <div class="nk"><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="#faq">FAQ</a><a href="/contact">Contact</a><a href="https://github.com/Toufumind/mind-agency" target="_blank">GitHub</a></div>
-  <a href="#quickstart" class="nc">Get Started</a>
+  <div class="nk">
+    <a href="#features">Features</a>
+    <a href="#quickstart">Quick Start</a>
+    <a href="#faq">FAQ</a>
+    <a href="/contact">Contact</a>
+    <span class="sep"></span>
+    <a href="https://github.com/Toufumind/mind-agency" target="_blank" class="gh"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>GitHub</a>
+  </div>
 </div></nav>
 
-<!-- ═══ Slide 1: Hero ═══ -->
+<!-- ═══ 1. Hero ═══ -->
 <section class="slide">
-  <div class="slide-inner center">
-    <div>
-      <div class="label rv">Open Source · Apache 2.0</div>
-      <h1 class="hero-title rv"><span class="gd">From Agent</span><br>to Agency</h1>
-      <p class="hero-sub center rv">一个 AI 做不了的事，一群 AI 可以。</p>
-      <div class="btns rv">
-        <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
-        <a href="/contact" class="btn bs">联系我们</a>
-        <a href="https://github.com/Toufumind/mind-agency" class="btn bs" target="_blank">GitHub</a>
-      </div>
+  <div class="slide-inner ct">
+    <div class="lbl rv">Open Source · Apache 2.0</div>
+    <h1 class="hero-t rv"><span class="gd">From Agent</span><br>to Agency</h1>
+    <p class="hero-s ct rv">一个 AI 做不了的事，一群 AI 可以。</p>
+    <div class="btns rv">
+      <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
+      <a href="/contact" class="btn bs">联系我们</a>
+      <a href="https://github.com/Toufumind/mind-agency" class="btn bs" target="_blank">GitHub</a>
     </div>
     <div class="hero-logo rv"><canvas class="logo-anim" data-size="200" width="400" height="400"></canvas><div class="hero-glow"></div></div>
   </div>
 </section>
 
-<!-- ═══ Slide 2: What ═══ -->
-<section class="slide" style="background:#f6f8fb">
-  <div class="slide-inner two">
-    <div>
-      <div class="label rv">What</div>
-      <h2 class="big-title rv">本地运行的<br>多 AI 协作平台</h2>
-      <p class="big-sub rv">你创建 AI Agent，给它们角色和性格。拉进群组，定义工作流。点"运行"——Agent 们自动分工协作。</p>
-      <p class="big-sub rv" style="margin-top:16px;color:var(--tx);font-weight:600">不是 API wrapper。不是 prompt template。</p>
-    </div>
-    <div class="demo rv">
-      <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-label">#default</span></div>
-      <div class="demo-body">
-        <div class="line"><span class="time">14:32</span><span class="human">你</span><span>@Alice 写一个用户注册接口</span></div>
-        <div class="line"><span class="time">14:32</span><span class="agent">Alice</span><span>好的</span></div>
-        <div class="line"><span class="time">14:33</span><span class="agent">Alice</span><span>@Bob 帮我 review</span></div>
-        <div class="line"><span class="time">14:33</span><span class="agent">Bob</span><span>两个问题：缺少校验 + 密码没加密</span></div>
-        <div class="line"><span class="time">14:34</span><span class="agent">Alice</span><span>改好了</span></div>
-        <div class="line"><span class="time">14:34</span><span class="agent">Bob</span><span><span class="tag tag-ok">✅ 没问题</span></span></div>
-        <div class="line"><span class="time">14:35</span><span class="agent">Alice</span><span>@Charlie 跑测试</span></div>
-        <div class="line"><span class="time">14:35</span><span class="agent">Charlie</span><span><span class="tag tag-ok">✅ 全部通过</span></span></div>
+<!-- ═══ 2. What ═══ -->
+<section class="slide" style="background:var(--sf)">
+  <div class="slide-inner">
+    <div class="two">
+      <div>
+        <div class="lbl rv">What</div>
+        <h2 class="big-t rv">本地运行的<br>多 AI 协作平台</h2>
+        <p class="big-s rv">你创建 Agent，给它们角色和性格。拉进群组，定义工作流。点"运行"——Agent 们自动分工协作。</p>
+        <p class="big-s rv" style="margin-top:12px;color:var(--tx);font-weight:600">不是 API wrapper，不是 prompt template。</p>
+      </div>
+      <div class="demo rv">
+        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">#default</span></div>
+        <div class="demo-body">
+          <div class="dl"><span class="dm">14:32</span><span class="dh">你</span><span>@Alice 写一个用户注册接口</span></div>
+          <div class="dl"><span class="dm">14:32</span><span class="da">Alice</span><span>好的</span></div>
+          <div class="dl"><span class="dm">14:33</span><span class="da">Alice</span><span>@Bob 帮我 review</span></div>
+          <div class="dl"><span class="dm">14:33</span><span class="da">Bob</span><span>两个问题：缺少校验 + 密码没加密</span></div>
+          <div class="dl"><span class="dm">14:34</span><span class="da">Alice</span><span>改好了</span></div>
+          <div class="dl"><span class="dm">14:34</span><span class="da">Bob</span><span><span class="tag tag-ok">✅ 没问题</span></span></div>
+          <div class="dl"><span class="dm">14:35</span><span class="da">Alice</span><span>@Charlie 跑测试</span></div>
+          <div class="dl"><span class="dm">14:35</span><span class="da">Charlie</span><span><span class="tag tag-ok">✅ 全部通过</span></span></div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ Slide 3: Features ═══ -->
+<!-- ═══ 3. Features ═══ -->
 <section class="slide">
-  <div class="slide-inner center">
-    <div>
-      <div class="label rv">Features</div>
-      <h2 class="big-title rv center" style="margin:0 auto">六个核心能力</h2>
-    </div>
+  <div class="slide-inner ct">
+    <div class="lbl rv">Features</div>
+    <h2 class="big-t rv ct" style="margin:0 auto">六个核心能力</h2>
     <div class="feat rv">
-      <div class="feat-item"><div class="feat-icon">👥</div><h4>团队协作</h4><p>任意数量的 Agent，各有角色和性格，通过群聊和邮件协作</p></div>
-      <div class="feat-item"><div class="feat-icon">🗳️</div><h4>共识投票</h4><p>AND / OR / 阈值投票 + 对抗性审查 + 多轮辩论</p></div>
-      <div class="feat-item"><div class="feat-icon">🔄</div><h4>工作流</h4><p>YAML 流水线，条件分支，人工审批，崩溃恢复</p></div>
-      <div class="feat-item"><div class="feat-icon">🧠</div><h4>三层记忆</h4><p>会话 + 持久 + 项目记忆，跨会话经验积累</p></div>
-      <div class="feat-item"><div class="feat-icon">📋</div><h4>审计日志</h4><p>每个 Agent 的每个动作都有记录</p></div>
-      <div class="feat-item"><div class="feat-icon">💾</div><h4>可靠性</h4><p>DLQ + Outbox + 断点恢复</p></div>
+      <div class="fi"><div class="fi-icon">👥</div><h4>团队协作</h4><p>任意数量 Agent，各有角色和性格，群聊邮件协作</p></div>
+      <div class="fi"><div class="fi-icon">🗳️</div><h4>共识投票</h4><p>AND / OR / 阈值投票 + 对抗性审查 + 多轮辩论</p></div>
+      <div class="fi"><div class="fi-icon">🔄</div><h4>工作流</h4><p>YAML 流水线，条件分支，人工审批，崩溃恢复</p></div>
+      <div class="fi"><div class="fi-icon">🧠</div><h4>三层记忆</h4><p>会话 + 持久 + 项目记忆，跨会话经验积累</p></div>
+      <div class="fi"><div class="fi-icon">📋</div><h4>审计日志</h4><p>每个 Agent 的每个动作都有记录</p></div>
+      <div class="fi"><div class="fi-icon">💾</div><h4>可靠性</h4><p>DLQ + Outbox + 断点恢复</p></div>
     </div>
   </div>
 </section>
 
-<!-- ═══ Slide 4: Workflow ═══ -->
-<section class="slide" style="background:#f6f8fb">
-  <div class="slide-inner two rv">
-    <div>
-      <div class="label">Automation</div>
-      <h2 class="big-title">流水线定义好<br>团队自动跑</h2>
-      <p class="big-sub">定义好流程：谁写、谁审、谁测、谁部署。Agent 按步骤自动流转。</p>
-      <ul style="list-style:none;margin-top:16px">
-        <li style="padding:6px 0;font-size:14px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:#16a34a;font-weight:700">✓</span> 步骤编排：A 做完 B 才能开始</li>
-        <li style="padding:6px 0;font-size:14px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:#16a34a;font-weight:700">✓</span> 人工关卡：关键步骤等你批准</li>
-        <li style="padding:6px 0;font-size:14px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:#16a34a;font-weight:700">✓</span> 崩溃恢复：重启后自动继续</li>
-      </ul>
-    </div>
-    <div class="demo">
-      <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-label">deploy-pipeline.yaml</span></div>
-      <div class="demo-body">
-        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f1f5f9"><div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#f0fdf4;color:#16a34a">✓</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Alice — Code Review</div><div style="font-size:11px;color:var(--td)">审查代码质量</div></div><span class="tag tag-ok">done</span></div>
-        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f1f5f9"><div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#f0fdf4;color:#16a34a">✓</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Bob — Test</div><div style="font-size:11px;color:var(--td)">运行测试套件</div></div><span class="tag tag-ok">done</span></div>
-        <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f1f5f9"><div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#fffbeb;color:#d97706">⏸</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Human Approval</div><div style="font-size:11px;color:var(--td)">等待部署审批</div></div><span class="tag tag-wait">waiting</span></div>
-        <div style="display:flex;align-items:center;gap:12px;padding:8px 0"><div style="width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:#f1f5f9;color:var(--tl)">4</div><div style="flex:1"><div style="font-weight:600;font-size:13px">Charlie — Deploy</div><div style="font-size:11px;color:var(--td)">部署到生产环境</div></div><span class="tag" style="background:#f1f5f9;color:var(--tl)">pending</span></div>
+<!-- ═══ 4. Workflow ═══ -->
+<section class="slide" style="background:var(--sf)">
+  <div class="slide-inner">
+    <div class="two rv">
+      <div>
+        <div class="lbl">Automation</div>
+        <h2 class="big-t">流水线定义好<br>团队自动跑</h2>
+        <p class="big-s">定义好流程：谁写、谁审、谁测、谁部署。Agent 按步骤自动流转。</p>
+        <ul style="list-style:none;margin-top:16px">
+          <li style="padding:5px 0;font-size:13px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:var(--gn);font-weight:700">✓</span> 步骤编排：A 做完 B 才能开始</li>
+          <li style="padding:5px 0;font-size:13px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:var(--gn);font-weight:700">✓</span> 人工关卡：关键步骤等你批准</li>
+          <li style="padding:5px 0;font-size:13px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:var(--gn);font-weight:700">✓</span> 崩溃恢复：重启后自动继续</li>
+        </ul>
+      </div>
+      <div class="demo">
+        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">deploy-pipeline.yaml</span></div>
+        <div class="demo-body">
+          <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Alice — Code Review</div><div class="wf-desc">审查代码质量</div></div><span class="tag tag-ok">done</span></div>
+          <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Bob — Test</div><div class="wf-desc">运行测试套件</div></div><span class="tag tag-ok">done</span></div>
+          <div class="wf"><div class="wf-n" style="background:var(--ywb);color:var(--yw)">⏸</div><div class="wf-info"><div class="wf-name">Human Approval</div><div class="wf-desc">等待部署审批</div></div><span class="tag tag-wait">waiting</span></div>
+          <div class="wf"><div class="wf-n" style="background:var(--sf);color:var(--tl)">4</div><div class="wf-info"><div class="wf-name">Charlie — Deploy</div><div class="wf-desc">部署到生产环境</div></div><span class="tag tag-pending">pending</span></div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ Slide 5: Memory ═══ -->
+<!-- ═══ 5. Memory ═══ -->
 <section class="slide">
-  <div class="slide-inner two rv">
-    <div>
-      <div class="label">Memory</div>
-      <h2 class="big-title">团队的经验<br>越积累越多</h2>
-      <p class="big-sub">上次部署出了什么问题、哪个测试总失败、做了什么技术决策——新成员来了也能快速上手。</p>
-    </div>
-    <div class="demo">
-      <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-label">Agent Memory</span></div>
-      <div class="demo-body" style="display:flex;flex-direction:column;gap:10px">
-        <div style="background:#f6f8fb;border-radius:8px;padding:14px;border:1px solid var(--bd)"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--ac);letter-spacing:.04em;margin-bottom:4px">Long-term Memory</div><div style="font-size:13px;line-height:1.5">部署 v3 时遇到端口冲突，解决方案：修改 server.ts，优先使用环境变量 WS_PORT</div><div style="font-size:10px;color:var(--tl);margin-top:6px">2026-06-01 · Relevance: 92%</div></div>
-        <div style="background:#f6f8fb;border-radius:8px;padding:14px;border:1px solid var(--bd)"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--ac);letter-spacing:.04em;margin-bottom:4px">Entity Memory</div><div style="font-size:13px;line-height:1.5">项目使用 Next.js 15 + Tailwind CSS 4，部署目标 Windows Electron exe</div><div style="font-size:10px;color:var(--tl);margin-top:6px">Source: TASK_SPEC.md</div></div>
+  <div class="slide-inner">
+    <div class="two rv">
+      <div>
+        <div class="lbl">Memory</div>
+        <h2 class="big-t">团队的经验<br>越积累越多</h2>
+        <p class="big-s">上次部署出了什么问题、哪个测试总失败、做了什么技术决策——新成员来了也能快速上手。</p>
+      </div>
+      <div class="demo">
+        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">Agent Memory</span></div>
+        <div class="demo-body" style="display:flex;flex-direction:column;gap:10px">
+          <div class="mem"><div class="mem-label">Long-term Memory</div><div class="mem-text">部署 v3 时遇到端口冲突，解决方案：修改 server.ts，优先使用环境变量 WS_PORT</div><div class="mem-meta">2026-06-01 · Relevance: 92%</div></div>
+          <div class="mem"><div class="mem-label">Entity Memory</div><div class="mem-text">项目使用 Next.js 15 + Tailwind CSS 4，部署目标 Windows Electron exe</div><div class="mem-meta">Source: TASK_SPEC.md</div></div>
+          <div class="mem"><div class="mem-label">Session Memory</div><div class="mem-text">当前任务：修复 workflow 断点恢复后的状态不一致</div><div class="mem-meta">Updated: just now</div></div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ Slide 6: Quick Start ═══ -->
-<section class="slide" style="background:#f6f8fb">
-  <div class="slide-inner center">
-    <div>
-      <div class="label rv">Quick Start</div>
-      <h2 class="big-title rv center" style="margin:0 auto">5 分钟上手</h2>
-      <p class="big-sub center rv" style="margin:12px auto 0;font-size:13px">目前支持 Claude 和 DeepSeek，更多模型接入中。</p>
-    </div>
-    <div class="steps-grid rv">
-      <div class="step-card"><div class="step-n">01</div><h3>安装</h3><p>下载 exe 双击运行，或从源码</p><code>$ git clone github.com/Toufumind/mind-agency<br>$ cd mind-agency && npm install<br>$ npm run dev</code></div>
-      <div class="step-card"><div class="step-n">02</div><h3>配置</h3><p>首次打开会引导你填 API Key</p><code>Settings → API Key → Save</code></div>
-      <div class="step-card"><div class="step-n">03</div><h3>建团队</h3><p>系统自带 Alice/Bob/Charlie，也能自己建</p><code>Agents/ 目录下加 config.json</code></div>
-      <div class="step-card"><div class="step-n">04</div><h3>跑起来</h3><p>建群组，定义工作流，点运行</p><code>$ curl localhost:3001/workflows/run</code></div>
+<!-- ═══ 6. Quick Start ═══ -->
+<section class="slide" style="background:var(--sf)">
+  <div class="slide-inner ct">
+    <div class="lbl rv">Quick Start</div>
+    <h2 class="big-t rv ct" style="margin:0 auto">5 分钟上手</h2>
+    <p class="big-s rv ct" style="margin:12px auto 0;font-size:13px">目前支持 Claude 和 DeepSeek，更多模型接入中。</p>
+    <div class="steps rv">
+      <div class="step"><div class="step-n">01</div><h3>安装</h3><p>下载 exe 双击运行，或从源码</p><code>$ git clone github.com/Toufumind/mind-agency<br>$ cd mind-agency && npm install<br>$ npm run dev</code></div>
+      <div class="step"><div class="step-n">02</div><h3>配置</h3><p>首次打开引导你填 API Key</p><code>Settings → API Key → Save</code></div>
+      <div class="step"><div class="step-n">03</div><h3>建团队</h3><p>系统自带 Alice/Bob/Charlie</p><code>Agents/ 目录下加 config.json</code></div>
+      <div class="step"><div class="step-n">04</div><h3>跑起来</h3><p>建群组，定义工作流，点运行</p><code>$ curl localhost:3001/workflows/run</code></div>
     </div>
   </div>
 </section>
 
-<!-- ═══ Slide 7: FAQ ═══ -->
+<!-- ═══ 7. FAQ ═══ -->
 <section class="slide">
-  <div class="slide-inner center" style="max-width:680px">
-    <div>
-      <div class="label rv">FAQ</div>
-      <h2 class="big-title rv center" style="margin:0 auto">常见问题</h2>
-    </div>
+  <div class="slide-inner ct" style="max-width:680px">
+    <div class="lbl rv">FAQ</div>
+    <h2 class="big-t rv ct" style="margin:0 auto">常见问题</h2>
     <div class="rv" style="margin-top:40px;width:100%">
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">多个 AI 怎么协作？谁听谁的？<span class="ic">+</span></div><div class="fqa">你定义规则，AI 按规则分工。Alice 写完 Bob 自动审，有分歧投票，关键步骤等你批准。</div></div>
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">需要花钱吗？<span class="ic">+</span></div><div class="fqa">软件免费开源。需要 AI 模型的 API Key，DeepSeek 几毛钱一天。</div></div>
@@ -270,17 +285,15 @@ footer{border-top:1px solid var(--bd);padding:48px 0 24px;background:#f6f8fb}
   </div>
 </section>
 
-<!-- ═══ Slide 8: CTA ═══ -->
-<section class="slide" style="background:#f6f8fb">
-  <div class="slide-inner center">
-    <div>
-      <div class="hero-logo rv" style="margin-bottom:32px"><canvas class="logo-anim" data-size="120" width="240" height="240"></canvas></div>
-      <h2 class="big-title rv center" style="margin:0 auto">From Agent<br>to Agency</h2>
-      <p class="big-sub center rv">一个 AI 做不了的事，一群 AI 可以。</p>
-      <div class="btns rv">
-        <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
-        <a href="/contact" class="btn bs">联系我们</a>
-      </div>
+<!-- ═══ 8. CTA ═══ -->
+<section class="slide" style="background:var(--sf)">
+  <div class="slide-inner ct">
+    <div class="hero-logo rv" style="margin-bottom:28px"><canvas class="logo-anim" data-size="120" width="240" height="240"></canvas></div>
+    <h2 class="big-t rv ct" style="margin:0 auto">From Agent<br>to Agency</h2>
+    <p class="big-s rv ct">一个 AI 做不了的事，一群 AI 可以。</p>
+    <div class="btns rv">
+      <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
+      <a href="/contact" class="btn bs">联系我们</a>
     </div>
   </div>
 </section>
@@ -288,12 +301,12 @@ footer{border-top:1px solid var(--bd);padding:48px 0 24px;background:#f6f8fb}
 <!-- ═══ Footer ═══ -->
 <footer>
   <div class="ft">
-    <div class="ft-brand"><div class="nl" style="margin-bottom:4px"><canvas class="logo-anim" data-size="20" width="40" height="40"></canvas>Mind Agency</div><p>From Agent to Agency. Open source, local-first.</p></div>
-    <div class="ft-col"><h4>Product</h4><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="/contact">Contact</a></div>
-    <div class="ft-col"><h4>Resources</h4><a href="https://github.com/Toufumind/mind-agency">GitHub</a><a href="https://github.com/Toufumind/mind-agency/blob/main/README.md">Docs</a><a href="#faq">FAQ</a></div>
-    <div class="ft-col"><h4>Legal</h4><a href="../LICENSE">Apache 2.0</a></div>
+    <div><div class="nl" style="margin-bottom:4px"><canvas class="logo-anim" data-size="20" width="40" height="40"></canvas>Mind Agency</div><p>From Agent to Agency. Open source, local-first.</p></div>
+    <div class="ftc"><h4>Product</h4><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="/contact">Contact</a></div>
+    <div class="ftc"><h4>Resources</h4><a href="https://github.com/Toufumind/mind-agency">GitHub</a><a href="https://github.com/Toufumind/mind-agency/blob/main/README.md">Docs</a><a href="#faq">FAQ</a></div>
+    <div class="ftc"><h4>Legal</h4><a href="../LICENSE">Apache 2.0</a></div>
   </div>
-  <div class="ft-bottom"><span>© 2026 Toufumind</span><span>Made with 🧠</span></div>
+  <div class="ftb"><span>© 2026 Toufumind</span><span>Made with 🧠</span></div>
 </footer>
 
 <script>

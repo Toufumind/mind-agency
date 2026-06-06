@@ -607,6 +607,8 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
               } else if (isToolUseBlock(block)) {
                 allEvents.push({ type: 'tool_use', content: block.name, toolName: block.name, toolInput: JSON.stringify(block.input || {}, null, 2), timestamp: ts() });
                 ctrl.enqueue(allEvents[allEvents.length - 1]);
+                // v0.4: Save session on every tool call (prevents data loss on page switch)
+                if (sessionId) { try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {} }
                 // Audit log for file operations
                 const input = block.input as Record<string, any> | undefined;
                 const filePath = input?.file_path || input?.path || '';

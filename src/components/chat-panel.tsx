@@ -596,7 +596,12 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
 export default ChatPanel;
 
 function MdText({ text }: { text: string }) {
-  return <div className="text-[14px] text-muted leading-relaxed"><Markdown text={text} /></div>;
+  const isLong = text.length > 500;
+  return (
+    <div className={`text-[14px] text-muted leading-relaxed ${isLong ? 'max-h-[300px] overflow-y-auto' : ''}`}>
+      <Markdown text={text} />
+    </div>
+  );
 }
 function Think({ text }: { text: string }) {
   const [on, setOn] = useState(false);
