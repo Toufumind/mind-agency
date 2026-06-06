@@ -68,12 +68,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   return NextResponse.json(result);
 }
 
-/** Invalidate group API cache (called after writes) */
-export function invalidateGroupApiCache(groupName?: string): void {
-  if (groupName) groupApiCache.delete(groupName);
-  else groupApiCache.clear();
-}
-
 // ── POST /api/groups/[name] — send a message directly to group chat ──
 
 export async function POST(
