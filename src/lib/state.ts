@@ -29,12 +29,30 @@ export interface AgentState {
 
 const DEFAULT_STATE: AgentState = { emailCheck: 0, groups: {} };
 
+// ── State cache ──────────────────────────────────────────
+const stateCache = new Map<string, { data: AgentState; ts: number }>();
+const STATE_CACHE_TTL = 5_000; // 5s — short TTL for auto-respond freshness
+
 export function loadState(agent: string): AgentState {
+  // Check cache first
+  const cached = stateCache.get(agent);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < STATE_CACHE_TTL) return cached.data;
+
   const file = stateFile(agent);
+  let data: AgentState;
   try {
-    if (fs.existsSync(file)) return { ...DEFAULT_STATE, ...JSON.parse(fs.readFileSync(file, 'utf-8')) };
-  } catch {}
-  return { ...DEFAULT_STATE };
+    if (fs.existsSync(file)) {
+      data = { ...DEFAULT_STATE, ...JSON.parse(fs.readFileSync(file, 'utf-8')) };
+    } else {
+      data = { ...DEFAULT_STATE };
+    }
+  } catch {
+    data = { ...DEFAULT_STATE };
+  }
+
+  stateCache.set(agent, { data, ts: now });
+  return data;
 }
 
 export function saveState(agent: string, state: AgentState): void {
@@ -44,6 +62,8 @@ export function saveState(agent: string, state: AgentState): void {
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf-8');
   fs.renameSync(tmp, file);
+  // Update cache with the new data
+  stateCache.set(agent, { data: state, ts: Date.now() });
 }
 
 function stateFile(agent: string): string {

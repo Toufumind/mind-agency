@@ -19,7 +19,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { chatOnce } from './chat';
+import { chatOnce, getAgentConfig } from './chat';
 import { AGENTS_DIR, GROUPS_DIR } from './data-dir';
 import { loadState, saveState, ensureGroup, getAgentGroups, invalidateGroupsCache, type AgentState } from './state';
 import { setActivity, clearActivity } from './agent-activity';
@@ -71,11 +71,15 @@ interface AgentConfig {
 
 // ── Config ───────────────────────────────────────────────
 
+// Use cached getAgentConfig from chat.ts instead of reading config.json directly
 function getConfig(agentName: string): AgentConfig {
-  const cf = path.join(AGENTS_DIR, agentName, 'config.json');
-  if (!fs.existsSync(cf)) return { autoRespondToEmail: false, autoProcessGroupInvites: false, notifyOnEmail: true, notifyOnGroupMention: true };
-  try { return JSON.parse(fs.readFileSync(cf, 'utf-8')); }
-  catch { return { autoRespondToEmail: false, autoProcessGroupInvites: false, notifyOnEmail: true, notifyOnGroupMention: true }; }
+  const config = getAgentConfig(agentName);
+  return {
+    autoRespondToEmail: (config as any).autoRespondToEmail ?? false,
+    autoProcessGroupInvites: (config as any).autoProcessGroupInvites ?? false,
+    notifyOnEmail: (config as any).notifyOnEmail ?? true,
+    notifyOnGroupMention: (config as any).notifyOnGroupMention ?? true,
+  };
 }
 
 // ── Email scanning ──────────────────────────────────────

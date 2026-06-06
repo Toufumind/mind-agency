@@ -4,8 +4,21 @@ import matter from 'gray-matter';
 import type { Agent, Email, AgentStats, AgentConfig } from '@/types';
 import { AGENTS_DIR } from './data-dir';
 
-/** 扫描 Agents/ 目录，返回所有 Agent 列表 */
+// ── Cache ─────────────────────────────────────────────────
+const agentsCache = new Map<string, { data: Agent[]; ts: number }>();
+const AGENTS_CACHE_TTL = 30_000; // 30s
+
+const emailsCache = new Map<string, { data: Email[]; ts: number }>();
+const EMAILS_CACHE_TTL = 10_000; // 10s
+
+/** 扫描 Agents/ 目录，返回所有 Agent 列表 — cached */
 export function getAgents(): Agent[] {
+  // Check cache first
+  const cacheKey = '__all__';
+  const cached = agentsCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < AGENTS_CACHE_TTL) return cached.data;
+
   if (!fs.existsSync(AGENTS_DIR)) {
     return [];
   }
@@ -56,11 +69,18 @@ export function getAgents(): Agent[] {
     });
   }
 
+  // Cache the result
+  agentsCache.set(cacheKey, { data: agents, ts: Date.now() });
   return agents;
 }
 
-/** 获取某个 Agent 的收件箱邮件列表 */
+/** 获取某个 Agent 的收件箱邮件列表 — cached */
 export function getAgentEmails(agentName: string): Email[] {
+  // Check cache first
+  const cached = emailsCache.get(agentName);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < EMAILS_CACHE_TTL) return cached.data;
+
   const agentDir = path.join(AGENTS_DIR, agentName);
   const emailDir = path.join(agentDir, 'email');
 
@@ -138,6 +158,9 @@ export function getAgentEmails(agentName: string): Email[] {
 
   // 按文件名倒序排列（较新的邮件在前）
   emails.sort((a, b) => b.filename.localeCompare(a.filename));
+
+  // Cache the result
+  emailsCache.set(agentName, { data: emails, ts: Date.now() });
   return emails;
 }
 
@@ -198,4 +221,11 @@ export function getStats(): AgentStats {
     totalAgents: agents.length,
     totalEmails,
   };
+}
+
+/** Invalidate agents cache (call after agent creation/deletion) */
+export function invalidateAgentsCache(agentName?: string): void {
+  agentsCache.clear(); // Always clear the full list
+  if (agentName) emailsCache.delete(agentName);
+  else emailsCache.clear();
 }
