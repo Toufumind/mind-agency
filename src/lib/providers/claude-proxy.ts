@@ -270,6 +270,11 @@ async function* streamMessages(params: {
             currentBlock = null;
           } else if (event.type === 'message_delta') {
             stopReason = event.delta?.stop_reason || '';
+            if (event.usage) {
+              yield { type: 'usage', content: JSON.stringify(event.usage) } as any;
+            }
+          } else if (event.type === 'message_start' && event.message?.usage) {
+            yield { type: 'usage', content: JSON.stringify(event.message.usage) } as any;
           }
         } catch {}
       }
@@ -311,6 +316,8 @@ class ClaudeProxyProvider implements AgentProvider {
     // Agentic loop
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 300_000); // 5min total
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
 
     try {
       while (true) {
@@ -334,6 +341,12 @@ class ClaudeProxyProvider implements AgentProvider {
             yield { type: 'tool_use', content: event.tool_use.name, toolName: event.tool_use.name, toolInput: JSON.stringify(event.tool_use.input || {}, null, 2), timestamp: new Date().toISOString() };
             assistantContent.push(event.tool_use);
             toolUseBlocks.push(event.tool_use);
+          } else if (event.type === 'usage') {
+            try {
+              const usage = JSON.parse(event.content || '{}');
+              totalInputTokens += usage.input_tokens || 0;
+              totalOutputTokens += usage.output_tokens || 0;
+            } catch {}
           } else if (event.type === 'done') {
             stopReason = event.stop_reason || '';
           }
@@ -372,6 +385,16 @@ class ClaudeProxyProvider implements AgentProvider {
         messages.push({ role: 'assistant', content: assistantContent });
         messages.push({ role: 'user', content: toolResults });
       }
+
+      // Report total usage
+      yield {
+        type: 'usage' as any,
+        content: JSON.stringify({
+          input_tokens: totalInputTokens,
+          output_tokens: totalOutputTokens,
+          model,
+        }),
+      } as any;
     } finally {
       clearTimeout(timeout);
     }
