@@ -1,11 +1,12 @@
 /**
- * Workflow Trigger Manager — v0.4
+ * Workflow Trigger Manager — v0.5
  *
- * Supports multiple trigger types:
- *   - manual: only triggers on explicit call (default)
- *   - file_change: triggers when workflow.yaml mtime changes
- *   - schedule: triggers on cron schedule
- *   - event: triggers on EventBus event
+ * Two trigger sources:
+ *   1. Workflow-level trigger config (legacy, backward compatible)
+ *   2. Trigger nodes in DAG (type: trigger)
+ *
+ * When a trigger fires, passes the triggerStepId to triggerWorkflow()
+ * so the engine auto-completes that specific trigger node.
  *
  * Called by scheduler.ts on each tick.
  */
@@ -13,7 +14,7 @@
 import fs from 'fs';
 import path from 'path';
 import { GROUPS_DIR } from './data-dir';
-import { parseWorkflowYaml, type WorkflowTrigger } from './event-bus';
+import { parseWorkflowYaml, type WorkflowTrigger, type WorkflowStep } from './event-bus';
 import { triggerWorkflow } from './workflow-bridge';
 
 // Event trigger subscriptions (group → event type)
@@ -22,15 +23,16 @@ const eventSubscriptions = new Map<string, { eventType: string; subId: string }>
 interface TriggerState {
   group: string;
   trigger: WorkflowTrigger;
+  triggerStepId?: string;  // DAG trigger node ID (if trigger is a step)
   lastMtime: number;
   lastFire: number;
   cronNextFire: number;
 }
 
-const triggers = new Map<string, TriggerState>();
-const CRON_INTERVAL = 60_000; // check cron every minute
+const triggers = new Map<string, TriggerState[]>();
+const CRON_INTERVAL = 60_000;
 
-/** Load all workflow triggers from disk */
+/** Load all workflow triggers from disk — supports both workflow-level and DAG trigger nodes */
 export function loadTriggers(): void {
   triggers.clear();
   if (!fs.existsSync(GROUPS_DIR)) return;
@@ -43,64 +45,99 @@ export function loadTriggers(): void {
     try {
       const raw = fs.readFileSync(wfPath, 'utf-8');
       const def = parseWorkflowYaml(raw);
-      if (!def.trigger || def.trigger.type === 'manual') continue;
+      const groupTriggers: TriggerState[] = [];
 
-      const state: TriggerState = {
-        group: g.name,
-        trigger: def.trigger,
-        lastMtime: fs.statSync(wfPath).mtimeMs,
-        lastFire: 0,
-        cronNextFire: 0,
-      };
-
-      // For file_change triggers, set up the watcher
-      if (def.trigger.type === 'file_change') {
-        const watchPath = def.trigger.watchFile
-          ? path.join(PROJECT_ROOT, def.trigger.watchFile)
-          : wfPath;
-        state.lastMtime = fs.existsSync(watchPath) ? fs.statSync(watchPath).mtimeMs : 0;
+      // Source 1: Workflow-level trigger config (legacy)
+      if (def.trigger && def.trigger.type !== 'manual') {
+        const state = buildTriggerState(g.name, def.trigger, undefined, wfPath);
+        if (state) groupTriggers.push(state);
       }
 
-      // For schedule triggers, calculate next fire time
-      if (def.trigger.type === 'schedule' && def.trigger.cron) {
-        state.cronNextFire = calculateNextCronFire(def.trigger.cron);
+      // Source 2: DAG trigger nodes
+      for (const step of def.steps) {
+        if (step.type === 'trigger' && step.trigger && step.trigger.type !== 'manual') {
+          const state = buildTriggerState(g.name, step.trigger, step.id, wfPath);
+          if (state) groupTriggers.push(state);
+        }
       }
 
-      triggers.set(g.name, state);
-      console.log(`[trigger] Loaded: ${g.name} → ${def.trigger.type}${def.trigger.cron ? ` (${def.trigger.cron})` : ''}`);
+      if (groupTriggers.length > 0) {
+        triggers.set(g.name, groupTriggers);
+        for (const t of groupTriggers) {
+          console.log(`[trigger] Loaded: ${g.name} → ${t.trigger.type}${t.triggerStepId ? ` (step: ${t.triggerStepId})` : ''}${t.trigger.cron ? ` (${t.trigger.cron})` : ''}`);
+        }
+      }
     } catch { /* skip parse errors */ }
   }
+}
+
+function buildTriggerState(group: string, trigger: WorkflowTrigger, triggerStepId: string | undefined, wfPath: string): TriggerState | null {
+  if (!trigger || trigger.type === 'manual') return null;
+
+  const state: TriggerState = {
+    group,
+    trigger,
+    triggerStepId,
+    lastMtime: fs.statSync(wfPath).mtimeMs,
+    lastFire: 0,
+    cronNextFire: 0,
+  };
+
+  if (trigger.type === 'file_change') {
+    const watchPath = trigger.watchFile
+      ? path.join(process.env.MIND_DATA_DIR || process.cwd(), trigger.watchFile)
+      : wfPath;
+    state.lastMtime = fs.existsSync(watchPath) ? fs.statSync(watchPath).mtimeMs : 0;
+  }
+
+  if (trigger.type === 'schedule' && trigger.cron) {
+    state.cronNextFire = calculateNextCronFire(trigger.cron);
+  }
+
+  return state;
 }
 
 /** Check all triggers — called by scheduler on each tick */
 export function checkTriggers(): void {
   const now = Date.now();
 
-  for (const [group, state] of triggers) {
-    try {
-      switch (state.trigger.type) {
-        case 'file_change':
-          checkFileChangeTrigger(group, state, now);
-          break;
-        case 'schedule':
-          checkScheduleTrigger(group, state, now);
-          break;
-        case 'event':
-          // Event triggers are handled by EventBus subscriptions
-          subscribeEventTrigger(group, state);
-          break;
+  for (const [group, groupTriggers] of triggers) {
+    for (const state of groupTriggers) {
+      try {
+        switch (state.trigger.type) {
+          case 'file_change':
+            checkFileChangeTrigger(group, state, now);
+            break;
+          case 'schedule':
+            checkScheduleTrigger(group, state, now);
+            break;
+          case 'event':
+            subscribeEventTrigger(group, state);
+            break;
+        }
+      } catch (err) {
+        console.error(`[trigger] Error checking ${group}: ${err instanceof Error ? err.message : String(err)}`);
       }
-    } catch (err) {
-      console.error(`[trigger] Error checking ${group}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+}
+
+function fire(group: string, state: TriggerState): void {
+  state.lastFire = Date.now();
+  if (state.trigger.type === 'schedule' && state.trigger.cron) {
+    state.cronNextFire = calculateNextCronFire(state.trigger.cron);
+  }
+  console.log(`[trigger] Fired: ${group} → ${state.trigger.type}${state.triggerStepId ? ` (step: ${state.triggerStepId})` : ''}`);
+  triggerWorkflow(group, state.triggerStepId).catch(err =>
+    console.error(`[trigger] Failed to trigger ${group}: ${err.message}`)
+  );
 }
 
 /** Check file-change trigger */
 function checkFileChangeTrigger(group: string, state: TriggerState, now: number): void {
   const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
   const watchPath = state.trigger.watchFile
-    ? path.join(PROJECT_ROOT, state.trigger.watchFile)
+    ? path.join(process.env.MIND_DATA_DIR || process.cwd(), state.trigger.watchFile)
     : wfPath;
 
   if (!fs.existsSync(watchPath)) return;
@@ -108,14 +145,9 @@ function checkFileChangeTrigger(group: string, state: TriggerState, now: number)
 
   if (currentMtime > state.lastMtime) {
     const debounce = state.trigger.debounceMs || 5000;
-    if (now - state.lastFire < debounce) return; // debounce
-
-    console.log(`[trigger] File changed: ${watchPath} → triggering ${group}`);
+    if (now - state.lastFire < debounce) return;
     state.lastMtime = currentMtime;
-    state.lastFire = now;
-    triggerWorkflow(group).catch(err =>
-      console.error(`[trigger] Failed to trigger ${group}: ${err.message}`)
-    );
+    fire(group, state);
   }
 }
 
@@ -123,74 +155,91 @@ function checkFileChangeTrigger(group: string, state: TriggerState, now: number)
 function checkScheduleTrigger(group: string, state: TriggerState, now: number): void {
   if (!state.trigger.cron) return;
   if (now < state.cronNextFire) return;
-
-  console.log(`[trigger] Cron fired: ${state.trigger.cron} → triggering ${group}`);
-  state.lastFire = now;
-  state.cronNextFire = calculateNextCronFire(state.trigger.cron);
-  triggerWorkflow(group).catch(err =>
-    console.error(`[trigger] Failed to trigger ${group}: ${err.message}`)
-  );
+  fire(group, state);
 }
 
 /** Subscribe to EventBus event trigger */
 function subscribeEventTrigger(group: string, state: TriggerState): void {
-  // Avoid duplicate subscriptions
-  if (eventSubscriptions.has(group)) return;
+  const key = `${group}:${state.triggerStepId || 'workflow'}`;
+  if (eventSubscriptions.has(key)) return;
 
   const eventType = state.trigger.eventType || 'task.completed';
   const debounce = state.trigger.debounceMs || 5000;
 
-  // Lazy import to avoid circular dependency
   import('./event-bus').then(({ getEventBus }) => {
     const bus = getEventBus();
     const subId = bus.subscribe(
       { event: eventType as any },
       { scope: 'events' },
-      `trigger:${group}`,
+      `trigger:${key}`,
       (msg: any) => {
         const now = Date.now();
-        if (now - state.lastFire < debounce) return; // debounce
-
-        // Optional: check event matches filter
+        if (now - state.lastFire < debounce) return;
         if (state.trigger.eventFilter) {
           const filter = state.trigger.eventFilter;
           if (filter.group && msg.payload?.group !== filter.group) return;
           if (filter.agent && msg.payload?.agent !== filter.agent) return;
         }
-
-        console.log(`[trigger] Event ${eventType} → triggering ${group}`);
-        state.lastFire = now;
-        triggerWorkflow(group).catch(err =>
-          console.error(`[trigger] Failed to trigger ${group}: ${err.message}`)
-        );
+        fire(group, state);
       }
     );
-    eventSubscriptions.set(group, { eventType, subId });
-    console.log(`[trigger] Subscribed to ${eventType} for ${group}`);
+    eventSubscriptions.set(key, { eventType, subId });
+    console.log(`[trigger] Subscribed to ${eventType} for ${group}${state.triggerStepId ? ` (step: ${state.triggerStepId})` : ''}`);
   });
 }
 
+/** Get trigger status for a group */
+export function getTriggerStatus(group: string): { type: string; active: boolean; nextFire?: number }[] | null {
+  const groupTriggers = triggers.get(group);
+  if (!groupTriggers || groupTriggers.length === 0) return null;
+  return groupTriggers.map(t => ({
+    type: t.trigger.type,
+    active: true,
+    nextFire: t.trigger.type === 'schedule' ? t.cronNextFire : undefined,
+  }));
+}
+
+/** Reload triggers for a specific group */
+export function reloadTrigger(group: string): void {
+  triggers.delete(group);
+  const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
+  if (!fs.existsSync(wfPath)) return;
+
+  try {
+    const raw = fs.readFileSync(wfPath, 'utf-8');
+    const def = parseWorkflowYaml(raw);
+    const groupTriggers: TriggerState[] = [];
+
+    if (def.trigger && def.trigger.type !== 'manual') {
+      const state = buildTriggerState(group, def.trigger, undefined, wfPath);
+      if (state) groupTriggers.push(state);
+    }
+
+    for (const step of def.steps) {
+      if (step.type === 'trigger' && step.trigger && step.trigger.type !== 'manual') {
+        const state = buildTriggerState(group, step.trigger, step.id, wfPath);
+        if (state) groupTriggers.push(state);
+      }
+    }
+
+    if (groupTriggers.length > 0) triggers.set(group, groupTriggers);
+    console.log(`[trigger] Reloaded: ${group} → ${groupTriggers.length} trigger(s)`);
+  } catch { /* skip */ }
+}
+
 /**
- * Simple cron parser — supports: minute hour day-of-month month day-of-week
- *
- * Strategy: start from now, increment minute-by-minute, and match against
- * each cron field. This avoids the bugs that come from setting individual
- * Date fields independently (overflow, order-of-operations issues).
- * Caps at 7 days to prevent runaway loops.
+ * Simple cron parser — minute-by-minute scan up to 7 days.
  */
 function calculateNextCronFire(cron: string): number {
   const parts = cron.split(' ').map(p => p.trim());
-  if (parts.length !== 5) return Date.now() + 3600_000; // fallback: 1 hour
+  if (parts.length !== 5) return Date.now() + 3600_000;
 
   const [minField, hourField, domField, monthField, dowField] = parts;
-  const now = new Date();
-  // Start from the next whole minute
-  const candidate = new Date(now);
+  const candidate = new Date();
   candidate.setSeconds(0, 0);
   candidate.setMinutes(candidate.getMinutes() + 1);
 
-  const MAX_ITERATIONS = 7 * 24 * 60; // 7 days in minutes
-
+  const MAX_ITERATIONS = 7 * 24 * 60;
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     if (matchesCronField(minField, candidate.getMinutes()) &&
         matchesCronField(hourField, candidate.getHours()) &&
@@ -201,61 +250,13 @@ function calculateNextCronFire(cron: string): number {
     }
     candidate.setMinutes(candidate.getMinutes() + 1);
   }
-
-  // Fallback: 1 hour from now if no match found within 7 days
   return Date.now() + 3600_000;
 }
 
-/** Check if a numeric value matches a single cron field (wildcard, number, or range like "1-5") */
 function matchesCronField(field: string, value: number): boolean {
   if (field === '*') return true;
-  // Range: e.g. "1-5" → match 1,2,3,4,5
   const rangeMatch = field.match(/^(\d+)-(\d+)$/);
-  if (rangeMatch) {
-    const lo = parseInt(rangeMatch[1]);
-    const hi = parseInt(rangeMatch[2]);
-    return value >= lo && value <= hi;
-  }
-  // Comma-separated: e.g. "1,3,5"
-  if (field.includes(',')) {
-    return field.split(',').some(f => matchesCronField(f.trim(), value));
-  }
-  // Single number
+  if (rangeMatch) return value >= parseInt(rangeMatch[1]) && value <= parseInt(rangeMatch[2]);
+  if (field.includes(',')) return field.split(',').some(f => matchesCronField(f.trim(), value));
   return parseInt(field) === value;
 }
-
-/** Get trigger status for a group */
-export function getTriggerStatus(group: string): { type: string; active: boolean; nextFire?: number } | null {
-  const state = triggers.get(group);
-  if (!state) return null;
-  return {
-    type: state.trigger.type,
-    active: true,
-    nextFire: state.trigger.type === 'schedule' ? state.cronNextFire : undefined,
-  };
-}
-
-/** Reload triggers for a specific group (after workflow.yaml changes) */
-export function reloadTrigger(group: string): void {
-  triggers.delete(group);
-  const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
-  if (!fs.existsSync(wfPath)) return;
-
-  try {
-    const raw = fs.readFileSync(wfPath, 'utf-8');
-    const def = parseWorkflowYaml(raw);
-    if (!def.trigger || def.trigger.type === 'manual') return;
-
-    const state: TriggerState = {
-      group,
-      trigger: def.trigger,
-      lastMtime: fs.statSync(wfPath).mtimeMs,
-      lastFire: 0,
-      cronNextFire: def.trigger.type === 'schedule' ? calculateNextCronFire(def.trigger.cron || '') : 0,
-    };
-    triggers.set(group, state);
-    console.log(`[trigger] Reloaded: ${group} → ${def.trigger.type}`);
-  } catch { /* skip */ }
-}
-
-const PROJECT_ROOT = process.env.MIND_DATA_DIR || process.cwd();

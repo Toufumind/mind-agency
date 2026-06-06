@@ -58,15 +58,18 @@ export async function handleWorkflowTool(
       return true;
     }
 
-    // Validate each step has required fields
+    // Validate each step has required fields (trigger steps don't need agent)
     for (const step of steps) {
       if (!step.id) { respond(id, { content: [{ type: 'text', text: '错误：每个步骤必须有 id 字段' }], isError: true }); return true; }
-      if (!step.agent) { respond(id, { content: [{ type: 'text', text: `错误：步骤 "${step.id}" 缺少 agent 字段` }], isError: true }); return true; }
+      const isTrigger = step.type === 'trigger' || step.trigger;
+      if (!isTrigger && !step.agent) { respond(id, { content: [{ type: 'text', text: `错误：步骤 "${step.id}" 缺少 agent 字段` }], isError: true }); return true; }
     }
 
-    // v0.4: Validate agent existence
+    // v0.4: Validate agent existence (skip trigger steps)
     const agentsDir = path.join(PROJECT_ROOT, 'Agents');
     for (const step of steps) {
+      const isTrigger = step.type === 'trigger' || step.trigger;
+      if (isTrigger) continue;
       if (step.agent && step.agent !== 'unknown') {
         const agentDir = path.join(agentsDir, step.agent);
         if (!fs.existsSync(agentDir)) {

@@ -1,22 +1,38 @@
 name: deploy-pipeline
 description: 完整部署流程：测试 → 构建 → 部署 → 验证 → 通知
 concurrency: 2
-trigger:
-  type: schedule
-  cron: "0 9 * * 1-5"
 steps:
+  - id: on_schedule
+    type: trigger
+    trigger:
+      type: schedule
+      cron: "0 9 * * 1-5"
+
+  - id: on_file
+    type: trigger
+    trigger:
+      type: file_change
+      watchFile: "src/**/*.ts"
+      debounceMs: 5000
+
+  - id: on_manual
+    type: trigger
+    trigger:
+      type: manual
+
   - id: test
     agent: Alice
     action: test
     prompt: |
       运行 npm test 确认所有测试通过。
       回复: TEST_PASS 或 TEST_FAIL + 失败的测试
+    dependsOn: [on_schedule, on_file, on_manual]
     reviewer: Bob
     routes:
       - step: build
-        when: "output contains APPROVED"
+        when: "APPROVED"
       - step: fix_test
-        when: "output contains REJECTED"
+        when: "REJECTED"
 
   - id: fix_test
     agent: Alice
@@ -36,9 +52,9 @@ steps:
     reviewer: Charlie
     routes:
       - step: deploy_staging
-        when: "output contains APPROVED"
+        when: "APPROVED"
       - step: fix_build
-        when: "output contains REJECTED"
+        when: "REJECTED"
 
   - id: fix_build
     agent: Bob

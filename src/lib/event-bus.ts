@@ -529,7 +529,7 @@ export class WorkflowEngine {
   constructor(bus?: EventBus, executor?: StepExecutor) { this.bus = bus; this.executor = executor || createStepExecutor(); }
 
   /** Execute a workflow — starts DAG asynchronously. Returns run record immediately. */
-  execute(def: WorkflowDefinition, group?: string): WorkflowRunRecord {
+  execute(def: WorkflowDefinition, group?: string, triggerStepId?: string): WorkflowRunRecord {
     const runId = randomUUID();
     const rec: WorkflowRunRecord = { runId, workflowName: def.name, startedAt: Date.now(), status: WorkflowStatus.RUNNING, steps: new Map(def.steps.map(s => [s.id, StepStatus.PENDING])), stepRetries: new Map(), rollbacks: [], compensations: [], taskReports: new Map() };
     if (group) (rec as any)._group = group;
@@ -629,6 +629,8 @@ export class WorkflowEngine {
     // ── Auto-complete trigger steps ──
     for (const [id, node] of nodes) {
       if (node.step.type === 'trigger') {
+        // If triggerStepId specified, only complete that one; otherwise complete all
+        if (triggerStepId && id !== triggerStepId) continue;
         node.status = StepStatus.COMPLETED;
         node.output = JSON.stringify(node.step.trigger || { type: 'manual' });
         run.steps.set(id, StepStatus.COMPLETED);

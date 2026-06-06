@@ -1,9 +1,12 @@
 name: research-analysis
 description: 并行研究 → 汇总分析 → 生成报告
 concurrency: 3
-trigger:
-  type: manual
 steps:
+  - id: on_manual
+    type: trigger
+    trigger:
+      type: manual
+
   - id: literature_review
     agent: Alice
     action: research
@@ -11,6 +14,7 @@ steps:
       搜索最新的 multi-agent orchestration 论文。
       总结 3 个关键发现。
       回复: 发现列表
+    dependsOn: [on_manual]
     reviewer: Charlie
     routes:
       - step: synthesize
@@ -25,6 +29,7 @@ steps:
       分析当前代码库的架构优缺点。
       列出 3 个改进建议。
       回复: 分析报告
+    dependsOn: [on_manual]
     reviewer: Alice
     routes:
       - step: synthesize
@@ -39,6 +44,7 @@ steps:
       调研竞品的多 Agent 协作方案。
       对比 3 个竞品的优劣。
       回复: 竞品分析
+    dependsOn: [on_manual]
     reviewer: Bob
     routes:
       - step: synthesize

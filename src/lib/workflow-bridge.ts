@@ -31,8 +31,8 @@ function getEngine(): WorkflowEngine {
 
 // ════════════════════════════ Public API ═════════════════════════════════
 
-/** Trigger a workflow for a group. Runs DAG asynchronously via ChatStepExecutor. */
-export async function triggerWorkflow(group: string): Promise<{ runId: string } | { error: string }> {
+/** Trigger a workflow for a group. Runs DAG asynchronously via callback model. */
+export async function triggerWorkflow(group: string, triggerStepId?: string): Promise<{ runId: string } | { error: string }> {
   const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
   if (!fs.existsSync(wfPath)) return { error: `no workflow.yaml in ${group}` };
 
@@ -43,7 +43,7 @@ export async function triggerWorkflow(group: string): Promise<{ runId: string } 
   if (!def.name || !def.steps?.length) return { error: 'workflow requires name and steps' };
 
   const eng = getEngine();
-  const run = eng.execute(def, group);
+  const run = eng.execute(def, group, triggerStepId);
   run._wfDef = def;
   run._yamlPath = wfPath;
 
