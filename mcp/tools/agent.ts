@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { PROJECT_ROOT, exists, writeAudit, AGENTS_DIR } from './shared';
+import { agentCache } from '../../src/lib/cache';
 
 export interface ToolDef { name: string; description: string; inputSchema: any; }
 
@@ -87,6 +88,9 @@ export async function handleAgentTool(
       return true;
     }
     fs.rmSync(agentDir, { recursive: true, force: true });
+    // Invalidate cache so deleted agent is removed
+    agentCache.invalidateAgent(target);
+    agentCache.invalidate('agents', 'list');
     writeAudit({ agent: agentName, action: 'agent.delete', resource: `agent:${target}`, details: `deleted by ${agentName}` });
     respond(id, { content: [{ type: 'text', text: `Agent "${target}" has been deleted` }] });
     return true;
@@ -110,6 +114,9 @@ export async function handleAgentTool(
     const perms: Record<string, boolean> = { canCreateGroup: roles.some(r => /pm|ceo|lead|管理/i.test(r)), canDeleteGroup: false, canDeploy: false };
     const config = { autoRespondToEmail: a.autoRespond ?? false, roles, permissions: perms, provider };
     fs.writeFileSync(path.join(agentDir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
+    // Invalidate cache so new agent is visible
+    agentCache.invalidateAgent(newName);
+    agentCache.invalidate('agents', 'list');
     writeAudit({ agent: agentName, action: 'agent.create', resource: `agent:${newName}`, details: `roles: ${roles.join(',')}, provider: ${provider}` });
     respond(id, { content: [{ type: 'text', text: `Agent "${newName}" created with roles: ${roles.join(', ')}, provider: ${provider}` }] });
     return true;

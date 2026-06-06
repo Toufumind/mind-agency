@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import { groupsDir, exists, readDir, appendToChat, triggerPoll, emitBusEvent, writeAudit, broadcast } from './shared';
+import { agentCache } from '../../src/lib/cache';
 
 export interface ToolDef { name: string; description: string; inputSchema: any; }
 
@@ -69,6 +70,9 @@ export async function handleGroupTool(
     fs.writeFileSync(path.join(gDir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
     appendToChat(group, 'system', `${agentName} 创建了群组 "${group}"`);
     triggerPoll(agentName, group);
+    // Invalidate cache so new group is visible
+    agentCache.invalidate('groups', 'list');
+    agentCache.invalidate('membership', agentName);
     writeAudit({ agent: agentName, action: 'group.create', resource: `group:${group}` });
     respond(id, { content: [{ type: 'text', text: `group "${group}" created. You are now a member.` }] });
     return true;
@@ -80,6 +84,9 @@ export async function handleGroupTool(
     const gDir = path.join(groupsDir(), group);
     if (!exists(gDir)) { respond(id, { content: [{ type: 'text', text: `Group "${group}" not found` }], isError: true }); return true; }
     fs.rmSync(gDir, { recursive: true, force: true });
+    // Invalidate cache so deleted group is removed
+    agentCache.invalidate('groups', 'list');
+    agentCache.invalidate('groupChat', group);
     emitBusEvent('task.completed', { taskId: `group:${group}`, by: agentName, action: 'group_delete' });
     respond(id, { content: [{ type: 'text', text: `group "${group}" deleted` }] });
     return true;
@@ -110,6 +117,8 @@ export async function handleGroupTool(
     appendToChat(group, 'system', `${agentName} ${wasInvited ? '接受了邀请并' : ''}加入了群组`);
     writeAudit({ agent: agentName, action: 'group.join', resource: `group:${group}`, details: wasInvited ? 'accepted invitation' : 'joined directly' });
     triggerPoll(agentName, group);
+    // Invalidate cache so membership is updated
+    agentCache.invalidate('membership', agentName);
     respond(id, { content: [{ type: 'text', text: `joined ${group}${wasInvited ? ' (accepted invitation)' : ''}` }] });
     return true;
   }
@@ -122,6 +131,8 @@ export async function handleGroupTool(
     // Post system message BEFORE deleting (chat dir is separate from agent dir)
     appendToChat(group, 'system', `${agentName} left the group`);
     fs.rmSync(agDir, { recursive: true, force: true });
+    // Invalidate cache so membership is updated
+    agentCache.invalidate('membership', agentName);
     writeAudit({ agent: agentName, action: 'group.leave', resource: `group:${group}` });
     triggerPoll(agentName, group);
     respond(id, { content: [{ type: 'text', text: `left ${group}` }] });
@@ -174,6 +185,8 @@ export async function handleGroupTool(
     if (admin && !config.admins.includes(target)) config.admins.push(target);
     if (!admin) config.admins = config.admins.filter((a: string) => a !== target);
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    // Invalidate cache so membership is updated
+    agentCache.invalidate('membership', target);
     respond(id, { content: [{ type: 'text', text: `${target} ${admin ? 'is now' : 'is no longer'} admin of ${group}` }] });
     return true;
   }
