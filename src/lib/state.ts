@@ -31,7 +31,7 @@ const DEFAULT_STATE: AgentState = { emailCheck: 0, groups: {} };
 
 // ── State cache ──────────────────────────────────────────
 const stateCache = new Map<string, { data: AgentState; ts: number }>();
-const STATE_CACHE_TTL = 5_000; // 5s — short TTL for auto-respond freshness
+const STATE_CACHE_TTL = 30_000; // 30s — aligned with autoRespond polling interval
 
 export function loadState(agent: string): AgentState {
   // Check cache first

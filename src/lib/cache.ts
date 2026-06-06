@@ -37,13 +37,13 @@ class AgentCache {
     this.createRegion('identity', 300_000, 200);     // 5 min, max 200
     this.createRegion('membership', 300_000, 200);   // 5 min, max 200
     this.createRegion('groups', 300_000, 100);       // 5 min, max 100
-    this.createRegion('memory', 60_000, 500);        // 1 min, max 500
+    // memory context uses its own cache in memory.ts (memoryContextCache)
     this.createRegion('goals', 60_000, 200);         // 1 min, max 200
     this.createRegion('session', 10_000, 200);       // 10s, max 200
     this.createRegion('groupChat', 30_000, 50);      // 30s, max 50 groups
     this.createRegion('agents', 300_000, 200);       // 5 min, max 200
     this.createRegion('emails', 60_000, 500);        // 1 min, max 500
-    this.createRegion('state', 10_000, 200);         // 10s, max 200
+    this.createRegion('state', 30_000, 200);         // 30s, max 200 (aligned with polling)
   }
 
   private createRegion(name: string, defaultTTL: number, maxSize: number): void {
