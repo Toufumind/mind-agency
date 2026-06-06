@@ -329,6 +329,7 @@ function signalToPrompt(agent: string, sig: Signal, groupName?: string): string 
   lines.push('2. 如果是需要你投票/审批 → decide(group, decision, reason) 结构化回复');
   lines.push('3. 如果是普通讨论 → group_send 回复');
   lines.push('4. 重要信息记到 agent_memory(action="write")');
+  lines.push('5. 如果是工作流任务 → 完成后用 workflow_callback 报告结果');
   lines.push('自主决定是否回复。中文。');
 
   return lines.join('\n');
