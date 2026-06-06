@@ -12,6 +12,8 @@ steps:
       总结 3 个关键发现。
       回复: 发现列表
     reviewer: Charlie
+    onReject: retry
+    maxRejectRetries: 2
 
   - id: code_analysis
     agent: Bob
@@ -21,6 +23,8 @@ steps:
       列出 3 个改进建议。
       回复: 分析报告
     reviewer: Alice
+    onReject: retry
+    maxRejectRetries: 2
 
   - id: market_research
     agent: Charlie
@@ -30,6 +34,8 @@ steps:
       对比 3 个竞品的优劣。
       回复: 竞品分析
     reviewer: Bob
+    onReject: retry
+    maxRejectRetries: 2
 
   - id: synthesize
     agent: Alice
@@ -50,3 +56,5 @@ steps:
       回复: PPT 大纲
     dependsOn: [synthesize]
     reviewer: Alice
+    onReject: retry
+    maxRejectRetries: 2

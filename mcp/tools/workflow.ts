@@ -13,14 +13,14 @@ export interface ToolDef { name: string; description: string; inputSchema: any; 
 
 export function workflowTools(): ToolDef[] {
   return [
-    { name: 'workflow_create', description: '创建一个 Workflow YAML 文件到群组中。可设置触发方式：manual（手动）、file_change（文件变更）、schedule（定时）、event（事件）。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, steps: { type: 'string', description: '步骤列表（JSON 数组字符串）' }, trigger: { type: 'string', description: '触发方式：manual/file_change/schedule/event' }, cron: { type: 'string', description: '定时触发的 cron 表达式（仅 schedule 类型）' }, reviewer: { type: 'string', description: '默认审查者 Agent（可选，每步自动审查）' } }, required: ['group', 'name', 'steps'] } },
+    { name: 'workflow_create', description: '创建一个 Workflow YAML 文件到群组中。可设置触发方式：manual（手动）、file_change（文件变更）、schedule（定时）、event（事件）。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' }, steps: { type: 'string', description: '步骤列表（JSON 数组字符串）' }, trigger: { type: 'string', description: '触发方式：manual/file_change/schedule/event' }, cron: { type: 'string', description: '定时触发的 cron 表达式（仅 schedule 类型）' }, reviewer: { type: 'string', description: '默认审查者 Agent（可选，每步自动审查）' }, onReject: { type: 'string', description: '审查拒绝后的行为：retry（自动重做）或 fail（直接失败）' }, maxRejectRetries: { type: 'number', description: '审查拒绝后最大重试次数（默认 3）' } }, required: ['group', 'name', 'steps'] } },
     { name: 'workflow_trigger', description: '触发群组的工作流。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
     { name: 'workflow_status', description: '查询工作流运行状态和触发器状态。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: [] } },
     { name: 'workflow_approve', description: '审批工作流中的人工审批节点。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, approvalId: { type: 'string' }, decision: { type: 'string' } }, required: ['group', 'approvalId', 'decision'] } },
     { name: 'workflow_cancel', description: '取消一个正在运行的工作流。', inputSchema: { type: 'object', properties: { group: { type: 'string' } }, required: ['group'] } },
-    { name: 'workflow_add_step', description: '向运行中的工作流动态添加步骤。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, step_id: { type: 'string' }, agent: { type: 'string' }, action: { type: 'string' }, prompt: { type: 'string' }, depends_on: { type: 'string', description: '依赖的步骤ID，逗号分隔' }, reviewer: { type: 'string', description: '审查者 Agent' } }, required: ['group', 'step_id', 'agent', 'action', 'prompt'] } },
+    { name: 'workflow_add_step', description: '向运行中的工作流动态添加步骤。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, step_id: { type: 'string' }, agent: { type: 'string' }, action: { type: 'string' }, prompt: { type: 'string' }, depends_on: { type: 'string', description: '依赖的步骤ID，逗号分隔' }, reviewer: { type: 'string', description: '审查者 Agent' }, onReject: { type: 'string', description: '审查拒绝后的行为：retry 或 fail' }, maxRejectRetries: { type: 'number', description: '审查拒绝后最大重试次数' } }, required: ['group', 'step_id', 'agent', 'action', 'prompt'] } },
     { name: 'workflow_delete_step', description: '从运行中的工作流删除步骤。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, step_id: { type: 'string' } }, required: ['group', 'step_id'] } },
-    { name: 'workflow_modify_step', description: '修改运行中工作流的步骤属性。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, step_id: { type: 'string' }, agent: { type: 'string' }, action: { type: 'string' }, prompt: { type: 'string' }, reviewer: { type: 'string' } }, required: ['group', 'step_id'] } },
+    { name: 'workflow_modify_step', description: '修改运行中工作流的步骤属性。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, step_id: { type: 'string' }, agent: { type: 'string' }, action: { type: 'string' }, prompt: { type: 'string' }, reviewer: { type: 'string' }, onReject: { type: 'string', description: '审查拒绝后的行为：retry 或 fail' } }, required: ['group', 'step_id'] } },
   ];
 }
 
@@ -67,6 +67,18 @@ export async function handleWorkflowTool(
     if (a.reviewer) {
       for (const step of steps) {
         if (!step.reviewer) step.reviewer = a.reviewer;
+      }
+    }
+
+    // v0.5: Add default onReject to all steps if specified
+    if (a.onReject) {
+      for (const step of steps) {
+        if (!step.onReject) step.onReject = a.onReject;
+      }
+    }
+    if (a.maxRejectRetries) {
+      for (const step of steps) {
+        if (!step.maxRejectRetries) step.maxRejectRetries = a.maxRejectRetries;
       }
     }
 
@@ -139,11 +151,11 @@ export async function handleWorkflowTool(
   }
 
   if (name === 'workflow_add_step') {
-    const { group, step_id, agent, action, prompt, depends_on, reviewer } = a;
+    const { group, step_id, agent, action, prompt, depends_on, reviewer, onReject, maxRejectRetries } = a;
     if (!group || !step_id || !agent || !action || !prompt) {
       respond(id, { content: [{ type: 'text', text: 'group, step_id, agent, action, prompt required' }], isError: true }); return true;
     }
-    httpPost(`${WS_BASE_URL}/workflows/add-step`, { group, step_id, agent, action, prompt, depends_on, reviewer });
+    httpPost(`${WS_BASE_URL}/workflows/add-step`, { group, step_id, agent, action, prompt, depends_on, reviewer, onReject, maxRejectRetries });
     respond(id, { content: [{ type: 'text', text: `step ${step_id} added to ${group} workflow` }] });
     return true;
   }
@@ -157,9 +169,9 @@ export async function handleWorkflowTool(
   }
 
   if (name === 'workflow_modify_step') {
-    const { group, step_id, agent, action, prompt, reviewer } = a;
+    const { group, step_id, agent, action, prompt, reviewer, onReject } = a;
     if (!group || !step_id) { respond(id, { content: [{ type: 'text', text: 'group and step_id required' }], isError: true }); return true; }
-    httpPost(`${WS_BASE_URL}/workflows/modify-step`, { group, step_id, agent, action, prompt, reviewer });
+    httpPost(`${WS_BASE_URL}/workflows/modify-step`, { group, step_id, agent, action, prompt, reviewer, onReject });
     respond(id, { content: [{ type: 'text', text: `step ${step_id} modified in ${group} workflow` }] });
     return true;
   }

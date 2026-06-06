@@ -301,13 +301,13 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
     req.on('end', () => {
       try {
-        const { group, step_id, agent, action, prompt, depends_on, reviewer } = JSON.parse(body);
+        const { group, step_id, agent, action, prompt, depends_on, reviewer, onReject, maxRejectRetries } = JSON.parse(body);
         if (!group || !step_id || !agent || !action || !prompt) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'group, step_id, agent, action, prompt required' }));
           return;
         }
-        const ok = workflowEngine.addStep(group, { id: step_id, agent, action, prompt, dependsOn: depends_on ? depends_on.split(',').map((s: string) => s.trim()) : [], reviewer });
+        const ok = workflowEngine.addStep(group, { id: step_id, agent, action, prompt, dependsOn: depends_on ? depends_on.split(',').map((s: string) => s.trim()) : [], reviewer, onReject, maxRejectRetries });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok, message: ok ? `added step ${step_id}` : 'no running workflow found' }));
       } catch (e: any) {
@@ -349,13 +349,13 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
     req.on('end', () => {
       try {
-        const { group, step_id, agent, action, prompt, reviewer } = JSON.parse(body);
+        const { group, step_id, agent, action, prompt, reviewer, onReject } = JSON.parse(body);
         if (!group || !step_id) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'group and step_id required' }));
           return;
         }
-        const ok = workflowEngine.modifyStep(group, step_id, { agent, action, prompt, reviewer });
+        const ok = workflowEngine.modifyStep(group, step_id, { agent, action, prompt, reviewer, onReject });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok, message: ok ? `modified step ${step_id}` : 'step not found or already running' }));
       } catch (e: any) {

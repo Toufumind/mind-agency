@@ -12,6 +12,8 @@ steps:
       运行 npm test 确认所有测试通过。
       回复: TEST_PASS 或 TEST_FAIL + 失败的测试
     reviewer: Bob
+    onReject: retry
+    maxRejectRetries: 2
 
   - id: build
     agent: Bob
@@ -21,6 +23,8 @@ steps:
       回复: BUILD_PASS + 产物大小
     dependsOn: [test]
     reviewer: Charlie
+    onReject: retry
+    maxRejectRetries: 2
 
   - id: deploy_staging
     agent: Charlie
