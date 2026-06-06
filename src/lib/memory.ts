@@ -55,8 +55,9 @@ updated: ${new Date(now).toISOString()}
 ${content}
 `;
   fs.writeFileSync(mp, body, 'utf-8');
-  // Invalidate cache so next getMemoryContext() reads fresh data
+  // Invalidate all caches
   invalidateMemoryCache(agentName);
+  invalidateSearchCache(agentName);
   return entry;
 }
 
@@ -97,8 +98,28 @@ function scoreMatch(query: string, key: string, content: string): number {
   return score;
 }
 
-/** v0.4: Semantic search with local embedding model */
+// ── Search cache ─────────────────────────────────────────
+const searchCache = new Map<string, { results: MemoryEntry[]; ts: number }>();
+const SEARCH_CACHE_TTL = 30_000; // 30s
+
+/** Invalidate search cache for an agent */
+export function invalidateSearchCache(agentName?: string): void {
+  if (agentName) {
+    for (const key of searchCache.keys()) {
+      if (key.startsWith(agentName + ':')) searchCache.delete(key);
+    }
+  } else {
+    searchCache.clear();
+  }
+}
+
+/** v0.4: Semantic search with local embedding model — cached */
 export async function searchMemory(agentName: string, query: string): Promise<MemoryEntry[]> {
+  const cacheKey = `${agentName}:${query}`;
+  const cached = searchCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < SEARCH_CACHE_TTL) return cached.results;
+
   const dir = agentMemDir(agentName);
   if (!fs.existsSync(dir)) return [];
 
@@ -140,10 +161,12 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
       }
     }
 
-    return results
+    const finalResults = results
       .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
       .slice(0, 10)
       .map(r => r.entry);
+    searchCache.set(cacheKey, { results: finalResults, ts: Date.now() });
+    return finalResults;
   } catch {
     // Fallback to TF-IDF if embedding model not available
     const q = query.toLowerCase();
@@ -152,7 +175,9 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
       .slice(0, 10);
-    return results.map(r => r.entry);
+    const finalResults = results.map(r => r.entry);
+    searchCache.set(cacheKey, { results: finalResults, ts: Date.now() });
+    return finalResults;
   }
 }
 
@@ -176,8 +201,9 @@ export function deleteMemory(agentName: string, key: string): boolean {
   const mp = memPath(agentName, key);
   if (!fs.existsSync(mp)) return false;
   fs.unlinkSync(mp);
-  // Invalidate cache so next getMemoryContext() reads fresh data
+  // Invalidate all caches
   invalidateMemoryCache(agentName);
+  invalidateSearchCache(agentName);
   return true;
 }
 

@@ -134,14 +134,8 @@ export function killAllClaudeProcesses(): number {
   return killAllQueries();
 }
 
-// ── Caches ──
-
-const membershipCache = new Map<string, { data: string; ts: number }>();
-const MEMBERSHIP_CACHE_TTL = 300_000;
-
-// Group chat context cache — recent messages per group
-const groupChatCache = new Map<string, { data: string; ts: number }>();
-const GROUP_CHAT_CACHE_TTL = 30_000; // 30s — short TTL for chat freshness
+// ── Caches (unified via agentCache) ──
+import { agentCache } from './cache';
 
 export interface ChatEvent {
   type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error';
@@ -162,14 +156,10 @@ function sessionFile(agentName: string) {
 }
 
 // Session cache — avoid repeated reads of session.json during streaming
-const sessionCache = new Map<string, { data: ChatHistory; ts: number }>();
-const SESSION_CACHE_TTL = 10_000; // 10s — short TTL for streaming freshness
-
 export function getChatHistory(agentName: string): ChatHistory {
   // Check cache first
-  const cached = sessionCache.get(agentName);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < SESSION_CACHE_TTL) return cached.data;
+  const cached = agentCache.get<ChatHistory>('session', agentName);
+  if (cached) return cached;
 
   const file = sessionFile(agentName);
   let data: ChatHistory;
@@ -180,7 +170,7 @@ export function getChatHistory(agentName: string): ChatHistory {
     catch { data = { sessionId: null, messages: [] }; }
   }
 
-  sessionCache.set(agentName, { data, ts: now });
+  agentCache.set('session', agentName, data);
   return data;
 }
 
@@ -192,14 +182,13 @@ function saveChatHistory(agentName: string, data: ChatHistory) {
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
   fs.renameSync(tmp, file);
   // Update cache with the new data
-  sessionCache.set(agentName, { data, ts: Date.now() });
+  agentCache.set('session', agentName, data);
 }
 
 export function clearChat(agentName: string) {
   const file = sessionFile(agentName);
   if (fs.existsSync(file)) fs.unlinkSync(file);
-  membershipCache.delete(agentName);
-  sessionCache.delete(agentName);
+  agentCache.invalidateAgent(agentName);
 }
 
 // ── Builders ──────────────────────────────────────────────
@@ -289,9 +278,8 @@ function getAgentConfig(agentName: string): AgentFullConfig {
 }
 
 function getGroupMembership(agentName: string): string {
-  const now = Date.now();
-  const cached = membershipCache.get(agentName);
-  if (cached && (now - cached.ts) < MEMBERSHIP_CACHE_TTL) return cached.data;
+  const cached = agentCache.get<string>('membership', agentName);
+  if (cached !== null) return cached;
 
   let result = '';
   if (fs.existsSync(GROUPS_DIR)) {
@@ -310,18 +298,16 @@ function getGroupMembership(agentName: string): string {
     }
     if (parts.length > 0) result = '\n[所在群组]\n' + parts.join('\n');
   }
-  membershipCache.set(agentName, { data: result, ts: now });
+  agentCache.set('membership', agentName, result);
   return result;
 }
 
 function buildGroupChatContext(_agentName: string, groupName?: string): string {
   if (!groupName) return '';
 
-  // Check cache first
-  const cacheKey = groupName;
-  const cached = groupChatCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < GROUP_CHAT_CACHE_TTL) return cached.data;
+  // Check cache first (use group name as key with 30s TTL)
+  const cached = agentCache.get<string>('groupChat', groupName, 30_000);
+  if (cached !== null) return cached;
 
   const chatDir = path.join(GROUPS_DIR, groupName, 'chat');
   let result: string;
@@ -348,7 +334,7 @@ function buildGroupChatContext(_agentName: string, groupName?: string): string {
     } catch { result = `\n群聊${groupName}:读取失败.`; }
   }
 
-  groupChatCache.set(cacheKey, { data: result, ts: now });
+  agentCache.set('groupChat', groupName, result);
   return result;
 }
 
@@ -423,9 +409,10 @@ function readClaudeMd(agentName: string): string {
 }
 
 export function invalidateAgentCache(agentName: string): void {
+  agentCache.invalidateAgent(agentName);
+  // Also invalidate legacy caches
   agentBaseOptions.delete(agentName);
   configCache.delete(agentName);
-  membershipCache.delete(agentName);
   claudeMdCache.delete(agentName);
   // Invalidate memory cache if agent name provided
   if (typeof invalidateMemoryCache === 'function') invalidateMemoryCache(agentName);
