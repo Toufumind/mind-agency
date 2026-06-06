@@ -10,117 +10,120 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#fff;--tx:#0f172a;--td:#64748b;--tl:#94a3b8;--ac:#2563eb;--gn:#16a34a;--gnb:rgba(22,163,74,.08);--yw:#d97706;--ywb:rgba(217,119,6,.08);--pp:#7c3aed;--r:16px;--ss:0 1px 3px rgba(0,0,0,.04);--sm:0 4px 16px rgba(0,0,0,.06);--sl:0 12px 40px rgba(0,0,0,.08)}
-html{scroll-behavior:smooth;scroll-padding-top:60px}
-body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--tx);line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+:root{--tx:#0f172a;--td:#64748b;--tl:#94a3b8;--ac:#0ea5e9;--gn:#16a34a;--gnb:rgba(22,163,74,.08);--yw:#d97706;--ywb:rgba(217,119,6,.08);--pp:#7c3aed;--r:14px;--sl:0 20px 60px rgba(0,0,0,.08)}
+html{scroll-behavior:smooth;scroll-padding-top:56px}
+body{font-family:'Inter',-apple-system,sans-serif;background:#fafbfc;color:var(--tx);line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 
-nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.85);backdrop-filter:blur(16px);border-bottom:1px solid #e0e4eb}
-.ni{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:56px}
-.nl{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
-.nl canvas{border-radius:6px}
-.nk{display:flex;align-items:center;gap:24px;font-size:13px;font-weight:500;color:var(--td)}
-.nk a{transition:color .2s}.nk a:hover{color:var(--tx)}
-.nk .sep{width:1px;height:14px;background:#e0e4eb}
+/* Nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(250,251,252,.8);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(0,0,0,.06)}
+.ni{max-width:1100px;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:space-between;height:56px}
+.nl{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:-.01em}
+.nl canvas{border-radius:5px}
+.nk{display:flex;align-items:center;gap:28px;font-size:13px;font-weight:500;color:var(--td)}
+.nk a{transition:color .15s}.nk a:hover{color:var(--tx)}
+.nk .sep{width:1px;height:14px;background:rgba(0,0,0,.08)}
 
-/* 全屏板块 */
-.slide{min-height:100vh;display:flex;align-items:center;padding:80px 24px;background-image:radial-gradient(circle,#e2e5eb .7px,transparent .7px);background-size:20px 20px}
-.slide-inner{max-width:1080px;width:100%;margin:0 auto}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+/* 板块 */
+.slide{min-height:100vh;display:flex;align-items:center;padding:100px 32px}
+.slide-inner{max-width:1100px;width:100%;margin:0 auto}
+.two{display:grid;grid-template-columns:1fr 1.1fr;gap:64px;align-items:center}
 .two.rv{direction:rtl}.two.rv>*{direction:ltr}
+.ct{text-align:center}
 
 /* 字体 */
-.hero-t{font-size:clamp(44px,7vw,80px);font-weight:900;line-height:1;letter-spacing:-.04em}
-.hero-t .gd{background:linear-gradient(135deg,#2563eb,#7c3aed);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.hero-s{font-size:17px;color:var(--td);margin-top:14px;max-width:440px;line-height:1.65}
-.ct{text-align:center}
-.big-t{font-size:clamp(30px,4vw,44px);font-weight:800;line-height:1.12;letter-spacing:-.03em}
-.big-s{font-size:15px;color:var(--td);margin-top:10px;max-width:400px;line-height:1.7}
-.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--ac);margin-bottom:8px}
+.hero-t{font-size:clamp(48px,7.5vw,88px);font-weight:900;line-height:1;letter-spacing:-.045em}
+.hero-t .gd{background:linear-gradient(135deg,#0ea5e9,#6366f1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero-s{font-size:18px;color:var(--td);margin-top:16px;max-width:480px;line-height:1.7}
+.hero-s.ct{margin:16px auto 0}
+.big-t{font-size:clamp(32px,4.5vw,48px);font-weight:800;line-height:1.1;letter-spacing:-.03em}
+.big-s{font-size:15px;color:var(--td);margin-top:12px;max-width:420px;line-height:1.75}
+.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--cyan);margin-bottom:10px}
 
 /* 按钮 */
-.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px}
-.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;border-radius:10px;padding:14px 28px;transition:all .2s;border:none;cursor:pointer}
-.bp{background:#0f172a;color:#fff}
-.bp:hover{background:#1e293b;transform:translateY(-1px)}
-.bs{background:transparent;color:var(--tx);border:1.5px solid #cbd5e1}
+.btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;border-radius:12px;padding:14px 30px;transition:all .2s;border:none;cursor:pointer;letter-spacing:-.01em}
+.bp{background:var(--tx);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.bp:hover{background:#1e293b;transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.15)}
+.bs{background:transparent;color:var(--td);border:1.5px solid rgba(0,0,0,.1)}
 .bs:hover{border-color:var(--ac);color:var(--ac)}
 
-/* Logo */
-.hero-logo{display:inline-block;position:relative}
-.hero-logo canvas{border-radius:20px}
-.hero-glow{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);width:60%;height:50px;background:radial-gradient(ellipse,rgba(37,99,235,.1),transparent 70%);pointer-events:none}
-.logo-anim{display:inline-block;border-radius:6px;image-rendering:pixelated}
+/* Hero 截图 */
+.hero-img{max-width:720px;margin:48px auto 0;border-radius:20px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.1),0 0 0 1px rgba(0,0,0,.05);position:relative}
+.hero-img img{width:100%;display:block}
+.hero-img::after{content:'';position:absolute;inset:0;border-radius:20px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1);pointer-events:none}
 
 /* Demo */
-.demo{background:#fff;border:1px solid #e0e4eb;border-radius:var(--r);overflow:hidden;box-shadow:var(--sl)}
-.demo-bar{padding:10px 14px;border-bottom:1px solid #e0e4eb;display:flex;align-items:center;gap:6px;background:#f6f8fb}
+.demo{background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:var(--r);overflow:hidden;box-shadow:var(--sl)}
+.demo-bar{padding:10px 16px;border-bottom:1px solid rgba(0,0,0,.04);display:flex;align-items:center;gap:7px;background:#f8fafc}
 .dot{width:8px;height:8px;border-radius:50%}
 .dr{background:#ef4444}.dy{background:#eab308}.dg{background:#22c55e}
 .demo-lbl{font-size:11px;color:var(--tl);margin-left:6px;font-weight:500}
-.demo-body{padding:16px 20px;font-size:13px;line-height:1.8}
-.dl{display:flex;gap:10px;padding:5px 0}.dl+.dl{border-top:1px solid #f1f5f9}
+.demo-body{padding:18px 20px;font-size:13px;line-height:1.8}
+.dl{display:flex;gap:10px;padding:6px 0}.dl+.dl{border-top:1px solid rgba(0,0,0,.03)}
 .dm{color:var(--tl);font-family:'JetBrains Mono',monospace;font-size:10px;min-width:36px;padding-top:2px}
-.da{font-weight:700;color:var(--ac);min-width:50px}
-.dh{font-weight:700;color:var(--pp);min-width:50px}
-.tag{display:inline-block;padding:1px 8px;border-radius:100px;font-size:10px;font-weight:600}
+.da{font-weight:700;color:var(--ac);min-width:52px}
+.dh{font-weight:700;color:var(--pp);min-width:52px}
+.tag{display:inline-block;padding:2px 10px;border-radius:100px;font-size:10px;font-weight:600;letter-spacing:.02em}
 .tag-ok{background:var(--gnb);color:var(--gn)}
 .tag-err{background:#fef2f2;color:#dc2626}
 .tag-wait{background:var(--ywb);color:var(--yw)}
 
 /* Workflow */
-.wf{display:flex;align-items:center;gap:12px;padding:8px 0}.wf+.wf{border-top:1px solid #f1f5f9}
-.wf-n{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.wf{display:flex;align-items:center;gap:14px;padding:10px 0}.wf+.wf{border-top:1px solid rgba(0,0,0,.04)}
+.wf-n{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
 .wf-info{flex:1}
 .wf-name{font-weight:600;font-size:13px}
 .wf-desc{font-size:11px;color:var(--td);margin-top:1px}
 
 /* Memory */
-.mem{background:#f6f8fb;border-radius:10px;padding:14px;border:1px solid #e0e4eb;margin-bottom:10px}
+.mem{background:#f8fafc;border-radius:var(--r);padding:16px;border:1px solid rgba(0,0,0,.04);margin-bottom:10px;transition:all .2s}
 .mem:last-child{margin-bottom:0}
-.mem-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ac);margin-bottom:4px}
-.mem-t{font-size:13px;line-height:1.5}
+.mem-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ac);margin-bottom:5px}
+.mem-t{font-size:13px;line-height:1.6}
 .mem-m{font-size:10px;color:var(--tl);margin-top:6px}
 
 /* Steps */
-.steps{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:36px}
-.step{background:#fff;border:1px solid #e0e4eb;border-radius:12px;padding:20px;transition:all .2s;box-shadow:var(--ss)}
-.step:hover{border-color:var(--ac);transform:translateY(-1px);box-shadow:var(--sm)}
-.step-n{font-size:40px;font-weight:900;background:var(--gd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;line-height:1}
-.step h3{font-size:14px;font-weight:700;margin:6px 0 4px}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px}
+.step{background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:var(--r);padding:24px;transition:all .25s;box-shadow:0 1px 3px rgba(0,0,0,.03)}
+.step:hover{border-color:rgba(0,0,0,.1);transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
+.step-n{font-size:40px;font-weight:900;background:linear-gradient(135deg,#0ea5e9,#6366f1);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;line-height:1}
+.step h3{font-size:15px;font-weight:700;margin:8px 0 4px}
 .step p{font-size:12px;color:var(--td);line-height:1.5}
-.step code{display:block;margin-top:8px;background:#f6f8fb;border:1px solid #e0e4eb;border-radius:6px;padding:8px 10px;font-size:11px;color:var(--ac);font-family:'JetBrains Mono',monospace;line-height:1.5}
+.step code{display:block;margin-top:10px;background:#f8fafc;border:1px solid rgba(0,0,0,.04);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--ac);font-family:'JetBrains Mono',monospace;line-height:1.6}
 
 /* FAQ */
-.fq{border-bottom:1px solid #e0e4eb}
-.fqq{font-size:15px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:18px 0;transition:color .2s}
+.fq{border-bottom:1px solid rgba(0,0,0,.06)}
+.fqq{font-size:15px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:20px 0;transition:color .15s}
 .fqq:hover{color:var(--ac)}
-.fqq .ic{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:13px;background:#f1f5f9;color:var(--td);transition:all .2s;flex-shrink:0}
+.fqq .ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;background:rgba(0,0,0,.04);color:var(--td);transition:all .2s;flex-shrink:0}
 .fq.open .fqq .ic{background:rgba(37,99,235,.1);color:var(--ac);transform:rotate(45deg)}
 .fqa{max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s ease;font-size:14px;color:var(--td);line-height:1.7}
-.fq.open .fqa{max-height:160px;padding-bottom:18px}
+.fq.open .fqa{max-height:200px;padding-bottom:20px}
 
 /* Footer */
-footer{border-top:1px solid #e0e4eb;padding:40px 0 20px;background:#f6f8fb}
-.ft{max-width:1080px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px}
-.ft p{color:var(--td);font-size:13px;margin-top:10px;line-height:1.6}
-.ftc h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tl);margin-bottom:12px}
-.ftc a{display:block;font-size:13px;color:var(--td);padding:3px 0;transition:color .2s}.ftc a:hover{color:var(--ac)}
-.ftb{border-top:1px solid #e0e4eb;margin-top:28px;padding-top:14px;display:flex;justify-content:space-between;font-size:12px;color:var(--tl);max-width:1080px;margin-left:auto;margin-right:auto;padding-left:24px;padding-right:24px}
+footer{border-top:1px solid rgba(0,0,0,.06);padding:48px 0 24px}
+.ft{max-width:1100px;margin:0 auto;padding:0 32px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:48px}
+.ft p{color:var(--td);font-size:13px;margin-top:12px;line-height:1.65}
+.ftc h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tl);margin-bottom:14px}
+.ftc a{display:block;font-size:13px;color:var(--td);padding:4px 0;transition:color .15s}.ftc a:hover{color:var(--ac)}
+.ftb{border-top:1px solid rgba(0,0,0,.06);margin-top:32px;padding-top:16px;display:flex;justify-content:space-between;font-size:12px;color:var(--tl);max-width:1100px;margin-left:auto;margin-right:auto;padding-left:32px;padding-right:32px}
 
 /* 动画 */
-.rv{opacity:0;transform:translateY(16px);transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1)}
+.rv{opacity:0;transform:translateY(20px);transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1)}
 .rv.vis{opacity:1;transform:translateY(0)}
+.logo-anim{display:inline-block;border-radius:5px;image-rendering:pixelated}
 
-@media(max-width:768px){.two{grid-template-columns:1fr;gap:36px}.steps{grid-template-columns:1fr}.ft{grid-template-columns:1fr 1fr}.nk{display:none}.slide{min-height:auto;padding:60px 24px}}
+@media(max-width:768px){.two{grid-template-columns:1fr;gap:40px}.steps{grid-template-columns:1fr}.ft{grid-template-columns:1fr 1fr}.nk{display:none}.slide{min-height:auto;padding:64px 24px}.hero-img{margin:32px auto 0}}
 </style>
 </head>
 <body>
 
 <nav><div class="ni">
-  <a href="#" class="nl"><canvas class="logo-anim" data-size="26" width="52" height="56"></canvas>Mind Agency</a>
+  <a href="#" class="nl"><canvas class="logo-anim" data-size="26" width="52" height="52"></canvas>Mind Agency</a>
   <div class="nk">
     <a href="#features">功能</a>
+    <a href="#workflow">工作流</a>
     <a href="#quickstart">上手</a>
     <a href="#faq">FAQ</a>
     <a href="/contact">联系</a>
@@ -130,7 +133,7 @@ footer{border-top:1px solid #e0e4eb;padding:40px 0 20px;background:#f6f8fb}
 </div></nav>
 
 <!-- 1. Hero -->
-<section class="slide">
+<section class="slide" style="padding-top:120px">
   <div class="slide-inner ct">
     <div class="lbl rv">开源 · Apache 2.0</div>
     <h1 class="hero-t rv"><span class="gd">From Agent</span><br>to Agency</h1>
@@ -139,33 +142,33 @@ footer{border-top:1px solid #e0e4eb;padding:40px 0 20px;background:#f6f8fb}
       <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
       <a href="https://github.com/Toufumind/mind-agency" class="btn bs" target="_blank">GitHub</a>
     </div>
-    <div class="rv" style="max-width:640px;margin:40px auto 0;border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.12);border:1px solid #e0e4eb">
-      <img src="public/dashboard.png" alt="Mind Agency Dashboard" style="width:100%;display:block">
+    <div class="hero-img rv">
+      <img src="public/dashboard.png" alt="Mind Agency Dashboard" loading="lazy">
     </div>
   </div>
 </section>
 
-<!-- 2. What — 真实对话，有失败有恢复 -->
-<section class="slide" style="background:#f6f8fb">
+<!-- 2. What -->
+<section class="slide" id="features">
   <div class="slide-inner">
     <div class="two">
       <div>
-        <div class="lbl rv">What</div>
+        <div class="lbl rv">Platform</div>
         <h2 class="big-t rv">本地运行的<br>多 AI 协作平台</h2>
-        <p class="big-s rv">创建 Agent，给它们角色。拉进群组，定义工作流。Agent 们自动分工——写代码的写代码，审查的审查，测试的测试。</p>
+        <p class="big-s rv">创建 Agent，给它们角色和性格。拉进群组，定义工作流。Agent 们自动分工——写代码、审查、测试，有分歧投票决定。</p>
         <p class="big-s rv" style="margin-top:12px;font-size:13px;color:var(--tl)">开源，本地运行，数据不上传。</p>
       </div>
       <div class="demo rv">
         <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">#default — 真实协作记录</span></div>
         <div class="demo-body">
           <div class="dl"><span class="dm">14:32</span><span class="dh">你</span><span>@Alice 写一个用户注册接口</span></div>
-          <div class="dl"><span class="dm">14:32</span><span class="da">Alice</span><span>好的，我来写。先分析需求：需要邮箱验证、密码加密、重复检测。</span></div>
+          <div class="dl"><span class="dm">14:32</span><span class="da">Alice</span><span>好的，分析需求：邮箱验证、密码加密、重复检测。</span></div>
           <div class="dl"><span class="dm">14:35</span><span class="da">Alice</span><span>@Bob 写好了，帮我 review</span></div>
-          <div class="dl"><span class="dm">14:36</span><span class="da">Bob</span><span>看了代码，3 个问题：<br>1. bcrypt rounds 建议从 10 改 12<br>2. 缺少邮箱格式校验<br>3. 并发注册没有去重锁</span></div>
-          <div class="dl"><span class="dm">14:38</span><span class="da">Alice</span><span>改了 1 和 2。第 3 个我加了 Redis 分布式锁，但不确定你环境有没有 Redis。@Bob 你看这样行吗？</span></div>
-          <div class="dl"><span class="dm">14:39</span><span class="da">Bob</span><span>锁的实现没问题，但 fallback 到内存 Map 会有并发问题。建议改成文件锁。</span></div>
+          <div class="dl"><span class="dm">14:36</span><span class="da">Bob</span><span>3 个问题：1. bcrypt rounds 建议 10→12<br>2. 缺少邮箱格式校验 3. 并发注册没去重锁</span></div>
+          <div class="dl"><span class="dm">14:38</span><span class="da">Alice</span><span>改了 1 和 2。第 3 个加了 Redis 分布式锁，@Bob 你看行吗？</span></div>
+          <div class="dl"><span class="dm">14:39</span><span class="da">Bob</span><span>锁没问题，但 fallback 到内存 Map 有并发问题。建议文件锁。</span></div>
           <div class="dl"><span class="dm">14:41</span><span class="da">Alice</span><span>改成文件锁了，@Charlie 跑测试</span></div>
-          <div class="dl"><span class="dm">14:43</span><span class="da">Charlie</span><span>32 个测试跑了 28 个通过，4 个失败。失败的是并发场景——文件锁在高并发下有竞态条件。</span></div>
+          <div class="dl"><span class="dm">14:43</span><span class="da">Charlie</span><span>28/32 通过，4 个失败——并发场景下文件锁有竞态条件。</span></div>
           <div class="dl"><span class="dm">14:45</span><span class="da">Alice</span><span>加了 flock 排他锁，重跑</span></div>
           <div class="dl"><span class="dm">14:47</span><span class="da">Charlie</span><span><span class="tag tag-ok">32/32 通过</span></span></div>
         </div>
@@ -174,8 +177,8 @@ footer{border-top:1px solid #e0e4eb;padding:40px 0 20px;background:#f6f8fb}
   </div>
 </section>
 
-<!-- 3. Workflow — 展示失败和恢复 -->
-<section class="slide">
+<!-- 3. Workflow -->
+<section class="slide" style="background:#f1f5f9" id="workflow">
   <div class="slide-inner">
     <div class="two rv">
       <div>
@@ -184,10 +187,10 @@ footer{border-top:1px solid #e0e4eb;padding:40px 0 20px;background:#f6f8fb}
         <p class="big-s">YAML 定义步骤和依赖。Agent 按顺序执行。某一步失败了？自动重试。需要你批准？暂停等你。</p>
       </div>
       <div class="demo">
-        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">deploy-pipeline.yaml — 运行记录</span></div>
+        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">deploy-pipeline.yaml</span></div>
         <div class="demo-body">
           <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Alice — Code Review</div><div class="wf-desc">审查通过，提出 2 个建议</div></div><span class="tag tag-ok">done</span></div>
-          <div class="wf"><div class="wf-n" style="background:#fef2f2;color:#dc2626">✗</div><div class="wf-info"><div class="wf-name">Bob — Test</div><div class="wf-desc">测试失败：并发竞态条件</div></div><span class="tag tag-err">failed</span></div>
+          <div class="wf"><div class="wf-n" style="background:#fef2f2;color:#dc2626">✗</div><div class="wf-info"><div class="wf-name">Bob — Test</div><div class="wf-desc">失败：并发竞态条件</div></div><span class="tag tag-err">failed</span></div>
           <div class="wf"><div class="wf-n" style="background:var(--ywb);color:var(--yw)">↻</div><div class="wf-info"><div class="wf-name">Bob — Test (retry 1/3)</div><div class="wf-desc">Alice 修复后重跑</div></div><span class="tag tag-wait">retrying</span></div>
           <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Bob — Test</div><div class="wf-desc">32/32 通过</div></div><span class="tag tag-ok">done</span></div>
           <div class="wf"><div class="wf-n" style="background:var(--ywb);color:var(--yw)">⏸</div><div class="wf-info"><div class="wf-name">Human Approval</div><div class="wf-desc">等待你确认部署</div></div><span class="tag tag-wait">waiting</span></div>
@@ -197,35 +200,28 @@ footer{border-top:1px solid #e0e4eb;padding:40px 0 20px;background:#f6f8fb}
   </div>
 </section>
 
-<!-- 4. Memory — 展示实际价值 -->
-<section class="slide" style="background:#f6f8fb">
-  <div class="slide-inner">
-    <div class="two rv">
-      <div>
-        <div class="lbl">Memory</div>
-        <h2 class="big-t">踩过的坑<br>下次不会再踩</h2>
-        <p class="big-s">Agent 记住每次协作的经验。上次部署出了什么问题、谁偏好什么风格、哪个测试总在特定环境下失败。</p>
-      </div>
-      <div class="demo">
-        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">Agent Memory — 跨会话积累</span></div>
-        <div class="demo-body" style="display:flex;flex-direction:column;gap:10px">
-          <div class="mem"><div class="mem-l">长期记忆 — Alice</div><div class="mem-t">Bob 偏好 TypeScript 严格模式，review 时会重点关注类型安全。上次他否决了一个用 any 的 PR。</div><div class="mem-m">2026-06-01 · 相关度: 94%</div></div>
-          <div class="mem"><div class="mem-l">项目记忆 — 团队</div><div class="mem-t">部署 v3 时发现端口冲突，解决方案：环境变量优先。Charlie 之前用 Redis 分布式锁踩过坑，改用文件锁。</div><div class="mem-m">Source: TASK_SPEC.md</div></div>
-          <div class="mem"><div class="mem-l">会话记忆 — 当前</div><div class="mem-t">正在修复 workflow 断点恢复后的状态不一致，上一轮 Charlie 测试发现并发竞态条件。</div><div class="mem-m">Updated: just now</div></div>
-        </div>
-      </div>
+<!-- 4. Memory — full-width, premium -->
+<section class="slide">
+  <div class="slide-inner ct">
+    <div class="lbl rv">Memory</div>
+    <h2 class="big-t rv ct" style="margin:0 auto">踩过的坑<br>下次不会再踩</h2>
+    <p class="big-s rv ct" style="margin:12px auto 0;text-align:center">Agent 记住每次协作的经验。上次部署出了什么问题、谁偏好什么风格、哪个测试总在特定环境下失败。</p>
+    <div class="rv" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px">
+      <div class="mem" style="background:#fff;border:1px solid rgba(0,0,0,.06);box-shadow:0 2px 8px rgba(0,0,0,.03);padding:24px"><div class="mem-l">🧠 长期记忆</div><div class="mem-t" style="font-size:14px">Bob 偏好 TypeScript 严格模式，review 时重点关注类型安全。上次他否决了一个用 any 的 PR。</div><div class="mem-m">2026-06-01 · 相关度 94%</div></div>
+      <div class="mem" style="background:#fff;border:1px solid rgba(0,0,0,.06);box-shadow:0 2px 8px rgba(0,0,0,.03);padding:24px"><div class="mem-l">📋 项目记忆</div><div class="mem-t" style="font-size:14px">部署 v3 时端口冲突，解决方案：环境变量优先。Charlie 用 Redis 分布式锁踩过坑，改用文件锁。</div><div class="mem-m">Source: TASK_SPEC.md</div></div>
+      <div class="mem" style="background:#fff;border:1px solid rgba(0,0,0,.06);box-shadow:0 2px 8px rgba(0,0,0,.03);padding:24px"><div class="mem-l">💬 会话记忆</div><div class="mem-t" style="font-size:14px">正在修复 workflow 断点恢复后的状态不一致。上一轮 Charlie 测试发现并发竞态条件。</div><div class="mem-m">Updated: just now</div></div>
     </div>
   </div>
 </section>
 
-<!-- 5. Quick Start — 只面向开发者，不要exe -->
-<section class="slide">
+<!-- 5. Quick Start -->
+<section class="slide" style="background:#f1f5f9">
   <div class="slide-inner ct">
     <div class="lbl rv">Quick Start</div>
     <h2 class="big-t rv ct" style="margin:0 auto">3 分钟跑起来</h2>
     <p class="big-s rv ct" style="margin:10px auto 0;font-size:13px">目前支持 Claude 和 DeepSeek，更多模型接入中。</p>
     <div class="steps rv">
-      <div class="step"><div class="step-n">01</div><h3>克隆仓库</h3><p>需要 Node.js 18+</p><code>$ git clone github.com/Toufumind/mind-agency
+      <div class="step"><div class="step-n">01</div><h3>克隆仓库</h3><p>需要 Node.js 18+</p><code>$ git clone https://github.com/Toufumind/mind-agency
 $ cd mind-agency && npm install</code></div>
       <div class="step"><div class="step-n">02</div><h3>启动服务</h3><p>会自动打开浏览器</p><code>$ npm run dev
 ✓ Ready on http://localhost:3000</code></div>
@@ -238,11 +234,11 @@ $ cd mind-agency && npm install</code></div>
 </section>
 
 <!-- 6. FAQ -->
-<section class="slide" style="background:#f6f8fb">
+<section class="slide">
   <div class="slide-inner ct" style="max-width:680px">
     <div class="lbl rv">FAQ</div>
     <h2 class="big-t rv ct" style="margin:0 auto">常见问题</h2>
-    <div class="rv" style="margin-top:36px;width:100%">
+    <div class="rv" style="margin-top:40px;width:100%">
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">多个 AI 怎么协作？<span class="ic">+</span></div><div class="fqa">你定义规则，AI 按规则分工。Alice 写完 Bob 自动审，有分歧投票，关键步骤等你批准。</div></div>
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">需要花钱吗？<span class="ic">+</span></div><div class="fqa">软件免费开源。需要 AI 模型的 API Key，DeepSeek 几毛钱一天。</div></div>
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">数据会被上传吗？<span class="ic">+</span></div><div class="fqa">不会。数据全在本地，只有 AI 对话会发到你配置的 API。</div></div>
@@ -252,17 +248,17 @@ $ cd mind-agency && npm install</code></div>
   </div>
 </section>
 
-<!-- 7. CTA — 不重复 hero，加社会证明 -->
-<section class="slide">
+<!-- 7. CTA -->
+<section class="slide" style="background:#0f172a">
   <div class="slide-inner ct">
-    <div class="hero-logo rv" style="margin-bottom:24px"><canvas class="logo-anim" data-size="120" width="240" height="240"></canvas></div>
-    <h2 class="big-t rv ct" style="margin:0 auto">From Agent<br>to Agency</h2>
-    <p class="big-s rv ct">开源免费，本地运行，数据在你手里。</p>
+    <div style="margin-bottom:28px"><canvas class="logo-anim" data-size="100" width="200" height="200"></canvas></div>
+    <h2 class="big-t rv ct" style="margin:0 auto;color:#fff">From Agent<br>to Agency</h2>
+    <p class="big-s rv ct" style="color:rgba(255,255,255,.6)">开源免费，本地运行，数据在你手里。</p>
     <div class="btns rv">
-      <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
-      <a href="https://github.com/Toufumind/mind-agency" class="btn bs" target="_blank">Star on GitHub</a>
+      <a href="https://github.com/Toufumind/mind-agency/releases" class="btn" style="background:#fff;color:#0f172a">下载安装</a>
+      <a href="https://github.com/Toufumind/mind-agency" class="btn" style="background:transparent;color:rgba(255,255,255,.7);border:1.5px solid rgba(255,255,255,.15)" target="_blank">GitHub</a>
     </div>
-    <p class="rv" style="margin-top:20px;font-size:12px;color:var(--tl)">Apache 2.0 · 本地运行 · 数据不上传</p>
+    <p class="rv" style="margin-top:24px;font-size:12px;color:rgba(255,255,255,.35)">Apache 2.0 · 本地运行 · 数据不上传</p>
   </div>
 </section>
 
@@ -272,7 +268,7 @@ $ cd mind-agency && npm install</code></div>
     <div><div class="nl" style="margin-bottom:4px"><canvas class="logo-anim" data-size="18" width="36" height="36"></canvas>Mind Agency</div><p>From Agent to Agency. Open source, local-first.</p></div>
     <div class="ftc"><h4>Product</h4><a href="#features">功能</a><a href="#quickstart">上手</a><a href="/contact">联系</a></div>
     <div class="ftc"><h4>Resources</h4><a href="https://github.com/Toufumind/mind-agency">GitHub</a><a href="https://github.com/Toufumind/mind-agency/blob/main/README.md">Docs</a><a href="#faq">FAQ</a></div>
-    <div class="ftc"><h4>Legal</h4><a href="../LICENSE">Apache 2.0</a></div>
+    <div class="ftc"><h4>Legal</h4><a href="https://github.com/Toufumind/mind-agency/blob/main/LICENSE" target="_blank">Apache 2.0</a></div>
   </div>
   <div class="ftb"><span>© 2026 Toufumind</span><span>Mind Agency</span></div>
 </footer>

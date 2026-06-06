@@ -447,9 +447,58 @@ async function executeApprovedAction(req: ConsensusRequest): Promise<void> {
 // ── Default handlers ──────────────────────────────────────
 
 export function initConsensusHandlers(): void {
-  registerHandler('group_delete', async (req) => { const d = path.join(GROUPS_DIR, req.group); if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true }); });
-  registerHandler('deploy', async (req) => { const { triggerWorkflow } = await import('./workflow-bridge'); triggerWorkflow(req.group).catch(() => {}); });
-  for (const a of ['group_kick', 'group_set_admin', 'config_change', 'agent_create', 'workflow_step', 'workflow_trigger', 'critical_deploy']) registerHandler(a, async (req) => { console.log(`[consensus] ${a} done: ${req.group}`); });
+  // group_delete: remove group directory
+  registerHandler('group_delete', async (req) => {
+    const d = path.join(GROUPS_DIR, req.group);
+    if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
+    console.log(`[consensus] group_delete: ${req.group}`);
+  });
+
+  // deploy: trigger workflow
+  registerHandler('deploy', async (req) => {
+    const { triggerWorkflow } = await import('./workflow-bridge');
+    triggerWorkflow(req.group).catch(() => {});
+  });
+
+  // group_kick: remove member from group
+  registerHandler('group_kick', async (req) => {
+    const target = req.description?.match(/kick\s+(\S+)/)?.[1];
+    if (!target) { console.log(`[consensus] group_kick: no target in description`); return; }
+    const agDir = path.join(GROUPS_DIR, req.group, 'Agents', target);
+    if (fs.existsSync(agDir)) {
+      fs.rmSync(agDir, { recursive: true, force: true });
+      console.log(`[consensus] group_kick: removed ${target} from ${req.group}`);
+    }
+  });
+
+  // group_invite: create invitation
+  registerHandler('group_invite', async (req) => {
+    const target = req.description?.match(/invite\s+(\S+)/)?.[1];
+    if (!target) { console.log(`[consensus] group_invite: no target in description`); return; }
+    const invDir = path.join(GROUPS_DIR, req.group, '.invitations');
+    if (!fs.existsSync(invDir)) fs.mkdirSync(invDir, { recursive: true });
+    const invFile = path.join(invDir, `${target}.json`);
+    fs.writeFileSync(invFile, JSON.stringify({ invitedBy: req.requestedBy, invitedAt: Date.now() }), 'utf-8');
+    console.log(`[consensus] group_invite: invited ${target} to ${req.group}`);
+  });
+
+  // group_set_admin: update group config
+  registerHandler('group_set_admin', async (req) => {
+    const target = req.description?.match(/set_admin\s+(\S+)/)?.[1];
+    if (!target) return;
+    const configPath = path.join(GROUPS_DIR, req.group, 'config.json');
+    if (!fs.existsSync(configPath)) return;
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (!config.admins) config.admins = [];
+    if (!config.admins.includes(target)) config.admins.push(target);
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    console.log(`[consensus] group_set_admin: added ${target} as admin of ${req.group}`);
+  });
+
+  // Other actions: log only
+  for (const a of ['config_change', 'agent_create', 'workflow_step', 'workflow_trigger', 'critical_deploy']) {
+    registerHandler(a, async (req) => { console.log(`[consensus] ${a} done: ${req.group}`); });
+  }
 }
 
 // ── Recovery ──────────────────────────────────────────────

@@ -9,47 +9,44 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',-apple-system,sans-serif;background:#fff;color:#0f172a;line-height:1.6}
+body{font-family:'Inter',-apple-system,sans-serif;background:#fafbfc;color:#0f172a;line-height:1.65;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
-.ctn{max-width:640px;margin:0 auto;padding:0 24px}
 
-nav{border-bottom:1px solid #e0e4eb;padding:16px 0}
-.ni{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between}
-.nl{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
-.nl img{width:28px;height:28px;border-radius:6px}
-.nk{display:flex;gap:24px}
-.nk a{font-size:13px;font-weight:500;color:#64748b;transition:color .2s}
-.nk a:hover{color:#0f172a}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(250,251,252,.8);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid rgba(0,0,0,.06)}
+.ni{max-width:1100px;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:space-between;height:56px}
+.nl{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;letter-spacing:-.01em}
+.nl canvas{border-radius:5px}
+.nk{display:flex;align-items:center;gap:28px;font-size:13px;font-weight:500;color:#64748b}
+.nk a{transition:color .15s}.nk a:hover{color:#0f172a}
+.nk .sep{width:1px;height:14px;background:rgba(0,0,0,.08)}
+.logo-anim{display:inline-block;border-radius:5px;image-rendering:pixelated}
 
-.main{padding:64px 0}
-h1{font-size:32px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px}
-.sub{font-size:15px;color:#64748b;margin-bottom:32px;line-height:1.6}
-.note{font-size:12px;color:#94a3b8;margin-bottom:32px;padding:12px 16px;background:#f6f8fb;border-radius:8px;border:1px solid #e0e4eb}
+.main{padding:120px 32px 80px;max-width:640px;margin:0 auto}
+h1{font-size:clamp(28px,4vw,36px);font-weight:800;letter-spacing:-.03em;margin-bottom:8px}
+.sub{font-size:15px;color:#64748b;margin-bottom:28px;line-height:1.7}
+.note{font-size:12px;color:#94a3b8;margin-bottom:28px;padding:12px 16px;background:#f1f5f9;border-radius:10px;border:1px solid rgba(0,0,0,.04)}
 
-.form{display:flex;flex-direction:column;gap:20px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.field label{display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:6px}
+.form{display:flex;flex-direction:column;gap:18px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field label{display:block;font-size:12px;font-weight:600;color:#334155;margin-bottom:5px}
 .field input,.field select,.field textarea{
-  width:100%;padding:10px 14px;border:1px solid #e0e4eb;border-radius:8px;
+  width:100%;padding:10px 14px;border:1.5px solid rgba(0,0,0,.08);border-radius:10px;
   font-size:14px;font-family:inherit;background:#fff;color:#0f172a;
   transition:border-color .2s;outline:none
 }
-.field input:focus,.field select:focus,.field textarea:focus{border-color:#2563eb}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:#0ea5e9}
 .field textarea{resize:vertical;min-height:100px}
 
-.btn{
-  padding:12px 28px;border-radius:8px;border:none;font-size:14px;font-weight:600;
-  cursor:pointer;transition:all .2s;font-family:inherit
-}
-.btn-primary{background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;box-shadow:0 1px 4px rgba(37,99,235,.2)}
-.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(37,99,235,.3)}
-.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn{padding:12px 28px;border-radius:10px;border:none;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;background:#0f172a;color:#fff}
+.btn:hover{background:#1e293b;transform:translateY(-1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
 
-.msg{padding:12px 16px;border-radius:8px;font-size:13px;margin-top:8px}
-.msg-ok{background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0}
-.msg-err{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.msg{padding:12px 16px;border-radius:10px;font-size:13px;margin-top:8px}
+.msg-ok{background:rgba(22,163,74,.08);color:#16a34a;border:1px solid rgba(22,163,74,.15)}
+.msg-err{background:rgba(220,38,38,.08);color:#dc2626;border:1px solid rgba(220,38,38,.15)}
 
-footer{border-top:1px solid #e0e4eb;padding:32px 0;color:#94a3b8;font-size:12px;text-align:center}
+footer{border-top:1px solid rgba(0,0,0,.06);padding:32px 0;text-align:center;color:#94a3b8;font-size:12px}
+footer a{color:#64748b;transition:color .15s}footer a:hover{color:#0ea5e9}
 
 @media(max-width:640px){.row{grid-template-columns:1fr}}
 </style>
@@ -57,14 +54,20 @@ footer{border-top:1px solid #e0e4eb;padding:32px 0;color:#94a3b8;font-size:12px;
 <body>
 
 <nav><div class="ni">
-  <a href="/" class="nl"><img src="public/logo-static.png" alt="Mind Agency">Mind Agency</a>
-  <div class="nk"><a href="/#features">Features</a><a href="/#quickstart">Quick Start</a><a href="/">Home</a></div>
+  <a href="/" class="nl"><canvas class="logo-anim" data-size="26" width="52" height="52"></canvas>Mind Agency</a>
+  <div class="nk">
+    <a href="/#features">功能</a>
+    <a href="/#quickstart">上手</a>
+    <a href="/#faq">FAQ</a>
+    <span class="sep"></span>
+    <a href="https://github.com/Toufumind/mind-agency" target="_blank">GitHub</a>
+  </div>
 </div></nav>
 
-<main class="main"><div class="ctn">
+<main class="main">
   <h1>联系我们</h1>
-  <p class="sub">有什么想法？想合作？还是只是想聊聊 AI Agent 的未来？填个表，我们会回复你。</p>
-  <p class="note">📧 请使用工作邮箱提交，个人邮箱（Gmail、Outlook 等）可能不会被处理。</p>
+  <p class="sub">有什么想法？想合作？还是只是想聊聊 AI Agent 的未来？</p>
+  <p class="note">📧 请使用工作邮箱提交</p>
 
   <form class="form" id="contactForm">
     <div class="row">
@@ -74,88 +77,27 @@ footer{border-top:1px solid #e0e4eb;padding:32px 0;color:#94a3b8;font-size:12px;
     <div class="field"><label>工作邮箱 *</label><input type="email" name="email" required placeholder="you@company.com"></div>
     <div class="field"><label>公司名称</label><input type="text" name="company" placeholder="公司名"></div>
     <div class="row">
-      <div class="field">
-        <label>公司规模</label>
-        <select name="company_size">
-          <option value="">请选择</option>
-          <option>1-10 人</option>
-          <option>11-50 人</option>
-          <option>51-200 人</option>
-          <option>201-500 人</option>
-          <option>501-1000 人</option>
-          <option>1000+ 人</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>地区</label>
-        <select name="country">
-          <option value="">请选择</option>
-          <option>中国大陆</option>
-          <option>中国香港</option>
-          <option>中国台湾</option>
-          <option>日本</option>
-          <option>韩国</option>
-          <option>美国</option>
-          <option>欧洲</option>
-          <option>东南亚</option>
-          <option>其他</option>
-        </select>
-      </div>
+      <div class="field"><label>公司规模</label><select name="company_size"><option value="">请选择</option><option>1-10 人</option><option>11-50 人</option><option>51-200 人</option><option>201-500 人</option><option>501-1000 人</option><option>1000+ 人</option></select></div>
+      <div class="field"><label>地区</label><select name="country"><option value="">请选择</option><option>中国大陆</option><option>中国香港</option><option>中国台湾</option><option>日本</option><option>韩国</option><option>美国</option><option>欧洲</option><option>东南亚</option><option>其他</option></select></div>
     </div>
-    <div class="field">
-      <label>用途</label>
-      <select name="use_case">
-        <option value="">请选择</option>
-        <option>评估用于团队</option>
-        <option>公司全面部署</option>
-        <option>自托管</option>
-        <option>与现有工具集成</option>
-        <option>合作/代理咨询</option>
-        <option>其他</option>
-      </select>
-    </div>
+    <div class="field"><label>用途</label><select name="use_case"><option value="">请选择</option><option>评估用于团队</option><option>公司全面部署</option><option>自托管</option><option>与现有工具集成</option><option>合作/代理咨询</option><option>其他</option></select></div>
     <div class="field"><label>你的需求或问题</label><textarea name="message" placeholder="告诉我们你想用 Mind Agency 做什么..."></textarea></div>
-    <div><button type="submit" class="btn btn-primary" id="submitBtn">提交</button></div>
+    <div><button type="submit" class="btn" id="submitBtn">提交</button></div>
     <div id="formMsg"></div>
   </form>
-</div></main>
+</main>
 
-<footer>© 2026 Toufumind · Mind Agency · <a href="/" style="color:#64748b">返回首页</a></footer>
+<footer>© 2026 Toufumind · <a href="/">返回首页</a></footer>
 
 <script>
-document.getElementById('contactForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const btn = document.getElementById('submitBtn');
-  const msg = document.getElementById('formMsg');
-  btn.disabled = true;
-  btn.textContent = '提交中...';
-
-  const formData = new FormData(e.target);
-  const data = Object.fromEntries(formData);
-
-  try {
-    const res = await fetch('/api/contact', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    const result = await res.json();
-
-    if (result.success) {
-      msg.className = 'msg msg-ok';
-      msg.textContent = '✅ ' + result.message;
-      e.target.reset();
-    } else {
-      msg.className = 'msg msg-err';
-      msg.textContent = '❌ ' + (result.error || '提交失败');
-    }
-  } catch (err) {
-    msg.className = 'msg msg-err';
-    msg.textContent = '❌ 网络错误，请稍后重试';
-  }
-
-  btn.disabled = false;
-  btn.textContent = '提交';
+document.querySelectorAll('.logo-anim').forEach(c=>{const s=26,d=Math.min(devicePixelRatio||1,2);c.width=s*d;c.height=s*d;c.style.width=s+'px';c.style.height=s+'px';const x=c.getContext('2d');x.scale(d,d);const i=new Image();i.src='public/logo_sprite_48f_512x512.png';let f=0,l=0;function draw(t){if(t-l>=83){l=t;const co=f%7,row=Math.floor(f/7);x.clearRect(0,0,s,s);if(i.complete)x.drawImage(i,co*512,row*512,512,512,0,0,s,s);f=(f+1)%48;}requestAnimationFrame(draw);}i.complete?requestAnimationFrame(draw):i.onload=()=>requestAnimationFrame(draw);});
+document.getElementById('contactForm').addEventListener('submit',async e=>{
+  e.preventDefault();const btn=document.getElementById('submitBtn'),msg=document.getElementById('formMsg');
+  btn.disabled=true;btn.textContent='提交中...';
+  try{const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});
+  const d=await r.json();if(d.success){msg.className='msg msg-ok';msg.textContent='✅ '+d.message;e.target.reset();}else{msg.className='msg msg-err';msg.textContent='❌ '+(d.error||'提交失败');}
+  }catch{msg.className='msg msg-err';msg.textContent='❌ 网络错误';}
+  btn.disabled=false;btn.textContent='提交';
 });
 </script>
 </body>
