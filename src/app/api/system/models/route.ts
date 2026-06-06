@@ -23,11 +23,11 @@ export async function GET() {
   const baseUrl = settings.baseUrl || '';
   const apiKey = settings.apiKey || '';
 
-  if (!baseUrl) {
+  if (!baseUrl || !apiKey) {
     return NextResponse.json({ models: getDefaultModels(), source: 'default' });
   }
 
-  // Query API for available models
+  // v0.4: Directly query API — no availability check, just fetch
   try {
     const models = await fetchModels(baseUrl, apiKey);
     return NextResponse.json({ models, source: 'api' });

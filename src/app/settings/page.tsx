@@ -27,6 +27,7 @@ export default function SettingsPage() {
   const [heartbeatMin, setHeartbeatMin] = useState('');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+  const [apiModels, setApiModels] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     fetch('/api/system/settings').then(r=>r.json()).then(d => {
@@ -38,6 +39,10 @@ export default function SettingsPage() {
       setWsPort(d.wsPort ? String(d.wsPort) : '');
       setHeartbeatMin(d.heartbeatIntervalMs ? String(Math.round(d.heartbeatIntervalMs / 60000 * 10) / 10) : '2');
     }).catch(()=>{});
+    // v0.4: Fetch available models from API
+    fetch('/api/system/models').then(r => r.json()).then(d => {
+      if (d.models && d.models.length > 0) setApiModels(d.models);
+    }).catch(() => {});
   }, []);
 
   const save = async () => {
@@ -153,9 +158,20 @@ export default function SettingsPage() {
                     <div>
                       <label className="text-[13px] font-semibold text-foreground">{t('model')}</label>
                       <p className="text-[11px] text-muted-foreground mb-2">{t('model_desc')}</p>
-                      <input value={model} onChange={e => setModel(e.target.value)}
-                        placeholder="deepseek-v4-flash"
-                        className="w-full px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/10" />
+                      <select value={model} onChange={e => setModel(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] outline-none focus:border-foreground/30">
+                        {apiModels.length > 0 ? (
+                          apiModels.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                        ) : (
+                          <>
+                            <option value="deepseek-v4-pro">V4 Pro</option>
+                            <option value="deepseek-v4-flash">V4 Flash</option>
+                          </>
+                        )}
+                      </select>
+                      {apiModels.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground mt-1">从 API 获取了 {apiModels.length} 个可用模型</p>
+                      )}
                     </div>
                   </div>
                 )}
