@@ -270,7 +270,8 @@ export function emitEvent(type: EventType, payload: Record<string, unknown>, sou
 export enum StepStatus { PENDING = 'pending', BLOCKED = 'blocked', IN_PROGRESS = 'in_progress', COMPLETED = 'completed', SKIPPED = 'skipped', FAILED = 'failed' }
 export enum WorkflowStatus { IDLE = 'idle', RUNNING = 'running', COMPLETED = 'completed', FAILED = 'failed' }
 
-export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; timeout?: number; onFailure?: string; onReject?: string; onApprove?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
+export interface WorkflowStepRoute { step: string; when: string; }
+export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; routes?: WorkflowStepRoute[]; timeout?: number; onFailure?: string; onReject?: string; onApprove?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
 export interface WorkflowTrigger {
   type: 'manual' | 'file_change' | 'schedule' | 'event';
   /** For schedule: cron expression (e.g. "0 9 * * 1-5") */
@@ -449,6 +450,7 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
     timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined,
     onReject: s.on_reject || s.onReject || undefined,
     onApprove: s.on_approve || s.onApprove || undefined,
+    routes: Array.isArray(s.routes) ? s.routes.map((r: any) => ({ step: r.step || r.target, when: r.when || r.condition || '' })) : undefined,
     maxRejectRetries: typeof s.max_reject_retries === 'number' ? Math.min(s.max_reject_retries, 10) : typeof s.maxRejectRetries === 'number' ? Math.min(s.maxRejectRetries, 10) : undefined,
     retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined,
     retryBackoff: s.retry_backoff || s.retryBackoff || undefined,
@@ -491,7 +493,7 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
 
 // ── DAG internal types ──────────────────────────────────────────────
 
-interface DagNode { step: WorkflowStep; deps: string[]; dependents: string[]; status: StepStatus; output: string; error: string; retryCount: number; maxRetries: number; rejectCount: number; maxRejectRetries: number; onFailure?: string; onReject?: string; onApprove?: string; timeout: number; startedAt: number; }
+interface DagNode { step: WorkflowStep; deps: string[]; dependents: string[]; status: StepStatus; output: string; error: string; retryCount: number; maxRetries: number; rejectCount: number; maxRejectRetries: number; onFailure?: string; onReject?: string; onApprove?: string; routes?: WorkflowStepRoute[]; timeout: number; startedAt: number; }
 const PRIORITY: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 
 // ═══════════════════════════════════════════════════ WorkflowEngine ═══
@@ -586,7 +588,7 @@ export class WorkflowEngine {
           retryCount: 0, maxRetries: s.retry ?? 3,
           rejectCount: 0, maxRejectRetries: s.maxRejectRetries ?? 3,
           onFailure: s.onFailure, onReject: s.onReject, onApprove: s.onApprove,
-          timeout: s.timeout || 300000, startedAt: 0,
+          routes: s.routes, timeout: s.timeout || 300000, startedAt: 0,
         });
       }
       // Rebuild dependent links
@@ -835,6 +837,28 @@ export class WorkflowEngine {
         } catch {}
       }
 
+      // v0.5: Route evaluation — if step has routes, evaluate conditions and follow first match
+      if (node.routes && node.routes.length > 0) {
+        const matchedRoute = node.routes.find(r => this.evalRouteCondition(r.when, out));
+        if (matchedRoute && nodes.has(matchedRoute.step)) {
+          console.log(`[wf] ${sid} routed to ${matchedRoute.step} (when: ${matchedRoute.when})`);
+          // Skip default downstream, route to target
+          for (const depId of node.dependents) {
+            const dep = nodes.get(depId);
+            if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
+              dep.status = StepStatus.SKIPPED;
+              run.steps.set(depId, StepStatus.SKIPPED);
+            }
+          }
+          // Unblock target by removing this step from its deps
+          const target = nodes.get(matchedRoute.step);
+          if (target) {
+            target.deps = target.deps.filter(d => d !== sid);
+          }
+          return;  // Skip auto-review injection — routes override it
+        }
+      }
+
       // v0.4: Save step checkpoint
       const grp = (run as any)._group as string | undefined;
       if (grp) saveStepCheckpoint(grp, runId, { stepId: sid, status: 'completed', output: out, retries: node.retryCount, timestamp: Date.now(), startedAt: node.startedAt, completedAt: Date.now(), durationMs: Date.now() - node.startedAt });
@@ -967,6 +991,23 @@ export class WorkflowEngine {
       if (node.onFailure && nodes.has(node.onFailure)) { const cn = nodes.get(node.onFailure)!; run.compensations.push(node.onFailure); if (cn.status === StepStatus.PENDING) { if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: node.onFailure, workflow: run.workflowName, agent: cn.step.agent, action: 'compensation', note: `Triggered by: ${sid}`, phase: WorkflowPhase.COMPENSATION }, 'workflow-engine')); await this.execNode(runId, cn, nodes); } return; }
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true, phase }, 'workflow-engine'));
     }
+  }
+
+  /** v0.5: Route condition evaluator — matches against step output */
+  private evalRouteCondition(when: string, output: string): boolean {
+    if (!when) return false;
+    const out = output.toLowerCase().trim();
+    // "output contains X" or just "X"
+    const containsMatch = when.match(/^output\s+contains\s+(.+)$/i);
+    if (containsMatch) return out.includes(containsMatch[1].toLowerCase().trim());
+    // "output == X"
+    const eqMatch = when.match(/^output\s*==\s*(.+)$/i);
+    if (eqMatch) return out === eqMatch[1].toLowerCase().trim();
+    // "output != X"
+    const neqMatch = when.match(/^output\s*!=\s*(.+)$/i);
+    if (neqMatch) return out !== neqMatch[1].toLowerCase().trim();
+    // Shorthand: just "APPROVED" → output contains APPROVED
+    return out.includes(when.toLowerCase().trim());
   }
 
   /** v0.4: Enhanced condition evaluator — supports and_(), or_(), not_(), router() */

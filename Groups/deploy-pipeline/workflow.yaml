@@ -12,9 +12,11 @@ steps:
       运行 npm test 确认所有测试通过。
       回复: TEST_PASS 或 TEST_FAIL + 失败的测试
     reviewer: Bob
-    onApprove: build
-    onReject: fix_test
-    maxRejectRetries: 2
+    routes:
+      - step: build
+        when: "output contains APPROVED"
+      - step: fix_test
+        when: "output contains REJECTED"
 
   - id: fix_test
     agent: Alice
@@ -32,9 +34,11 @@ steps:
       回复: BUILD_PASS + 产物大小
     dependsOn: [test]
     reviewer: Charlie
-    onApprove: deploy_staging
-    onReject: fix_build
-    maxRejectRetries: 2
+    routes:
+      - step: deploy_staging
+        when: "output contains APPROVED"
+      - step: fix_build
+        when: "output contains REJECTED"
 
   - id: fix_build
     agent: Bob

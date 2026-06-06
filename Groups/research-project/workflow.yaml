@@ -12,8 +12,11 @@ steps:
       总结 3 个关键发现。
       回复: 发现列表
     reviewer: Charlie
-    onReject: retry
-    maxRejectRetries: 2
+    routes:
+      - step: synthesize
+        when: "APPROVED"
+      - step: literature_review
+        when: "REJECTED"
 
   - id: code_analysis
     agent: Bob
@@ -23,8 +26,11 @@ steps:
       列出 3 个改进建议。
       回复: 分析报告
     reviewer: Alice
-    onReject: retry
-    maxRejectRetries: 2
+    routes:
+      - step: synthesize
+        when: "APPROVED"
+      - step: code_analysis
+        when: "REJECTED"
 
   - id: market_research
     agent: Charlie
@@ -34,8 +40,11 @@ steps:
       对比 3 个竞品的优劣。
       回复: 竞品分析
     reviewer: Bob
-    onReject: retry
-    maxRejectRetries: 2
+    routes:
+      - step: synthesize
+        when: "APPROVED"
+      - step: market_research
+        when: "REJECTED"
 
   - id: synthesize
     agent: Alice
@@ -56,5 +65,14 @@ steps:
       回复: PPT 大纲
     dependsOn: [synthesize]
     reviewer: Alice
-    onReject: retry
-    maxRejectRetries: 2
+    routes:
+      - step: end
+        when: "APPROVED"
+      - step: presentation
+        when: "REJECTED"
+
+  - id: end
+    agent: system
+    action: done
+    prompt: "工作流完成"
+    dependsOn: [presentation]
