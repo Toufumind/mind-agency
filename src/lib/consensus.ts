@@ -114,8 +114,15 @@ function loadRules(group?: string): ConsensusRule[] {
 
 /** Invalidate rules cache */
 export function invalidateRulesCache(group?: string): void {
-  if (group) agentCache.invalidate('config', `rules:${group}`);
-  else agentCache.invalidateRegion('config');
+  if (group) {
+    agentCache.invalidate('config', `rules:${group}`);
+  } else {
+    // Only invalidate rules-related keys, not all config
+    const region = 'config';
+    for (const key of ['rules:_default', 'rules:']) {
+      agentCache.invalidate(region, key);
+    }
+  }
 }
 
 export function getRule(action: string, group?: string): ConsensusRule | null {

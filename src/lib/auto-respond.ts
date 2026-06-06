@@ -330,7 +330,11 @@ export async function autoRespond(
 
   // Invalidate stale caches — new agent may have joined since last scan
   invalidateGroupsCache(agent);
-  agentCache.invalidate('groupChat', agent);
+  // Invalidate groupChat cache for all groups this agent is a member of
+  const agentGroups = getAgentGroups(agent);
+  for (const g of agentGroups) {
+    agentCache.invalidate('groupChat', g);
+  }
 
   // Build signal
   const result = buildSignal(agent);
