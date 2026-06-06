@@ -4,8 +4,22 @@ import path from 'path';
 import { GROUPS_DIR } from '@/lib/data-dir';
 import { broadcastWs } from '@/lib/ws-embedded';
 
+// Simple cache for group API responses (10s TTL for fresh chat data)
+const groupApiCache = new Map<string, { data: any; ts: number }>();
+const GROUP_API_TTL = 10_000; // 10s
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
+
+  // Check cache first (skip if ?nocache=1)
+  const noCache = request.nextUrl.searchParams.get('nocache') === '1';
+  if (!noCache) {
+    const cached = groupApiCache.get(name);
+    if (cached && (Date.now() - cached.ts) < GROUP_API_TTL) {
+      return NextResponse.json(cached.data);
+    }
+  }
+
   const groupDir = path.join(GROUPS_DIR, name);
 
   if (!fs.existsSync(groupDir)) {
@@ -46,7 +60,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { getGroupInfo } = await import('@/lib/group-config');
   const info = getGroupInfo(name);
 
-  return NextResponse.json({ group: name, members, messages, messageCount: messages.length, info });
+  const result = { group: name, members, messages, messageCount: messages.length, info };
+
+  // Cache the result
+  groupApiCache.set(name, { data: result, ts: Date.now() });
+
+  return NextResponse.json(result);
+}
+
+/** Invalidate group API cache (called after writes) */
+export function invalidateGroupApiCache(groupName?: string): void {
+  if (groupName) groupApiCache.delete(groupName);
+  else groupApiCache.clear();
 }
 
 // ── POST /api/groups/[name] — send a message directly to group chat ──

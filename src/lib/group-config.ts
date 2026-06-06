@@ -55,12 +55,23 @@ export function setMemberRole(group: string, agent: string, role: MemberRole): b
   return true;
 }
 
+// ── Group config cache ──────────────────────────────────
+const groupConfigCache = new Map<string, { data: GroupConfig | null; ts: number }>();
+const GROUP_CONFIG_TTL = 60_000; // 1 min
+
 export function loadGroupConfig(group: string): GroupConfig | null {
+  const cached = groupConfigCache.get(group);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < GROUP_CONFIG_TTL) return cached.data;
+
   const fp = configFile(group);
+  let data: GroupConfig | null = null;
   try {
-    if (fs.existsSync(fp)) return JSON.parse(fs.readFileSync(fp, 'utf-8'));
+    if (fs.existsSync(fp)) data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
   } catch {}
-  return null;
+
+  groupConfigCache.set(group, { data, ts: now });
+  return data;
 }
 
 export function saveGroupConfig(group: string, config: GroupConfig): void {
@@ -68,6 +79,14 @@ export function saveGroupConfig(group: string, config: GroupConfig): void {
   const dir = path.dirname(fp);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(fp, JSON.stringify(config, null, 2), 'utf-8');
+  // Invalidate cache after write
+  groupConfigCache.delete(group);
+}
+
+/** Invalidate group config cache */
+export function invalidateGroupConfigCache(group?: string): void {
+  if (group) groupConfigCache.delete(group);
+  else groupConfigCache.clear();
 }
 
 export function ensureGroupConfig(group: string, owner: string): GroupConfig {
