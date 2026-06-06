@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ForceSimulation, type ForceNode, type ForceEdge } from '@/lib/force-simulation';
-import FlowCellsWebGL, { CELL_COLORS } from './flow-cells-webgl';
 import FlowShaderCanvas from './flow-shader-canvas';
 import { Play, ZoomIn, ZoomOut, Maximize2, Pause, RotateCcw } from 'lucide-react';
 

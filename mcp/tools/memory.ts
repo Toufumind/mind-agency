@@ -78,7 +78,7 @@ export async function handleMemoryTool(
 
       // v0.4: Try semantic embedding search, fall back to substring
       try {
-        const { embed, cosineSimilarity } = await import('../../src/lib/embedding.js');
+        const { embed, cosineSimilarity } = await import('../../src/lib/embedding');
         const files = fs.readdirSync(mDir).filter(f => f.endsWith('.md'));
         const entries: { key: string; content: string; updated: string; raw: string }[] = [];
         for (const f of files) {

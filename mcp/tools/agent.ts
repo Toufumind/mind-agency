@@ -31,7 +31,7 @@ export async function handleAgentTool(
   const a = args;
 
   if (name === 'agent_tasks') {
-    const { loadTaskQueue, getPendingTasks, getCompletedTasks, nextTask, completeTask, formatTaskQueue } = await import('../../src/lib/task-queue.js');
+    const { loadTaskQueue, getPendingTasks, getCompletedTasks, nextTask, completeTask, formatTaskQueue } = await import('../../src/lib/task-queue');
     const action = a.action || 'list';
 
     if (action === 'list') {
@@ -107,7 +107,7 @@ export async function handleAgentTool(
     const agentDir = path.join(AGENTS_DIR, target);
     if (!exists(agentDir)) { respond(id, { content: [{ type: 'text', text: `Agent "${target}" not found` }], isError: true }); return true; }
     // Check permission via consensus
-    const { checkToolPermission } = await import('../../src/lib/permission-engine.js');
+    const { checkToolPermission } = await import('../../src/lib/permission-engine');
     const perm = checkToolPermission(agentName, 'agent_create', { name: target });
     // For now, allow deletion if agent has canCreateGroup permission (admin-like)
     const myConfigPath = path.join(AGENTS_DIR, agentName, 'config.json');
@@ -141,7 +141,7 @@ export async function handleAgentTool(
     fs.writeFileSync(path.join(agentDir, 'CLAUDE.md'), claudeMd, 'utf-8');
     fs.mkdirSync(path.join(agentDir, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(agentDir, '.claude', 'CLAUDE.md'), `你的名字是 ${newName}。你是 Mind Agency 团队的一员。`, 'utf-8');
-    const perms: Record<string, boolean> = { canCreateGroup: roles.some(r => /pm|ceo|lead|管理/i.test(r)), canDeleteGroup: false, canDeploy: false };
+    const perms: Record<string, boolean> = { canCreateGroup: roles.some((r: string) => /pm|ceo|lead|管理/i.test(r)), canDeleteGroup: false, canDeploy: false };
     const config = { autoRespondToEmail: a.autoRespond ?? false, roles, permissions: perms, provider };
     fs.writeFileSync(path.join(agentDir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
     // Invalidate cache so new agent is visible
@@ -153,7 +153,7 @@ export async function handleAgentTool(
   }
 
   if (name === 'agent_list_providers') {
-    const { listProviders } = await import('../../src/lib/providers/index.js');
+    const { listProviders } = await import('../../src/lib/providers/index');
     const providers = listProviders();
     const text = providers.map(p =>
       `• ${p.displayName} (${p.name}) — ${p.available ? '✅ 可用' : '❌ 未安装'}`

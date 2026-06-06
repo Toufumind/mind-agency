@@ -245,69 +245,83 @@ export default function FlowShaderCanvas({ width, height, zoom, pan, cells, node
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false, antialias: true });
-    if (!gl) return;
-    glRef.current = gl;
+    try {
+      const gl = canvas.getContext('webgl', { alpha: true, premultipliedAlpha: false, antialias: true });
+      if (!gl) return;
+      glRef.current = gl;
 
-    const vs = createShader(gl, gl.VERTEX_SHADER, VERT)!;
-    const fs = createShader(gl, gl.FRAGMENT_SHADER, FRAG)!;
-    const prog = createProgram(gl, vs, fs)!;
-    progRef.current = prog;
+      const vs = createShader(gl, gl.VERTEX_SHADER, VERT);
+      const fs = createShader(gl, gl.FRAGMENT_SHADER, FRAG);
+      if (!vs || !fs) return;
+      const prog = createProgram(gl, vs, fs);
+      if (!prog) return;
+      progRef.current = prog;
 
-    const buf = gl.createBuffer()!;
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
-    bufRef.current = buf;
+      const buf = gl.createBuffer();
+      if (!buf) return;
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+      bufRef.current = buf;
 
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    return () => { gl.deleteProgram(prog); gl.deleteShader(vs); gl.deleteShader(fs); gl.deleteBuffer(buf); };
+      return () => { gl.deleteProgram(prog); gl.deleteShader(vs); gl.deleteShader(fs); gl.deleteBuffer(buf); };
+    } catch (e) { console.error('WebGL init error:', e); }
   }, []);
 
   useEffect(() => {
     const gl = glRef.current, prog = progRef.current, buf = bufRef.current;
     if (!gl || !prog || !buf) return;
 
-    gl.viewport(0, 0, width, height);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(prog);
+    try {
+      gl.viewport(0, 0, width, height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.useProgram(prog);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    const pos = gl.getAttribLocation(prog, 'a_pos');
-    gl.enableVertexAttribArray(pos);
-    gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
-
-    const u = (n: string) => gl.getUniformLocation(prog, n);
-
-    gl.uniform2f(u('u_res'), width, height);
-    gl.uniform1f(u('u_time'), time * 0.016);
-    gl.uniform1f(u('u_zoom'), zoom);
-    gl.uniform2f(u('u_pan'), pan.x, pan.y);
-
-    // Cells
-    gl.uniform1i(u('u_cellN'), Math.min(cells.length, 16));
-    const cellData: number[] = [];
-    const cellCounts: number[] = [];
-    const cellColors: number[] = [];
-    const CC = [[0.388,0.400,0.945],[0.545,0.361,0.965],[0.925,0.282,0.600],[0.961,0.620,0.043],[0.063,0.725,0.502],[0.231,0.510,0.965]];
-    for (let c = 0; c < Math.min(cells.length, 16); c++) {
-      const cell = cells[c];
-      cellCounts.push(Math.min(cell.nodes.length, 32));
-      const ci = CC[cell.colorIdx % CC.length];
-      cellColors.push(ci[0], ci[1], ci[2]);
-      for (let n = 0; n < 32; n++) {
-        if (n < cell.nodes.length) { cellData.push(cell.nodes[n].x, cell.nodes[n].y); }
-        else { cellData.push(0, 0); }
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      const pos = gl.getAttribLocation(prog, 'a_pos');
+      if (pos >= 0) {
+        gl.enableVertexAttribArray(pos);
+        gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
       }
-    }
-    gl.uniform2fv(u('u_cellNodes[0]'), new Float32Array(cellData));
-    for (let i = 0; i < 16; i++) { gl.uniform1i(u(`u_cellCounts[${i}]`), cellCounts[i] || 0); }
-    for (let i = 0; i < 16; i++) { const ci = i * 3; gl.uniform3f(u(`u_cellColors[${i}]`), cellColors[ci] || 0, cellColors[ci + 1] || 0, cellColors[ci + 2] || 0); }
+
+      // Helper: set uniform only if location exists
+      const set2f = (n: string, x: number, y: number) => { const l = gl.getUniformLocation(prog, n); if (l) gl.uniform2f(l, x, y); };
+      const set1f = (n: string, x: number) => { const l = gl.getUniformLocation(prog, n); if (l) gl.uniform1f(l, x); };
+      const set1i = (n: string, x: number) => { const l = gl.getUniformLocation(prog, n); if (l) gl.uniform1i(l, x); };
+      const set2fv = (n: string, v: Float32Array) => { const l = gl.getUniformLocation(prog, n); if (l) gl.uniform2fv(l, v); };
+      const set1fv = (n: string, v: Float32Array) => { const l = gl.getUniformLocation(prog, n); if (l) gl.uniform1fv(l, v); };
+      const set3f = (n: string, x: number, y: number, z: number) => { const l = gl.getUniformLocation(prog, n); if (l) gl.uniform3f(l, x, y, z); };
+
+      set2f('u_res', width, height);
+      set1f('u_time', time * 0.016);
+      set1f('u_zoom', zoom);
+      set2f('u_pan', pan.x, pan.y);
+
+      // Cells
+      set1i('u_cellN', Math.min(cells.length, 16));
+      const cellData: number[] = [];
+      const cellCounts: number[] = [];
+      const cellColors: number[] = [];
+      const CC = [[0.388,0.400,0.945],[0.545,0.361,0.965],[0.925,0.282,0.600],[0.961,0.620,0.043],[0.063,0.725,0.502],[0.231,0.510,0.965]];
+      for (let c = 0; c < Math.min(cells.length, 16); c++) {
+        const cell = cells[c];
+        cellCounts.push(Math.min(cell.nodes.length, 32));
+        const ci = CC[cell.colorIdx % CC.length];
+        cellColors.push(ci[0], ci[1], ci[2]);
+        for (let n = 0; n < 32; n++) {
+          if (n < cell.nodes.length) { cellData.push(cell.nodes[n].x, cell.nodes[n].y); }
+          else { cellData.push(0, 0); }
+        }
+      }
+      set2fv('u_cellNodes[0]', new Float32Array(cellData));
+      for (let i = 0; i < 16; i++) { set1i(`u_cellCounts[${i}]`, cellCounts[i] || 0); }
+      for (let i = 0; i < 16; i++) { const ci = i * 3; set3f(`u_cellColors[${i}]`, cellColors[ci] || 0, cellColors[ci + 1] || 0, cellColors[ci + 2] || 0); }
 
     // Nodes
-    gl.uniform1i(u('u_nodeN'), Math.min(nodes.length, 256));
+    set1i('u_nodeN', Math.min(nodes.length, 256));
     const nodePos: number[] = [];
     const nodeStatus: number[] = [];
     const nodeHover: number[] = [];
@@ -316,22 +330,24 @@ export default function FlowShaderCanvas({ width, height, zoom, pan, cells, node
       nodeStatus.push(nodes[i].status);
       nodeHover.push(nodes[i].isHovered);
     }
-    gl.uniform2fv(u('u_nodePos[0]'), new Float32Array(nodePos));
-    gl.uniform1fv(u('u_nodeStatus[0]'), new Float32Array(nodeStatus));
-    gl.uniform1fv(u('u_nodeHover[0]'), new Float32Array(nodeHover));
+    set2fv('u_nodePos[0]', new Float32Array(nodePos));
+    set1fv('u_nodeStatus[0]', new Float32Array(nodeStatus));
+    set1fv('u_nodeHover[0]', new Float32Array(nodeHover));
 
     // Edges
-    gl.uniform1i(u('u_edgeN'), Math.min(edges.length, 256));
+    set1i('u_edgeN', Math.min(edges.length, 256));
     const edgeData: number[] = [];
     const edgeActive: number[] = [];
     for (let i = 0; i < Math.min(edges.length, 256); i++) {
       edgeData.push(edges[i].x1, edges[i].y1, edges[i].x2, edges[i].y2);
       edgeActive.push(edges[i].active);
     }
-    gl.uniform4fv(u('u_edgeData[0]'), new Float32Array(edgeData));
-    gl.uniform1fv(u('u_edgeActive[0]'), new Float32Array(edgeActive));
+    const set4fv = (n: string, v: Float32Array) => { const l = gl.getUniformLocation(prog, n); if (l) gl.uniform4fv(l, v); };
+    set4fv('u_edgeData[0]', new Float32Array(edgeData));
+    set1fv('u_edgeActive[0]', new Float32Array(edgeActive));
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    } catch (e) { console.error('WebGL render error:', e); }
   }, [width, height, zoom, pan, cells, nodes, edges, time]);
 
   return <canvas ref={canvasRef} width={width} height={height} className="absolute inset-0" style={{ zIndex: 0 }} />;
