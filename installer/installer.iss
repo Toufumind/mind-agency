@@ -2,7 +2,7 @@
 ; Usage: Compile with Inno Setup (https://jrsoftware.org/isinfo.php)
 
 #define MyAppName "Mind Agency"
-#define MyAppVersion "0.4.0"
+#define MyAppVersion "0.5.1"
 #define MyAppPublisher "Mind Agency"
 #define MyAppURL "https://github.com/mindica-ai/mind-agency"
 #define MyAppExeName "Mind Agency.exe"
