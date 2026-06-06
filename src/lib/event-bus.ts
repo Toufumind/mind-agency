@@ -890,6 +890,7 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
         run.status = failed ? WorkflowStatus.FAILED : WorkflowStatus.COMPLETED;
         run.completedAt = Date.now();
         console.log(`[wf] Run ${runId.slice(0, 8)} ${run.status}`);
+        this.evictOldRuns();
       }
       return;
     }
@@ -1206,6 +1207,11 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
               node.status = StepStatus.FAILED;
               node.error = `Step timed out after ${Math.round(elapsed / 1000)}s`;
               run.steps.set(sid, StepStatus.FAILED);
+              // Clean up notification file
+              try {
+                const notifPath = path.join(MIND_DIR, 'agents', node.step.agent, '.workflow-notifications', `${rid}_${sid}.json`);
+                if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
+              } catch {}
               if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, {
                 taskId: rid, stepId: sid, workflow: run.workflowName,
                 reason: `timeout: ${Math.round(elapsed / 1000)}s`, phase: WorkflowPhase.COMPLETED,

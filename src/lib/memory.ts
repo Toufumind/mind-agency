@@ -251,6 +251,12 @@ export function getMemoryContext(agentName: string): string {
       `- ${m.key}: ${m.content.slice(0, 200)}`
     ).join('\n');
 
+  // v0.5: If memory context changed, invalidate baseOptions (system prompt contains memory)
+  const prev = cached?.data;
+  if (prev !== undefined && prev !== result) {
+    agentCache.invalidate('config', agentName + ':baseOptions');
+  }
+
   memoryContextCache.set(agentName, { data: result, ts: now });
   evictMemoryCache();
   return result;

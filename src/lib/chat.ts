@@ -148,6 +148,7 @@ export interface ChatEvent {
 export interface ChatHistory {
   sessionId: string | null;
   messages: { role: 'user' | 'assistant'; content: string; events?: ChatEvent[]; timestamp: string }[];
+  _version?: number;  // v0.5: concurrent-safe version counter
 }
 
 function sessionFile(agentName: string) {
@@ -164,24 +165,49 @@ export function getChatHistory(agentName: string): ChatHistory {
   const file = sessionFile(agentName);
   let data: ChatHistory;
   if (!fs.existsSync(file)) {
-    data = { sessionId: null, messages: [] };
+    data = { sessionId: null, messages: [], _version: 0 };
   } else {
-    try { data = JSON.parse(fs.readFileSync(file, 'utf-8')); }
-    catch { data = { sessionId: null, messages: [] }; }
+    try {
+      data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      if (typeof data._version !== 'number') data._version = 0;
+    }
+    catch { data = { sessionId: null, messages: [], _version: 0 }; }
   }
 
   agentCache.set('session', agentName, data);
   return JSON.parse(JSON.stringify(data)); // Deep copy
 }
 
-function saveChatHistory(agentName: string, data: ChatHistory) {
+function saveChatHistory(agentName: string, data: ChatHistory, expectedVersion?: number) {
+  // v0.5: Version check — prevent concurrent overwrites
+  if (expectedVersion !== undefined) {
+    const cached = agentCache.get<ChatHistory>('session', agentName);
+    if (cached && cached._version !== undefined && cached._version !== expectedVersion) {
+      // Another request modified the session — merge messages instead of overwrite
+      const merged = JSON.parse(JSON.stringify(cached)) as ChatHistory;
+      // Append new messages that aren't in the cached version
+      const existingKeys = new Set(merged.messages.map(m => `${m.role}:${m.content.slice(0, 50)}`));
+      for (const msg of data.messages) {
+        const key = `${msg.role}:${msg.content.slice(0, 50)}`;
+        if (!existingKeys.has(key)) {
+          merged.messages.push(msg);
+        }
+      }
+      // Keep last 50 messages
+      if (merged.messages.length > 50) merged.messages = merged.messages.slice(-50);
+      merged.sessionId = data.sessionId || merged.sessionId;
+      merged._version = (cached._version || 0) + 1;
+      data = merged;
+    }
+  }
+
   const dir = path.join(AGENTS_DIR, agentName, 'chat');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const file = sessionFile(agentName);
   const tmp = file + '.tmp';
+  data._version = (data._version || 0) + 1;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
   fs.renameSync(tmp, file);
-  // Update cache with the new data
   agentCache.set('session', agentName, data);
 }
 
@@ -417,7 +443,13 @@ function buildBaseOptions(agentName: string) {
   const agentDir = path.join(AGENTS_DIR, agentName);
   // Memory context layer — agent carries past context across sessions
   const memCtx = getMemoryContext(agentName);
-  const sysPrompt = buildIdentity(agentName) + '\n' + getGroupMembership(agentName) + (memCtx ? '\n' + memCtx : '');
+  // Skills context — injected skill prompts
+  let skillsCtx = '';
+  try {
+    const skillsMod = require('./skills');
+    skillsCtx = skillsMod.loadSkillsContext(agentName);
+  } catch {}
+  const sysPrompt = buildIdentity(agentName) + '\n' + getGroupMembership(agentName) + (memCtx ? '\n' + memCtx : '') + skillsCtx;
   const mcpServers = buildMcpConfig(agentName);
   const agentConfig = getAgentConfig(agentName);
 
@@ -453,6 +485,7 @@ function savePartialState(agentName: string, opts: {
   sessionId: string;
 }): void {
   const ih = getChatHistory(agentName);
+  const expectedVersion = ih._version;
   const last = ih.messages[ih.messages.length - 1];
 
   if (!last) {
@@ -471,13 +504,13 @@ function savePartialState(agentName: string, opts: {
     ih.messages.push({ role: 'assistant', content: opts.fullReply, events: [...opts.allEvents], timestamp: new Date().toISOString() });
   }
 
-  // Keep only last 50 messages to prevent unbounded growth
-  if (ih.messages.length > 50) {
-    ih.messages = ih.messages.slice(-50);
+  // v0.5: Keep last 100 messages (increased from 50 for better context retention)
+  if (ih.messages.length > 100) {
+    ih.messages = ih.messages.slice(-100);
   }
 
   ih.sessionId = opts.sessionId || ih.sessionId;
-  saveChatHistory(agentName, ih);
+  saveChatHistory(agentName, ih, expectedVersion);
 }
 
 // ── Main stream ──────────────────────────────────────────
