@@ -14,6 +14,7 @@ import { getProvider, type AgentProvider } from './providers';
 // Ensure providers are registered
 import './providers/claude';
 import './providers/codex';
+import './providers/claude-proxy';
 import { AGENTS_DIR, GROUPS_DIR, MCP_DIR, MIND_DIR, default as DATA_DIR } from './data-dir';
 import { getMemoryContext, invalidateMemoryCache } from './memory';
 import {
