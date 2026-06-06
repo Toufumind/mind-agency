@@ -7,13 +7,12 @@ import { useTheme, THEMES, type ThemeId } from '@/lib/theme';
 import ProviderProfiles from '@/components/settings/ProviderProfiles';
 import SkillsPanel from '@/components/settings/SkillsPanel';
 
-type Tab = 'appearance' | 'providers' | 'skills' | 'api' | 'system' | 'agent';
+type Tab = 'appearance' | 'providers' | 'skills' | 'system' | 'agent';
 
 const TABS: { id: Tab; icon: React.ReactNode; labelZh: string; labelEn: string }[] = [
   { id: 'appearance', icon: <Palette size={15}/>, labelZh: '外观', labelEn: 'Appearance' },
   { id: 'providers',  icon: <Zap size={15}/>,    labelZh: '供应商', labelEn: 'Providers' },
   { id: 'skills',     icon: <Puzzle size={15}/>, labelZh: 'Skills', labelEn: 'Skills' },
-  { id: 'api',        icon: <Key size={15}/>,    labelZh: 'API',    labelEn: 'API' },
   { id: 'system',    icon: <Server size={15}/>,   labelZh: '系统', labelEn: 'System' },
   { id: 'agent',     icon: <Cpu size={15}/>,      labelZh: 'Agent', labelEn: 'Agent' },
 ];
@@ -149,43 +148,6 @@ export default function SettingsPage() {
 
                 {tab === 'skills' && (
                   <SkillsPanel lang={lang} />
-                )}
-
-                {tab === 'api' && (
-                  <div className="space-y-5">
-                    <div>
-                      <label className="text-[13px] font-semibold text-foreground">{t('api_key')}</label>
-                      <p className="text-[11px] text-muted-foreground mb-2">{t('api_key_desc')}</p>
-                      <input value={apiKey} onChange={e => setApiKey(e.target.value)}
-                        placeholder={data.apiKey ? '•••• (留空保持现有)' : 'sk-...'}
-                        className="w-full px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] font-mono outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/10" type="password" />
-                    </div>
-                    <div>
-                      <label className="text-[13px] font-semibold text-foreground">{t('base_url')}</label>
-                      <p className="text-[11px] text-muted-foreground mb-2">{t('base_url_desc')}</p>
-                      <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)}
-                        placeholder="https://api.anthropic.com"
-                        className="w-full px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] outline-none focus:border-foreground/30 focus:ring-1 focus:ring-foreground/10" />
-                    </div>
-                    <div>
-                      <label className="text-[13px] font-semibold text-foreground">{t('model')}</label>
-                      <p className="text-[11px] text-muted-foreground mb-2">{t('model_desc')}</p>
-                      <select value={model} onChange={e => setModel(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] outline-none focus:border-foreground/30">
-                        {apiModels.length > 0 ? (
-                          apiModels.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
-                        ) : (
-                          <>
-                            <option value="deepseek-v4-pro">V4 Pro</option>
-                            <option value="deepseek-v4-flash">V4 Flash</option>
-                          </>
-                        )}
-                      </select>
-                      {apiModels.length > 0 && (
-                        <p className="text-[10px] text-muted-foreground mt-1">从 API 获取了 {apiModels.length} 个可用模型</p>
-                      )}
-                    </div>
-                  </div>
                 )}
 
                 {tab === 'system' && (
