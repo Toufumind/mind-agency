@@ -98,9 +98,10 @@ function scoreMatch(query: string, key: string, content: string): number {
   return score;
 }
 
-// ── Search cache ─────────────────────────────────────────
+// ── Search cache (with size limit) ──────────────────────
 const searchCache = new Map<string, { results: MemoryEntry[]; ts: number }>();
 const SEARCH_CACHE_TTL = 30_000; // 30s
+const SEARCH_CACHE_MAX = 100; // max 100 cached queries
 
 /** Invalidate search cache for an agent */
 export function invalidateSearchCache(agentName?: string): void {
@@ -111,6 +112,14 @@ export function invalidateSearchCache(agentName?: string): void {
   } else {
     searchCache.clear();
   }
+}
+
+/** Evict oldest search cache entries if over limit */
+function evictSearchCache(): void {
+  if (searchCache.size <= SEARCH_CACHE_MAX) return;
+  const entries = [...searchCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+  const toDelete = entries.slice(0, entries.length - SEARCH_CACHE_MAX);
+  for (const [key] of toDelete) searchCache.delete(key);
 }
 
 /** v0.4: Semantic search with local embedding model — cached */
@@ -166,6 +175,7 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
       .slice(0, 10)
       .map(r => r.entry);
     searchCache.set(cacheKey, { results: finalResults, ts: Date.now() });
+    evictSearchCache();
     return finalResults;
   } catch {
     // Fallback to TF-IDF if embedding model not available
@@ -177,6 +187,7 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
       .slice(0, 10);
     const finalResults = results.map(r => r.entry);
     searchCache.set(cacheKey, { results: finalResults, ts: Date.now() });
+    evictSearchCache();
     return finalResults;
   }
 }
@@ -207,14 +218,23 @@ export function deleteMemory(agentName: string, key: string): boolean {
   return true;
 }
 
-// ── Memory context cache ──────────────────────────────────
+// ── Memory context cache (with size limit) ──────────────
 const memoryContextCache = new Map<string, { data: string; ts: number }>();
 const MEMORY_CACHE_TTL = 60_000; // 1 min
+const MEMORY_CACHE_MAX = 200; // max 200 agents
 
 /** Invalidate memory cache for an agent (or all agents) */
 export function invalidateMemoryCache(agentName?: string): void {
   if (agentName) memoryContextCache.delete(agentName);
   else memoryContextCache.clear();
+}
+
+/** Evict oldest memory cache entries if over limit */
+function evictMemoryCache(): void {
+  if (memoryContextCache.size <= MEMORY_CACHE_MAX) return;
+  const entries = [...memoryContextCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+  const toDelete = entries.slice(0, entries.length - MEMORY_CACHE_MAX);
+  for (const [key] of toDelete) memoryContextCache.delete(key);
 }
 
 /** Get memory context for injection into chat prompt (top 5 most recent) — cached */
@@ -230,6 +250,7 @@ export function getMemoryContext(agentName: string): string {
     ).join('\n');
 
   memoryContextCache.set(agentName, { data: result, ts: now });
+  evictMemoryCache();
   return result;
 }
 

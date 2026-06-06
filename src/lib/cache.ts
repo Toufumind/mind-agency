@@ -4,6 +4,11 @@
  * Replaces scattered Map+TTL implementations across chat.ts, cli-commands.ts,
  * memory.ts, state.ts with a single managed cache system.
  *
+ * Features:
+ *   - TTL-based expiration
+ *   - Size limits per region (LRU eviction)
+ *   - Unified invalidation API
+ *
  * Usage:
  *   import { agentCache } from './cache';
  *   const config = agentCache.get<AgentConfig>('config', agentName, 300_000);
@@ -19,6 +24,7 @@ interface CacheEntry<T> {
 interface CacheRegion {
   name: string;
   defaultTTL: number;
+  maxSize: number;
   data: Map<string, CacheEntry<any>>;
 }
 
@@ -26,22 +32,35 @@ class AgentCache {
   private regions = new Map<string, CacheRegion>();
 
   constructor() {
-    // Pre-define cache regions with default TTLs
-    this.createRegion('config', 300_000);       // 5 min
-    this.createRegion('identity', 300_000);     // 5 min (CLAUDE.md)
-    this.createRegion('membership', 300_000);   // 5 min
-    this.createRegion('groups', 300_000);       // 5 min
-    this.createRegion('memory', 60_000);        // 1 min
-    this.createRegion('goals', 60_000);         // 1 min
-    this.createRegion('session', 10_000);       // 10s
-    this.createRegion('groupChat', 30_000);     // 30s
-    this.createRegion('agents', 300_000);       // 5 min
-    this.createRegion('emails', 60_000);        // 1 min
-    this.createRegion('state', 10_000);         // 10s
+    // Pre-define cache regions with default TTLs and size limits
+    this.createRegion('config', 300_000, 200);       // 5 min, max 200 entries
+    this.createRegion('identity', 300_000, 200);     // 5 min, max 200
+    this.createRegion('membership', 300_000, 200);   // 5 min, max 200
+    this.createRegion('groups', 300_000, 100);       // 5 min, max 100
+    this.createRegion('memory', 60_000, 500);        // 1 min, max 500
+    this.createRegion('goals', 60_000, 200);         // 1 min, max 200
+    this.createRegion('session', 10_000, 200);       // 10s, max 200
+    this.createRegion('groupChat', 30_000, 50);      // 30s, max 50 groups
+    this.createRegion('agents', 300_000, 200);       // 5 min, max 200
+    this.createRegion('emails', 60_000, 500);        // 1 min, max 500
+    this.createRegion('state', 10_000, 200);         // 10s, max 200
   }
 
-  private createRegion(name: string, defaultTTL: number): void {
-    this.regions.set(name, { name, defaultTTL, data: new Map() });
+  private createRegion(name: string, defaultTTL: number, maxSize: number): void {
+    this.regions.set(name, { name, defaultTTL, maxSize, data: new Map() });
+  }
+
+  /**
+   * Evict oldest entries if region exceeds max size (LRU).
+   */
+  private evictIfNeeded(region: CacheRegion): void {
+    if (region.data.size <= region.maxSize) return;
+    // Sort by timestamp, delete oldest
+    const entries = [...region.data.entries()].sort((a, b) => a[1].ts - b[1].ts);
+    const toDelete = entries.slice(0, entries.length - region.maxSize);
+    for (const [key] of toDelete) {
+      region.data.delete(key);
+    }
   }
 
   /**
@@ -61,12 +80,13 @@ class AgentCache {
   }
 
   /**
-   * Set cached value.
+   * Set cached value. Evicts oldest entries if region exceeds max size.
    */
   set<T>(region: string, key: string, data: T): void {
     const r = this.regions.get(region);
     if (!r) return;
     r.data.set(key, { data, ts: Date.now() });
+    this.evictIfNeeded(r);
   }
 
   /**

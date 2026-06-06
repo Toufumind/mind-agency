@@ -253,7 +253,7 @@ interface AgentFullConfig {
 }
 
 const configCache = new Map<string, AgentFullConfig>();
-function getAgentConfig(agentName: string): AgentFullConfig {
+export function getAgentConfig(agentName: string): AgentFullConfig {
   const cached = configCache.get(agentName);
   if (cached) return cached;
   try {
