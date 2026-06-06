@@ -191,12 +191,10 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
     return () => { if (saveRef.current) clearTimeout(saveRef.current); };
   }, [msgs]);
 
-  const MODELS = [
+  const [models, setModels] = useState<Array<{ id: string; label: string }>>([
     { id: 'deepseek-v4-pro', label: 'V4 Pro' },
     { id: 'deepseek-v4-flash', label: 'V4 Flash' },
-    { id: 'claude-sonnet-4-20250514', label: 'Sonnet 4' },
-    { id: 'claude-opus-4-20250514', label: 'Opus 4' },
-  ];
+  ]);
   const [model, setModel] = useState<string>(() => {
     if (typeof window === 'undefined') return 'deepseek-v4-pro';
     return localStorage.getItem(`chat-model-${agentName}`) || 'deepseek-v4-pro';
@@ -255,6 +253,10 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
     load();
 
     fetch('/api/agents').then(r => r.json()).then(d => setAgents(d.agents || [])).catch(() => {});
+    // v0.4: Fetch available models from configured API
+    fetch('/api/system/models').then(r => r.json()).then(d => {
+      if (d.models && d.models.length > 0) setModels(d.models);
+    }).catch(() => {});
     fetch(`/api/emails?agent=${agentName}`).then(r => r.json())
       .then(d => { if (Array.isArray(d)) setEmailCount(d.length); }).catch(() => {});
     loadGroups();
@@ -532,13 +534,13 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
             {/* Model selector dropdown */}
             <button onClick={() => setShowModels(!showModels)}
               className="text-[11px] px-2 py-0.5 rounded-md flex items-center gap-1 text-muted-foreground hover:text-muted transition-colors border border-border">
-              <Cpu size={11} /> {MODELS.find(m => m.id === model)?.label || model} <ChevronDown size={10} />
+              <Cpu size={11} /> {models.find(m => m.id === model)?.label || model} <ChevronDown size={10} />
             </button>
             {showModels && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowModels(false)} />
                 <div className="absolute bottom-full left-0 mb-1 bg-canvas border border-border rounded-xl shadow-xl z-20 py-1 min-w-[160px]">
-                  {MODELS.map(m => (
+                  {models.map(m => (
                     <button key={m.id} onClick={() => setModelPersist(m.id)}
                       className={`w-full text-left px-3 py-2 text-[12px] transition-colors ${model === m.id ? 'bg-surface-alt text-foreground font-medium' : 'text-muted hover:bg-surface-hover'}`}>
                       {m.label}
