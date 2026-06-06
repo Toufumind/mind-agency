@@ -447,13 +447,9 @@ function buildBaseOptions(agentName: string, taskContext?: string) {
   const agentDir = path.join(AGENTS_DIR, agentName);
   // Memory context layer — agent carries past context across sessions
   const memCtx = getMemoryContext(agentName);
-  // Skills context — RAG-based injection (only relevant skills)
-  let skillsCtx = '';
-  try {
-    const skillsMod = require('./skills');
-    skillsCtx = skillsMod.loadSkillsContext(agentName, taskContext);
-  } catch {}
-  const sysPrompt = buildIdentity(agentName) + '\n' + getGroupMembership(agentName) + (memCtx ? '\n' + memCtx : '') + skillsCtx;
+  // Skills: RAG-based, injected into user message (not system prompt)
+  // This keeps system prompt stable for better KV cache
+  const sysPrompt = buildIdentity(agentName) + '\n' + getGroupMembership(agentName) + (memCtx ? '\n' + memCtx : '');
   const mcpServers = buildMcpConfig(agentName);
   const agentConfig = getAgentConfig(agentName);
 
@@ -606,15 +602,21 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
     }
   }
 
-  // Build full task context for RAG (userMessage + group chat + goals)
+  // Build task context for RAG
+  const baseOpts = buildBaseOptions(agentName);
   const groupChatCtx = buildGroupChatContext(agentName, groupName);
   const goalsCtx = loadGoalContext(agentName);
-  const fullPrompt = groupChatCtx
-    ? groupChatCtx + (goalsCtx ? '\n' + goalsCtx : '') + '\n\n---\n\n' + userMessage
-    : (goalsCtx ? goalsCtx + '\n\n---\n\n' : '') + userMessage;
 
-  // Pass full task context to RAG for better skill matching
-  const baseOpts = buildBaseOptions(agentName, fullPrompt);
+  // Skills: RAG-based, injected into user message
+  let skillsCtx = '';
+  try {
+    const skillsMod = require('./skills');
+    skillsCtx = skillsMod.loadSkillsContext(agentName, userMessage);
+  } catch {}
+
+  const fullPrompt = groupChatCtx
+    ? groupChatCtx + (goalsCtx ? '\n' + goalsCtx : '') + (skillsCtx ? '\n' + skillsCtx : '') + '\n\n---\n\n' + userMessage
+    : (goalsCtx ? goalsCtx + '\n' : '') + (skillsCtx ? skillsCtx + '\n' : '') + userMessage;
   const ts = () => new Date().toISOString();
 
   return new ReadableStream<ChatEvent>({
