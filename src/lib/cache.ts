@@ -30,6 +30,8 @@ interface CacheRegion {
 
 class AgentCache {
   private regions = new Map<string, CacheRegion>();
+  private hits = 0;
+  private misses = 0;
 
   constructor() {
     // Pre-define cache regions with default TTLs and size limits
@@ -69,14 +71,16 @@ class AgentCache {
    */
   get<T>(region: string, key: string, ttl?: number): T | null {
     const r = this.regions.get(region);
-    if (!r) return null;
+    if (!r) { this.misses++; return null; }
     const entry = r.data.get(key);
-    if (!entry) return null;
+    if (!entry) { this.misses++; return null; }
     const maxAge = ttl ?? r.defaultTTL;
     if (Date.now() - entry.ts > maxAge) {
       r.data.delete(key);
+      this.misses++;
       return null;
     }
+    this.hits++;
     return entry.data as T;
   }
 
@@ -136,12 +140,24 @@ class AgentCache {
   /**
    * Get cache stats for debugging.
    */
-  stats(): Record<string, number> {
-    const result: Record<string, number> = {};
+  stats(): Record<string, number | string> {
+    const result: Record<string, number | string> = {};
     for (const [name, region] of this.regions) {
       result[name] = region.data.size;
     }
+    const total = this.hits + this.misses;
+    result.hits = this.hits;
+    result.misses = this.misses;
+    result.hitRate = total > 0 ? `${Math.round(this.hits / total * 100)}%` : '0%';
     return result;
+  }
+
+  /**
+   * Reset hit/miss counters.
+   */
+  resetStats(): void {
+    this.hits = 0;
+    this.misses = 0;
   }
 }
 
