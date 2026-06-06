@@ -297,10 +297,17 @@ function buildGroupChatContext(_agentName: string, groupName?: string): string {
   try {
     const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort();
     if (files.length === 0) return `\n群聊${groupName}:暂无消息,用group_send发言.`;
-    const latest = files[files.length - 1];
-    const raw = fs.readFileSync(path.join(chatDir, latest), 'utf-8');
-    const ctx = raw.length > 1500 ? raw.slice(-1500) : raw;
-    return `\n群聊${groupName}最近(${latest.replace('.md','')}):\n${ctx}`;
+    // v0.4: Read last 5 files instead of just 1 (more context)
+    const recentFiles = files.slice(-5);
+    const msgs: string[] = [];
+    for (const f of recentFiles) {
+      try {
+        const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
+        const truncated = raw.length > 800 ? raw.slice(-800) : raw;
+        msgs.push(`[${f.replace('.md','')}]\n${truncated}`);
+      } catch {}
+    }
+    return `\n群聊${groupName}最近消息:\n${msgs.join('\n---\n')}`;
   } catch { return `\n群聊${groupName}:读取失败.`; }
 }
 

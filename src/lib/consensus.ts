@@ -81,7 +81,7 @@ const DEFAULT_RULES: ConsensusRule[] = [
 
   // Step agent — workflow step, single agent approval + adversary uses admin to ensure different reviewer
   { action: 'workflow_step', description: 'Workflow 步骤由指定 Agent 执行，另一人复核', approvers: [{ type: 'step_agent' }], quorum: 1, logic: 'and', adversary: { type: 'role', role: 'admin' } },
-  { action: 'workflow_trigger', description: '触发 Workflow 需要 admin 或 PM', approvers: [{ type: 'role', role: 'admin' }, { type: 'role', role: 'PM' }], quorum: 1, logic: 'or' },
+  { action: 'workflow_trigger', description: '触发 Workflow', approvers: [], quorum: 0 }, // no approval needed — user triggers directly
   { action: 'workflow_create', description: '创建工作流', approvers: [{ type: 'human' }], quorum: 1, logic: 'and' },
   { action: 'workflow_step_deploy', description: '部署工作流步骤', approvers: [{ type: 'human' }], quorum: 1, logic: 'and', permissionKey: 'canDeploy' },
 
