@@ -73,6 +73,69 @@ const TRIGGER_STYLE = {
   textClass: 'fill-violet-400', animClass: 'node-breathe', badgeColor: '#a78bfa',
 };
 
+// ── Cell (workflow) colors ──
+const CELL_COLORS = [
+  { wall: '#6366f1', fill: 'rgba(99,102,241,0.06)', glow: 'rgba(99,102,241,0.15)' },
+  { wall: '#8b5cf6', fill: 'rgba(139,92,246,0.06)', glow: 'rgba(139,92,246,0.15)' },
+  { wall: '#ec4899', fill: 'rgba(236,72,153,0.06)', glow: 'rgba(236,72,153,0.15)' },
+  { wall: '#f59e0b', fill: 'rgba(245,158,11,0.06)', glow: 'rgba(245,158,11,0.15)' },
+  { wall: '#10b981', fill: 'rgba(16,185,129,0.06)', glow: 'rgba(16,185,129,0.15)' },
+  { wall: '#3b82f6', fill: 'rgba(59,130,246,0.06)', glow: 'rgba(59,130,246,0.15)' },
+];
+
+// Convex hull (Andrew's monotone chain)
+function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
+  if (points.length < 3) return points;
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: { x: number; y: number }[] = [];
+  for (const p of sorted) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper: { x: number; y: number }[] = [];
+  for (const p of sorted.reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+// Expand hull by padding
+function expandHull(hull: { x: number; y: number }[], padding: number): { x: number; y: number }[] {
+  if (hull.length < 3) return hull;
+  return hull.map((p, i) => {
+    const prev = hull[(i - 1 + hull.length) % hull.length];
+    const next = hull[(i + 1) % hull.length];
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    // Normal vector (perpendicular, outward)
+    const nx = -dy / len;
+    const ny = dx / len;
+    // Check direction (ensure outward)
+    const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
+    const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
+    const dot = (p.x - cx) * nx + (p.y - cy) * ny;
+    const sign = dot >= 0 ? 1 : -1;
+    return { x: p.x + nx * padding * sign, y: p.y + ny * padding * sign };
+  });
+}
+
+// Smooth hull path (cubic bezier through points)
+function hullPath(points: { x: number; y: number }[]): string {
+  if (points.length < 3) return '';
+  const n = points.length;
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = points[(i - 1 + n) % n];
+    const p1 = points[i];
+    const p2 = points[(i + 1) % n];
+    const p3 = points[(i + 2) % n];
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+  return d + ' Z';
+}
+
 const STEP_ICONS: Record<string, string> = {
   trigger: '⚡', test: '🧪', build: '📦', deploy: '🚀', review: '🔍',
   fix: '🔧', verify: '✅', notify: '📢', research: '📚', synthesize: '📝',
@@ -260,19 +323,40 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* ── Workflow labels ── */}
-          {workflows.map(wf => {
-            const first = positions.get(`${wf.group}:${wf.steps[0]?.id}`);
-            if (!first) return null;
+          {/* ── Cell hulls (workflow containers) ── */}
+          {workflows.map((wf, wi) => {
+            const pts = wf.steps
+              .map(s => positions.get(`${wf.group}:${s.id}`))
+              .filter(Boolean) as { x: number; y: number }[];
+            if (pts.length < 2) return null;
+            const hull = convexHull(pts);
+            const expanded = expandHull(hull, 80);
+            const path = hullPath(expanded);
+            if (!path) return null;
+            const colors = CELL_COLORS[wi % CELL_COLORS.length];
             const isCurrent = wf.group === selectedGroup;
+            const opacity = selectedGroup ? (isCurrent ? 1 : 0.08) : 0.8;
+
             return (
-              <text key={`label-${wf.group}`} x={first.x} y={first.y - 60}
-                textAnchor="middle" fontSize="13" fontWeight="700"
-                fill={isCurrent ? '#e2e8f0' : '#475569'}
-                opacity={selectedGroup ? (isCurrent ? 1 : 0.2) : 0.8}
-                style={{ transition: 'opacity 0.5s, fill 0.5s' }}>
-                {wf.name}
-              </text>
+              <g key={`cell-${wf.group}`} opacity={opacity} style={{ transition: 'opacity 0.6s ease' }}>
+                {/* Cell glow */}
+                <path d={path} fill={colors.glow} stroke="none" filter="url(#glow-blue)" opacity="0.3" />
+                {/* Cell cytoplasm */}
+                <path d={path} fill={colors.fill} stroke={colors.wall}
+                  strokeWidth={isCurrent ? 1.5 : 0.8} strokeDasharray={isCurrent ? 'none' : '4 4'}
+                  opacity={isCurrent ? 0.8 : 0.4}
+                  style={{ transition: 'stroke-width 0.3s, opacity 0.3s' }} />
+                {/* Cell label */}
+                <text x={pts[0].x} y={expanded.reduce((s, p) => s + p.y, 0) / expanded.length - 20}
+                  textAnchor="middle" fontSize="12" fontWeight="700" letterSpacing="0.5"
+                  fill={colors.wall} opacity={isCurrent ? 1 : 0.5}>
+                  {wf.name}
+                </text>
+                <text x={pts[0].x} y={expanded.reduce((s, p) => s + p.y, 0) / expanded.length - 6}
+                  textAnchor="middle" fontSize="9" fill={colors.wall} opacity={isCurrent ? 0.6 : 0.25}>
+                  {wf.steps.length} steps · #{wf.group}
+                </text>
+              </g>
             );
           })}
 
