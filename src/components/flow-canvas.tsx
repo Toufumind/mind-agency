@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ForceSimulation, type ForceNode, type ForceEdge } from '@/lib/force-simulation';
 import FlowCellsWebGL, { CELL_COLORS } from './flow-cells-webgl';
+import FlowShaderCanvas from './flow-shader-canvas';
 import { Play, ZoomIn, ZoomOut, Maximize2, Pause, RotateCcw } from 'lucide-react';
 
 // ── Types ──
@@ -233,199 +234,61 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   return (
     <div className="relative flex-1 h-full overflow-hidden" style={{ background: 'radial-gradient(ellipse at center, #0f172a 0%, #020617 70%)' }}
       onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel}>
-      {/* ── WebGL cell blobs ── */}
-      <FlowCellsWebGL
-        cells={workflows.map((wf, wi) => ({
-          nodes: wf.steps.map(s => positions.get(`${wf.group}:${s.id}`)).filter(Boolean) as { x: number; y: number }[],
-          color: CELL_COLORS[wi % CELL_COLORS.length],
-        }))}
-        zoom={zoom}
-        pan={pan}
+      {/* ── WebGL shader canvas (all visuals) ── */}
+      <FlowShaderCanvas
         width={typeof window !== 'undefined' ? window.innerWidth : 1200}
         height={typeof window !== 'undefined' ? window.innerHeight : 800}
-        time={time}
+        zoom={zoom} pan={pan} time={time}
+        cells={workflows.map((wf, wi) => ({
+          nodes: wf.steps.map(s => positions.get(`${wf.group}:${s.id}`)).filter(Boolean) as { x: number; y: number }[],
+          colorIdx: wi,
+        }))}
+        nodes={workflows.flatMap(wf => wf.steps.map(s => {
+          const pos = positions.get(`${wf.group}:${s.id}`);
+          if (!pos) return null;
+          const isTrigger = s.type === 'trigger';
+          const status = getStepStatus(wf.group, s.id);
+          const statusNum = isTrigger ? 5 : { pending: 0, waiting: 1, in_progress: 2, completed: 3, failed: 4 }[status] || 0;
+          return { x: pos.x, y: pos.y, status: statusNum, isHovered: hoveredNode === `${wf.group}:${s.id}` ? 1 : 0 };
+        }).filter(Boolean) as any[])}
+        edges={edges.map(e => ({ x1: e.x1, y1: e.y1 + 28, x2: e.x2, y2: e.y2 - 28, active: e.active ? 1 : 0 }))}
       />
 
+      {/* ── SVG overlay: transparent click areas + labels ── */}
       <svg ref={svgRef} className="w-full h-full" style={{ cursor: dragging ? 'grabbing' : 'grab', position: 'relative', zIndex: 1 }}>
-        <defs>
-          {/* Grid pattern */}
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" strokeWidth="0.5" opacity="0.3" />
-          </pattern>
-          {/* Arrow markers — fluid teardrop shape */}
-          <marker id="arrow" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto">
-            <path d="M 0 1 Q 6 4 0 7 Q 2 4 0 1 Z" fill="#475569" opacity="0.5" />
-          </marker>
-          <marker id="arrow-active" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto">
-            <path d="M 0 1 Q 6 4 0 7 Q 2 4 0 1 Z" fill="#60a5fa" />
-          </marker>
-          {/* Glow filters */}
-          {Object.entries({ blue: '#3b82f6', green: '#22c55e', red: '#ef4444', yellow: '#eab308', violet: '#a78bfa' }).map(([name, color]) => (
-            <filter key={name} id={`glow-${name}`} x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="blur" />
-              <feFlood floodColor={color} floodOpacity="0.5" result="color" />
-              <feComposite in="color" in2="blur" operator="in" result="shadow" />
-              <feMerge><feMergeNode in="shadow" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-          ))}
-        </defs>
-
-        {/* Grid background */}
-        <rect width="100%" height="100%" fill="url(#grid)" />
-
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* ── Cell labels (rendered above WebGL layer) ── */}
+          {/* Cell labels */}
           {workflows.map((wf, wi) => {
-            const cellPts = wf.steps
-              .map(s => positions.get(`${wf.group}:${s.id}`))
-              .filter(Boolean) as { x: number; y: number }[];
+            const cellPts = wf.steps.map(s => positions.get(`${wf.group}:${s.id}`)).filter(Boolean) as { x: number; y: number }[];
             if (cellPts.length === 0) return null;
-            const colors = CELL_COLORS[wi % CELL_COLORS.length];
             const isCurrent = wf.group === selectedGroup;
             const opacity = selectedGroup ? (isCurrent ? 1 : 0.15) : 0.9;
             const cx = cellPts.reduce((s, p) => s + p.x, 0) / cellPts.length;
             const cy = cellPts.reduce((s, p) => s + p.y, 0) / cellPts.length;
-            const wallColor = `rgb(${Math.round(colors[0] * 255)},${Math.round(colors[1] * 255)},${Math.round(colors[2] * 255)})`;
+            const CC = [[0.388,0.400,0.945],[0.545,0.361,0.965],[0.925,0.282,0.600],[0.961,0.620,0.043],[0.063,0.725,0.502],[0.231,0.510,0.965]];
+            const c = CC[wi % CC.length];
+            const wallColor = `rgb(${Math.round(c[0]*255)},${Math.round(c[1]*255)},${Math.round(c[2]*255)})`;
             return (
-              <g key={`cell-label-${wf.group}`} opacity={opacity} style={{ transition: 'opacity 0.5s' }}>
-                <text x={cx} y={cy - 25} textAnchor="middle" fontSize="13" fontWeight="700"
-                  letterSpacing="0.5" fill={wallColor}>
-                  {wf.name}
-                </text>
-                <text x={cx} y={cy - 10} textAnchor="middle" fontSize="9" fill={wallColor} opacity="0.5">
-                  {wf.steps.length} steps · #{wf.group}
-                </text>
+              <g key={`lbl-${wf.group}`} opacity={opacity}>
+                <text x={cx} y={cy - 45} textAnchor="middle" fontSize="13" fontWeight="700" letterSpacing="0.5" fill={wallColor}>{wf.name}</text>
+                <text x={cx} y={cy - 30} textAnchor="middle" fontSize="9" fill={wallColor} opacity="0.5">{wf.steps.length} steps · #{wf.group}</text>
               </g>
             );
           })}
 
-          {/* ── Edges — flowing water effect ── */}
-          {edges.map(e => {
-            const mx = (e.x1 + e.x2) / 2;
-            const my = Math.min(e.y1, e.y2) - 25;
-            const pathD = `M ${e.x1} ${e.y1 + 28} C ${e.x1} ${my}, ${e.x2} ${my}, ${e.x2} ${e.y2 - 28}`;
-            const dashOffset = -(time * 0.8) % 30;
-            const flowOffset = -(time * 1.2) % 100;
+          {/* Transparent click targets for nodes */}
+          {workflows.map(wf => wf.steps.map(step => {
+            const pos = positions.get(`${wf.group}:${step.id}`);
+            if (!pos) return null;
             return (
-              <g key={e.key} opacity={selectedGroup ? 0.25 : 0.8} style={{ transition: 'opacity 0.5s' }}>
-                {/* Wide glow — water shimmer */}
-                {e.active && (
-                  <path d={pathD} fill="none" stroke="rgba(59,130,246,0.08)" strokeWidth="16"
-                    strokeDasharray="20 10" strokeDashoffset={dashOffset} />
-                )}
-                {/* Medium glow */}
-                {e.active && (
-                  <path d={pathD} fill="none" stroke="rgba(59,130,246,0.2)" strokeWidth="6"
-                    strokeDasharray="15 8" strokeDashoffset={dashOffset * 0.7} />
-                )}
-                {/* Main flow line */}
-                <path d={pathD} fill="none"
-                  stroke={e.active ? '#3b82f6' : '#334155'}
-                  strokeWidth={e.active ? 2.5 : 1}
-                  strokeDasharray={e.active ? '12 6' : '3 8'}
-                  strokeDashoffset={e.active ? dashOffset : 0}
-                  strokeLinecap="round"
-                  markerEnd={e.active ? 'url(#arrow-active)' : 'url(#arrow)'}
-                  style={{ transition: 'stroke 0.3s' }} />
-                {/* Flowing particles — small dots moving along path */}
-                {e.active && [0, 0.33, 0.66].map((offset, pi) => {
-                  const t = ((time * 0.02 + offset) % 1);
-                  // Quadratic bezier point at t
-                  const t2 = t * t;
-                  const mt = 1 - t;
-                  const mt2 = mt * mt;
-                  const px = mt2 * e.x1 + 2 * mt * t * mx + t2 * e.x2;
-                  const py = mt2 * (e.y1 + 28) + 2 * mt * t * my + t2 * (e.y2 - 28);
-                  return (
-                    <circle key={pi} cx={px} cy={py} r={2.5 - t * 1.5}
-                      fill="#60a5fa" opacity={0.8 - t * 0.6} />
-                  );
-                })}
-              </g>
+              <circle key={`hit-${wf.group}:${step.id}`} cx={pos.x} cy={pos.y} r={30}
+                fill="transparent" style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => { setHoveredNode(`${wf.group}:${step.id}`); setHoverPos({ x: e.clientX, y: e.clientY }); }}
+                onMouseMove={(e) => setHoverPos({ x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => { setHoveredNode(null); setHoverPos(null); }}
+                onClick={() => step.type === 'trigger' ? onTriggerClick(wf.group) : onNodeClick(wf.group, step)} />
             );
-          })}
-
-          {/* ── Nodes ── */}
-          {workflows.map(wf => {
-            const isCurrent = wf.group === selectedGroup;
-            const groupOpacity = selectedGroup ? (isCurrent ? 1 : 0.12) : 1;
-            const groupFilter = selectedGroup && !isCurrent ? 'blur(6px)' : 'none';
-
-            return (
-              <g key={wf.group} opacity={groupOpacity} style={{ filter: groupFilter, transition: 'opacity 0.6s ease, filter 0.6s ease' }}>
-                {wf.steps.map(step => {
-                  const pos = positions.get(`${wf.group}:${step.id}`);
-                  if (!pos) return null;
-                  const isTrigger = step.type === 'trigger';
-                  const status = getStepStatus(wf.group, step.id);
-                  const style = isTrigger ? TRIGGER_STYLE : STATUS_STYLE[status] || STATUS_STYLE.pending;
-                  const icon = getIcon(step);
-                  const isActive = status === 'in_progress' || status === 'waiting';
-                  const isHovered = hoveredNode === `${wf.group}:${step.id}`;
-                  const run = runs[wf.group]?.[0];
-                  const elapsed = run?.startedAt ? Date.now() - run.startedAt : 0;
-
-                  const filter = isTrigger ? 'url(#glow-violet)'
-                    : status === 'in_progress' ? 'url(#glow-blue)'
-                    : status === 'completed' ? 'url(#glow-green)'
-                    : status === 'failed' ? 'url(#glow-red)'
-                    : status === 'waiting' ? 'url(#glow-yellow)'
-                    : 'none';
-
-                  return (
-                    <g key={step.id} className="node-group" transform={`translate(${pos.x}, ${pos.y})`}
-                      style={{ cursor: 'pointer' }}
-                      onMouseEnter={(e) => { setHoveredNode(`${wf.group}:${step.id}`); setHoverPos({ x: e.clientX, y: e.clientY }); }}
-                      onMouseMove={(e) => setHoverPos({ x: e.clientX, y: e.clientY })}
-                      onMouseLeave={() => { setHoveredNode(null); setHoverPos(null); }}
-                      onClick={() => isTrigger ? onTriggerClick(wf.group) : onNodeClick(wf.group, step)}
-                    >
-                      {/* Glow backdrop */}
-                      <circle r={30} fill="none" stroke="none" filter={filter} />
-
-                      {/* Node body — circle */}
-                      <circle r={28}
-                        fill={style.fill} stroke={isHovered ? '#e2e8f0' : style.stroke}
-                        strokeWidth={isHovered ? 2.5 : 1.5}
-                        strokeDasharray={isTrigger ? '6 3' : 'none'}
-                        style={{ transition: 'stroke 0.2s, stroke-width 0.2s' }} />
-
-                      {/* Active pulse ring */}
-                      {isActive && (
-                        <circle r={31} fill="none" stroke={style.stroke} strokeWidth="1.5"
-                          opacity="0.4" className={style.animClass} />
-                      )}
-
-                      {/* Icon — centered */}
-                      <text y={-4} textAnchor="middle" fontSize="16" dominantBaseline="middle">{icon}</text>
-
-                      {/* Step name — below icon */}
-                      <text y={12} textAnchor="middle" fontSize="9" fontWeight="600" fill="#e2e8f0">
-                        {step.id.length > 10 ? step.id.slice(0, 10) + '…' : step.id}
-                      </text>
-
-                      {/* Status badge — top right */}
-                      {status !== 'pending' && (
-                        <g transform="translate(18, -18)">
-                          <circle r="5" fill={style.badgeColor} opacity="0.9" />
-                          {status === 'completed' && <text y="3.5" textAnchor="middle" fontSize="7" fill="#fff" fontWeight="700">✓</text>}
-                          {status === 'failed' && <text y="3.5" textAnchor="middle" fontSize="7" fill="#fff" fontWeight="700">✗</text>}
-                          {status === 'in_progress' && <circle r="2.5" fill="#fff" className="node-spin" />}
-                        </g>
-                      )}
-
-                      {/* Duration label — right side */}
-                      {run && (status === 'in_progress' || status === 'completed') && elapsed > 0 && (
-                        <text x={34} y={4} fontSize="8" fill="#64748b" dominantBaseline="middle">
-                          {fmtTime(elapsed)}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </g>
-            );
-          })}
+          }))}
         </g>
       </svg>
 
