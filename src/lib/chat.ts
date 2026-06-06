@@ -436,18 +436,22 @@ export function invalidateAgentCache(agentName: string): void {
   if (typeof invalidateGoalsCache === 'function') invalidateGoalsCache(agentName);
 }
 
-function buildBaseOptions(agentName: string) {
-  const cached = agentCache.get<Record<string, any>>('config', agentName + ':baseOptions');
-  if (cached) return cached;
+function buildBaseOptions(agentName: string, taskContext?: string) {
+  // Don't cache if we have task context (RAG changes per task)
+  const cacheKey = agentName + ':baseOptions' + (taskContext ? ':rag' : '');
+  if (!taskContext) {
+    const cached = agentCache.get<Record<string, any>>('config', cacheKey);
+    if (cached) return cached;
+  }
 
   const agentDir = path.join(AGENTS_DIR, agentName);
   // Memory context layer — agent carries past context across sessions
   const memCtx = getMemoryContext(agentName);
-  // Skills context — injected skill prompts
+  // Skills context — RAG-based injection (only relevant skills)
   let skillsCtx = '';
   try {
     const skillsMod = require('./skills');
-    skillsCtx = skillsMod.loadSkillsContext(agentName);
+    skillsCtx = skillsMod.loadSkillsContext(agentName, taskContext);
   } catch {}
   const sysPrompt = buildIdentity(agentName) + '\n' + getGroupMembership(agentName) + (memCtx ? '\n' + memCtx : '') + skillsCtx;
   const mcpServers = buildMcpConfig(agentName);
@@ -463,7 +467,7 @@ function buildBaseOptions(agentName: string) {
     // maxTurns removed — agents can run indefinitely
   };
 
-  agentCache.set('config', agentName + ':baseOptions', opts);
+  agentCache.set('config', cacheKey, opts);
   return opts;
 }
 
@@ -602,7 +606,7 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
     }
   }
 
-  const baseOpts = buildBaseOptions(agentName);
+  const baseOpts = buildBaseOptions(agentName, userMessage);
   const groupChatCtx = buildGroupChatContext(agentName, groupName);
   // Inject persistent goals from /goal command
   const goalsCtx = loadGoalContext(agentName);

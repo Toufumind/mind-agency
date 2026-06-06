@@ -252,12 +252,12 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
           <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
             <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" strokeWidth="0.5" opacity="0.3" />
           </pattern>
-          {/* Arrow marker */}
-          <marker id="arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-            <path d="M 0 0 L 10 3 L 0 6 Z" fill="#475569" opacity="0.6" />
+          {/* Arrow markers — fluid teardrop shape */}
+          <marker id="arrow" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto">
+            <path d="M 0 1 Q 6 4 0 7 Q 2 4 0 1 Z" fill="#475569" opacity="0.5" />
           </marker>
-          <marker id="arrow-active" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="6" orient="auto">
-            <path d="M 0 0 L 10 3 L 0 6 Z" fill="#3b82f6" />
+          <marker id="arrow-active" viewBox="0 0 12 8" refX="11" refY="4" markerWidth="10" markerHeight="8" orient="auto">
+            <path d="M 0 1 Q 6 4 0 7 Q 2 4 0 1 Z" fill="#60a5fa" />
           </marker>
           {/* Glow filters */}
           {Object.entries({ blue: '#3b82f6', green: '#22c55e', red: '#ef4444', yellow: '#eab308', violet: '#a78bfa' }).map(([name, color]) => (
@@ -299,24 +299,48 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
             );
           })}
 
-          {/* ── Edges ── */}
+          {/* ── Edges — flowing water effect ── */}
           {edges.map(e => {
             const mx = (e.x1 + e.x2) / 2;
-            const my = Math.min(e.y1, e.y2) - 30;
-            const dashOffset = -(time * 0.5) % 24;
+            const my = Math.min(e.y1, e.y2) - 25;
+            const pathD = `M ${e.x1} ${e.y1 + 28} C ${e.x1} ${my}, ${e.x2} ${my}, ${e.x2} ${e.y2 - 28}`;
+            const dashOffset = -(time * 0.8) % 30;
+            const flowOffset = -(time * 1.2) % 100;
             return (
-              <g key={e.key} opacity={selectedGroup ? 0.3 : 0.7} style={{ transition: 'opacity 0.5s' }}>
-                {/* Shadow path */}
-                <path d={`M ${e.x1} ${e.y1 + NODE_H / 2} C ${e.x1} ${my}, ${e.x2} ${my}, ${e.x2} ${e.y2 - NODE_H / 2}`}
-                  fill="none" stroke={e.active ? 'rgba(59,130,246,0.15)' : 'transparent'} strokeWidth="8" />
-                {/* Main path */}
-                <path d={`M ${e.x1} ${e.y1 + NODE_H / 2} C ${e.x1} ${my}, ${e.x2} ${my}, ${e.x2} ${e.y2 - NODE_H / 2}`}
-                  fill="none" stroke={e.active ? '#3b82f6' : '#334155'}
-                  strokeWidth={e.active ? 2 : 1.2}
-                  strokeDasharray={e.active ? '10 5' : '4 8'}
+              <g key={e.key} opacity={selectedGroup ? 0.25 : 0.8} style={{ transition: 'opacity 0.5s' }}>
+                {/* Wide glow — water shimmer */}
+                {e.active && (
+                  <path d={pathD} fill="none" stroke="rgba(59,130,246,0.08)" strokeWidth="16"
+                    strokeDasharray="20 10" strokeDashoffset={dashOffset} />
+                )}
+                {/* Medium glow */}
+                {e.active && (
+                  <path d={pathD} fill="none" stroke="rgba(59,130,246,0.2)" strokeWidth="6"
+                    strokeDasharray="15 8" strokeDashoffset={dashOffset * 0.7} />
+                )}
+                {/* Main flow line */}
+                <path d={pathD} fill="none"
+                  stroke={e.active ? '#3b82f6' : '#334155'}
+                  strokeWidth={e.active ? 2.5 : 1}
+                  strokeDasharray={e.active ? '12 6' : '3 8'}
                   strokeDashoffset={e.active ? dashOffset : 0}
+                  strokeLinecap="round"
                   markerEnd={e.active ? 'url(#arrow-active)' : 'url(#arrow)'}
                   style={{ transition: 'stroke 0.3s' }} />
+                {/* Flowing particles — small dots moving along path */}
+                {e.active && [0, 0.33, 0.66].map((offset, pi) => {
+                  const t = ((time * 0.02 + offset) % 1);
+                  // Quadratic bezier point at t
+                  const t2 = t * t;
+                  const mt = 1 - t;
+                  const mt2 = mt * mt;
+                  const px = mt2 * e.x1 + 2 * mt * t * mx + t2 * e.x2;
+                  const py = mt2 * (e.y1 + 28) + 2 * mt * t * my + t2 * (e.y2 - 28);
+                  return (
+                    <circle key={pi} cx={px} cy={py} r={2.5 - t * 1.5}
+                      fill="#60a5fa" opacity={0.8 - t * 0.6} />
+                  );
+                })}
               </g>
             );
           })}

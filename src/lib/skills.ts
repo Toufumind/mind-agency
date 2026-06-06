@@ -238,6 +238,9 @@ export function uninstallSkill(id: string): boolean {
   skills.splice(idx, 1);
   saveSkills(skills);
 
+  // Rebuild embedding index
+  buildSkillIndex();
+
   return true;
 }
 
@@ -299,6 +302,9 @@ export async function updateSkill(id: string): Promise<Skill | null> {
   saveSkills(skills);
   distributeToAgents(skill.name);
 
+  // Rebuild embedding index
+  buildSkillIndex();
+
   return skill;
 }
 
@@ -335,28 +341,158 @@ function removeFromAgents(skillName: string): void {
   }
 }
 
-// ── Load skills context for prompt injection ─────────────
+// ── Skill RAG — Embedding-based retrieval ────────────────
 
-export function loadSkillsContext(agentName: string): string {
-  const agentDir = path.join(AGENTS_DIR, agentName, 'skills');
-  if (!fs.existsSync(agentDir)) return '';
+import { embed, cosineSimilarity } from './embedding';
 
-  const parts: string[] = [];
-  const skills = fs.readdirSync(agentDir, { withFileTypes: true })
-    .filter(e => e.isDirectory())
-    .map(e => e.name);
+interface SkillChunk {
+  skillId: string;
+  skillName: string;
+  content: string;
+  embedding: number[];
+}
 
-  for (const skillName of skills) {
-    const promptPath = path.join(agentDir, skillName, 'prompt.md');
+// In-memory index (rebuilt on startup)
+let skillIndex: SkillChunk[] = [];
+
+/**
+ * Build embedding index for all installed skills.
+ * Called on startup and after install/uninstall.
+ */
+export function buildSkillIndex(): void {
+  skillIndex = [];
+  const skills = loadSkills();
+
+  for (const skill of skills) {
+    const skillDir = path.join(SKILLS_DIR, skill.name);
+    if (!fs.existsSync(skillDir)) continue;
+
+    // Index prompt.md
+    const promptPath = path.join(skillDir, 'prompt.md');
     if (fs.existsSync(promptPath)) {
       try {
         const content = fs.readFileSync(promptPath, 'utf-8').trim();
-        if (content) parts.push(`### Skill: ${skillName}\n${content}`);
+        if (content) {
+          // Split into chunks (by section or paragraph)
+          const chunks = splitIntoChunks(content);
+          for (const chunk of chunks) {
+            skillIndex.push({
+              skillId: skill.id,
+              skillName: skill.name,
+              content: chunk,
+              embedding: embed(chunk),
+            });
+          }
+        }
       } catch {}
     }
   }
 
-  return parts.length > 0 ? '\n\n[启用的 Skills]\n' + parts.join('\n\n') : '';
+  console.log(`[skills] Indexed ${skillIndex.length} chunks from ${skills.length} skills`);
+}
+
+/**
+ * Split text into meaningful chunks (by ## headers or paragraphs).
+ */
+function splitIntoChunks(text: string, maxChunkSize = 500): string[] {
+  const chunks: string[] = [];
+  const sections = text.split(/\n(?=##\s)/);
+
+  for (const section of sections) {
+    if (section.length <= maxChunkSize) {
+      chunks.push(section.trim());
+    } else {
+      // Split by paragraphs
+      const paragraphs = section.split(/\n\n+/);
+      let current = '';
+      for (const p of paragraphs) {
+        if ((current + '\n\n' + p).length > maxChunkSize && current) {
+          chunks.push(current.trim());
+          current = p;
+        } else {
+          current = current ? current + '\n\n' + p : p;
+        }
+      }
+      if (current.trim()) chunks.push(current.trim());
+    }
+  }
+
+  return chunks.filter(c => c.length > 20); // Filter out very short chunks
+}
+
+/**
+ * Search relevant skills for a given task (RAG).
+ * Returns top-K most relevant skill chunks.
+ */
+export function searchRelevantSkills(task: string, topK = 3): SkillChunk[] {
+  if (skillIndex.length === 0) buildSkillIndex();
+  if (skillIndex.length === 0) return [];
+
+  const taskEmbedding = embed(task);
+
+  const scored = skillIndex.map(chunk => ({
+    ...chunk,
+    score: cosineSimilarity(taskEmbedding, chunk.embedding),
+  }));
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .filter(c => c.score > 0.1); // Minimum similarity threshold
+}
+
+// ── Load skills context (RAG version) ────────────────────
+
+/**
+ * Load skills context using RAG — only injects relevant skill fragments.
+ * Falls back to full injection if no task context available.
+ */
+export function loadSkillsContext(agentName: string, taskContext?: string): string {
+  const agentDir = path.join(AGENTS_DIR, agentName, 'skills');
+  if (!fs.existsSync(agentDir)) return '';
+
+  // Get installed skills for this agent
+  const installedSkills = fs.readdirSync(agentDir, { withFileTypes: true })
+    .filter(e => e.isDirectory())
+    .map(e => e.name);
+
+  if (installedSkills.length === 0) return '';
+
+  // If no task context, inject all skill prompts (fallback)
+  if (!taskContext) {
+    const parts: string[] = [];
+    for (const skillName of installedSkills) {
+      const promptPath = path.join(agentDir, skillName, 'prompt.md');
+      if (fs.existsSync(promptPath)) {
+        try {
+          const content = fs.readFileSync(promptPath, 'utf-8').trim();
+          if (content) parts.push(`### Skill: ${skillName}\n${content}`);
+        } catch {}
+      }
+    }
+    return parts.length > 0 ? '\n\n[启用的 Skills]\n' + parts.join('\n\n') : '';
+  }
+
+  // RAG: search relevant skills based on task context
+  const relevant = searchRelevantSkills(taskContext, 3);
+
+  // Filter to only skills installed by this agent
+  const agentSkills = relevant.filter(r => installedSkills.includes(r.skillName));
+
+  if (agentSkills.length === 0) return '';
+
+  // Deduplicate by skill name (take highest scoring chunk per skill)
+  const seen = new Set<string>();
+  const unique: SkillChunk[] = [];
+  for (const chunk of agentSkills) {
+    if (!seen.has(chunk.skillName)) {
+      seen.add(chunk.skillName);
+      unique.push(chunk);
+    }
+  }
+
+  const parts = unique.map(c => `[Skill: ${c.skillName}]\n${c.content}`);
+  return '\n\n[相关 Skills]\n' + parts.join('\n\n');
 }
 
 // ── List ─────────────────────────────────────────────────

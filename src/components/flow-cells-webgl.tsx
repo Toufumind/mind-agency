@@ -70,7 +70,9 @@ const FRAG_SRC = `
       int nodeCount = u_cellNodeCounts[c];
 
       // Accumulate field from all nodes in this cell
-      vec2 worldPos = (uv - u_pan) / u_zoom;
+      // Flip Y axis: gl_FragCoord is bottom-up, our coords are top-down
+      vec2 flippedUV = vec2(uv.x, u_resolution.y - uv.y);
+      vec2 worldPos = (flippedUV - u_pan) / u_zoom;
       for (int n = 0; n < MAX_NODES_PER_CELL; n++) {
         if (n >= nodeCount) break;
         int idx = c * MAX_NODES_PER_CELL + n;
@@ -99,16 +101,20 @@ const FRAG_SRC = `
       centerDist /= float(nodeCount);
       float gradient = 1.0 - smoothstep(0.0, 400.0, centerDist);
 
-      // Compose cell — BRIGHT colors
-      vec3 cytoColor = cellColor * 0.25 * gradient * cytoplasm;
-      vec3 wallColor = cellColor * 1.2 * wall;
+      // Compose cell — VERY BRIGHT colors for visibility
+      vec3 cytoColor = cellColor * 0.4 * gradient * cytoplasm;
+      vec3 wallColor = cellColor * 2.0 * wall;
 
-      // Glow around wall
-      float glow = smoothstep(2.0, 0.5, wallOuter) * 0.4;
+      // Glow around wall — wide and bright
+      float glow = smoothstep(3.0, 0.3, wallOuter) * 0.6;
       vec3 glowColor = cellColor * glow;
 
-      vec3 cellResult = cytoColor + wallColor + glowColor;
-      float alpha = max(max(cytoplasm * 0.4, wall * 1.0), glow * 0.7);
+      // Inner glow for depth
+      float innerGlow = smoothstep(0.0, 0.5, totalField) * 0.15;
+      vec3 innerGlowColor = cellColor * innerGlow;
+
+      vec3 cellResult = cytoColor + wallColor + glowColor + innerGlowColor;
+      float alpha = max(max(cytoplasm * 0.5, wall * 1.0), max(glow * 0.8, innerGlow * 0.4));
 
       // Additive blending for overlapping cells (but they shouldn't overlap much)
       finalColor.rgb += cellResult * alpha;
