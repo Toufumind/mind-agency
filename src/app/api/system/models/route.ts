@@ -65,19 +65,24 @@ function fetchModels(baseUrl: string, apiKey: string): Promise<Array<{ id: strin
       let body = '';
       res.on('data', (c) => body += c);
       res.on('end', () => {
+        // v0.4: If status is not 200, reject (don't fallback to defaults)
+        if (res.statusCode !== 200) {
+          reject(new Error(`API returned ${res.statusCode}`));
+          return;
+        }
         try {
           const data = JSON.parse(body);
           const models = (data.data || []).map((m: any) => ({
             id: m.id,
             label: m.id.split('/').pop() || m.id,
           }));
-          resolve(models.length > 0 ? models : getDefaultModels());
+          resolve(models);
         } catch {
-          resolve(getDefaultModels());
+          reject(new Error('Invalid JSON response'));
         }
       });
     });
-    req.on('error', () => resolve(getDefaultModels()));
-    req.on('timeout', () => { req.destroy(); resolve(getDefaultModels()); });
+    req.on('error', (e) => reject(e));
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
