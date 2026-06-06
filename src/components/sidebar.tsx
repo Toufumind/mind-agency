@@ -23,11 +23,17 @@ export default function Sidebar() {
   const [busy, setBusy] = useState(false);
   const [sectionsClosed, setSectionsClosed] = useState<Set<string>>(new Set());
 
-  // Auto-collapse on narrow window
+  // Auto-collapse on narrow window (< 1200px collapse, < 768px force collapse)
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const check = () => { const narrow = window.innerWidth < 768; setIsMobile(narrow); if (narrow) setCollapsed(true); };
+    const check = () => {
+      const w = window.innerWidth;
+      const narrow = w < 768;
+      setIsMobile(narrow);
+      if (narrow) setCollapsed(true);
+      else if (w < 1200) setCollapsed(true);
+    };
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);

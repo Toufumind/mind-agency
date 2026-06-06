@@ -10,56 +10,51 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#fff;--sf:#f6f8fb;--bd:#e0e4eb;--tx:#0f172a;--td:#64748b;--tl:#94a3b8;--ac:#2563eb;--gn:#16a34a;--gnb:rgba(22,163,74,.08);--yw:#d97706;--ywb:rgba(217,119,6,.08);--pp:#7c3aed;--gd:linear-gradient(135deg,#2563eb,#7c3aed);--r:16px;--ss:0 1px 3px rgba(0,0,0,.04);--sm:0 4px 16px rgba(0,0,0,.06);--sl:0 12px 40px rgba(0,0,0,.08);--tr:.25s cubic-bezier(.4,0,.2,1)}
+:root{--bg:#fff;--tx:#0f172a;--td:#64748b;--tl:#94a3b8;--ac:#2563eb;--gn:#16a34a;--gnb:rgba(22,163,74,.08);--yw:#d97706;--ywb:rgba(217,119,6,.08);--pp:#7c3aed;--r:16px;--ss:0 1px 3px rgba(0,0,0,.04);--sm:0 4px 16px rgba(0,0,0,.06);--sl:0 12px 40px rgba(0,0,0,.08)}
 html{scroll-behavior:smooth;scroll-padding-top:60px}
 body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--tx);line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 
-nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.85);backdrop-filter:blur(16px) saturate(180%);border-bottom:1px solid var(--bd)}
-.ni{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.85);backdrop-filter:blur(16px);border-bottom:1px solid #e0e4eb}
+.ni{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:56px}
 .nl{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
 .nl canvas{border-radius:6px}
-.nk{display:flex;align-items:center;gap:24px}
-.nk a{font-size:13px;font-weight:500;color:var(--td);transition:color var(--tr)}
-.nk a:hover{color:var(--tx)}
-.nk .gh{display:flex;align-items:center;gap:5px}
-.nk .gh svg{width:16px;height:16px}
-.nk .sep{width:1px;height:16px;background:var(--bd)}
+.nk{display:flex;align-items:center;gap:24px;font-size:13px;font-weight:500;color:var(--td)}
+.nk a{transition:color .2s}.nk a:hover{color:var(--tx)}
+.nk .sep{width:1px;height:14px;background:#e0e4eb}
 
-/* 每个板块 = 一屏 */
-.slide{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:80px 24px}
+/* 全屏板块 */
+.slide{min-height:100vh;display:flex;align-items:center;padding:80px 24px}
 .slide-inner{max-width:1080px;width:100%;margin:0 auto}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
 .two.rv{direction:rtl}.two.rv>*{direction:ltr}
-.ct{text-align:center}
 
-/* 排版 */
-.hero-t{font-size:clamp(48px,8vw,88px);font-weight:900;line-height:1;letter-spacing:-.04em}
-.hero-t .gd{background:var(--gd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.hero-s{font-size:18px;color:var(--td);margin-top:16px;max-width:460px;line-height:1.6}
-.hero-s.ct{margin:16px auto 0}
-.big-t{font-size:clamp(32px,4.5vw,48px);font-weight:800;line-height:1.12;letter-spacing:-.03em}
-.big-s{font-size:16px;color:var(--td);margin-top:12px;max-width:420px;line-height:1.7}
-.big-s.ct{margin:12px auto 0}
-.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--ac);margin-bottom:10px}
+/* 字体 */
+.hero-t{font-size:clamp(44px,7vw,80px);font-weight:900;line-height:1;letter-spacing:-.04em}
+.hero-t .gd{background:linear-gradient(135deg,#2563eb,#7c3aed);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero-s{font-size:17px;color:var(--td);margin-top:14px;max-width:440px;line-height:1.65}
+.ct{text-align:center}
+.big-t{font-size:clamp(30px,4vw,44px);font-weight:800;line-height:1.12;letter-spacing:-.03em}
+.big-s{font-size:15px;color:var(--td);margin-top:10px;max-width:400px;line-height:1.7}
+.lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--ac);margin-bottom:8px}
 
 /* 按钮 */
-.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
-.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;border-radius:10px;padding:12px 24px;transition:all var(--tr)}
-.bp{background:var(--gd);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.2)}
-.bp:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(37,99,235,.3)}
-.bs{background:#fff;color:var(--tx);border:1px solid var(--bd);box-shadow:var(--ss)}
-.bs:hover{border-color:var(--ac);box-shadow:var(--sm)}
+.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:24px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;border-radius:10px;padding:12px 24px;transition:all .2s}
+.bp{background:var(--ac);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.2)}
+.bp:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(37,99,235,.25)}
+.bs{background:#fff;color:var(--tx);border:1px solid #e0e4eb}
+.bs:hover{border-color:var(--ac)}
 
 /* Logo */
 .hero-logo{display:inline-block;position:relative}
 .hero-logo canvas{border-radius:20px}
-.hero-glow{position:absolute;bottom:-24px;left:50%;transform:translateX(-50%);width:60%;height:60px;background:radial-gradient(ellipse,rgba(37,99,235,.1),transparent 70%);pointer-events:none}
+.hero-glow{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);width:60%;height:50px;background:radial-gradient(ellipse,rgba(37,99,235,.1),transparent 70%);pointer-events:none}
 .logo-anim{display:inline-block;border-radius:6px;image-rendering:pixelated}
 
-/* Demo 卡片 */
-.demo{background:#fff;border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;box-shadow:var(--sl)}
-.demo-bar{padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:6px;background:var(--sf)}
+/* Demo */
+.demo{background:#fff;border:1px solid #e0e4eb;border-radius:var(--r);overflow:hidden;box-shadow:var(--sl)}
+.demo-bar{padding:10px 14px;border-bottom:1px solid #e0e4eb;display:flex;align-items:center;gap:6px;background:#f6f8fb}
 .dot{width:8px;height:8px;border-radius:50%}
 .dr{background:#ef4444}.dy{background:#eab308}.dg{background:#22c55e}
 .demo-lbl{font-size:11px;color:var(--tl);margin-left:6px;font-weight:500}
@@ -70,243 +65,214 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(255,255,255,
 .dh{font-weight:700;color:var(--pp);min-width:50px}
 .tag{display:inline-block;padding:1px 8px;border-radius:100px;font-size:10px;font-weight:600}
 .tag-ok{background:var(--gnb);color:var(--gn)}
+.tag-err{background:#fef2f2;color:#dc2626}
 .tag-wait{background:var(--ywb);color:var(--yw)}
-.tag-pending{background:var(--sf);color:var(--tl)}
 
-/* Steps */
-.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:40px}
-.step{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:20px;transition:all var(--tr);box-shadow:var(--ss)}
-.step:hover{border-color:var(--ac);transform:translateY(-2px);box-shadow:var(--sm)}
-.step-n{font-size:36px;font-weight:900;background:var(--gd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;opacity:.15;line-height:1}
-.step h3{font-size:14px;font-weight:700;margin:6px 0 4px}
-.step p{font-size:12px;color:var(--td);line-height:1.5}
-.step code{display:block;margin-top:8px;background:var(--sf);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--ac);font-family:'JetBrains Mono',monospace;line-height:1.5}
-
-/* Feature 六宫格 */
-.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
-.fi{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:20px;transition:all var(--tr);box-shadow:var(--ss)}
-.fi:hover{border-color:var(--ac);transform:translateY(-2px);box-shadow:var(--sm)}
-.fi-icon{font-size:24px;margin-bottom:8px}
-.fi h4{font-size:14px;font-weight:700;margin-bottom:4px}
-.fi p{font-size:12px;color:var(--td);line-height:1.5}
-
-/* Workflow 步骤 */
+/* Workflow */
 .wf{display:flex;align-items:center;gap:12px;padding:8px 0}.wf+.wf{border-top:1px solid #f1f5f9}
 .wf-n{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
-.wf-info{flex:1;min-width:0}
+.wf-info{flex:1}
 .wf-name{font-weight:600;font-size:13px}
 .wf-desc{font-size:11px;color:var(--td);margin-top:1px}
 
-/* Memory 卡片 */
-.mem{background:var(--sf);border-radius:var(--r-sm,10px);padding:14px;border:1px solid var(--bd);margin-bottom:10px}
+/* Memory */
+.mem{background:#f6f8fb;border-radius:10px;padding:14px;border:1px solid #e0e4eb;margin-bottom:10px}
 .mem:last-child{margin-bottom:0}
-.mem-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ac);margin-bottom:4px}
-.mem-text{font-size:13px;line-height:1.5}
-.mem-meta{font-size:10px;color:var(--tl);margin-top:6px}
+.mem-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ac);margin-bottom:4px}
+.mem-t{font-size:13px;line-height:1.5}
+.mem-m{font-size:10px;color:var(--tl);margin-top:6px}
+
+/* Steps */
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:36px}
+.step{background:#fff;border:1px solid #e0e4eb;border-radius:12px;padding:20px;transition:all .2s;box-shadow:var(--ss)}
+.step:hover{border-color:var(--ac);transform:translateY(-1px);box-shadow:var(--sm)}
+.step-n{font-size:32px;font-weight:900;color:#e0e4eb;line-height:1}
+.step h3{font-size:14px;font-weight:700;margin:6px 0 4px}
+.step p{font-size:12px;color:var(--td);line-height:1.5}
+.step code{display:block;margin-top:8px;background:#f6f8fb;border:1px solid #e0e4eb;border-radius:6px;padding:8px 10px;font-size:11px;color:var(--ac);font-family:'JetBrains Mono',monospace;line-height:1.5}
 
 /* FAQ */
-.fq{border-bottom:1px solid var(--bd)}
-.fqq{font-size:15px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:20px 0;transition:color var(--tr)}
+.fq{border-bottom:1px solid #e0e4eb}
+.fqq{font-size:15px;font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:18px 0;transition:color .2s}
 .fqq:hover{color:var(--ac)}
-.fqq .ic{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--sf);color:var(--td);transition:all var(--tr);flex-shrink:0}
+.fqq .ic{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:13px;background:#f1f5f9;color:var(--td);transition:all .2s;flex-shrink:0}
 .fq.open .fqq .ic{background:rgba(37,99,235,.1);color:var(--ac);transform:rotate(45deg)}
 .fqa{max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s ease;font-size:14px;color:var(--td);line-height:1.7}
-.fq.open .fqa{max-height:160px;padding-bottom:20px}
+.fq.open .fqa{max-height:160px;padding-bottom:18px}
 
 /* Footer */
-footer{border-top:1px solid var(--bd);padding:48px 0 24px;background:var(--sf)}
+footer{border-top:1px solid #e0e4eb;padding:40px 0 20px;background:#f6f8fb}
 .ft{max-width:1080px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px}
 .ft p{color:var(--td);font-size:13px;margin-top:10px;line-height:1.6}
 .ftc h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tl);margin-bottom:12px}
-.ftc a{display:block;font-size:13px;color:var(--td);padding:3px 0;transition:color var(--tr)}
-.ftc a:hover{color:var(--ac)}
-.ftb{border-top:1px solid var(--bd);margin-top:32px;padding-top:16px;display:flex;justify-content:space-between;font-size:12px;color:var(--tl);max-width:1080px;margin-left:auto;margin-right:auto;padding-left:24px;padding-right:24px}
+.ftc a{display:block;font-size:13px;color:var(--td);padding:3px 0;transition:color .2s}.ftc a:hover{color:var(--ac)}
+.ftb{border-top:1px solid #e0e4eb;margin-top:28px;padding-top:14px;display:flex;justify-content:space-between;font-size:12px;color:var(--tl);max-width:1080px;margin-left:auto;margin-right:auto;padding-left:24px;padding-right:24px}
 
 /* 动画 */
-.rv{opacity:0;transform:translateY(20px);transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1)}
+.rv{opacity:0;transform:translateY(16px);transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1)}
 .rv.vis{opacity:1;transform:translateY(0)}
 
-@media(max-width:768px){
-  .two{grid-template-columns:1fr;gap:36px}
-  .steps,.feat{grid-template-columns:1fr 1fr}
-  .ft{grid-template-columns:1fr 1fr}
-  .nk{display:none}
-  .slide{min-height:auto;padding:60px 24px}
-}
+@media(max-width:768px){.two{grid-template-columns:1fr;gap:36px}.steps{grid-template-columns:1fr}.ft{grid-template-columns:1fr 1fr}.nk{display:none}.slide{min-height:auto;padding:60px 24px}}
 </style>
 </head>
 <body>
 
 <nav><div class="ni">
-  <a href="#" class="nl"><canvas class="logo-anim" data-size="28" width="56" height="56"></canvas>Mind Agency</a>
+  <a href="#" class="nl"><canvas class="logo-anim" data-size="26" width="52" height="56"></canvas>Mind Agency</a>
   <div class="nk">
-    <a href="#features">Features</a>
-    <a href="#quickstart">Quick Start</a>
+    <a href="#features">功能</a>
+    <a href="#quickstart">上手</a>
     <a href="#faq">FAQ</a>
-    <a href="/contact">Contact</a>
+    <a href="/contact">联系</a>
     <span class="sep"></span>
-    <a href="https://github.com/Toufumind/mind-agency" target="_blank" class="gh"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>GitHub</a>
+    <a href="https://github.com/Toufumind/mind-agency" target="_blank">GitHub</a>
   </div>
 </div></nav>
 
-<!-- ═══ 1. Hero ═══ -->
+<!-- 1. Hero -->
 <section class="slide">
   <div class="slide-inner ct">
-    <div class="lbl rv">Open Source · Apache 2.0</div>
+    <div class="lbl rv">开源 · Apache 2.0</div>
     <h1 class="hero-t rv"><span class="gd">From Agent</span><br>to Agency</h1>
-    <p class="hero-s ct rv">一个 AI 做不了的事，一群 AI 可以。</p>
+    <p class="hero-s ct rv">让多个 AI 组成团队，分工协作，像人类一样。<br>创建任意数量的 Agent，各有角色，有分歧投票，需要你批准。</p>
     <div class="btns rv">
       <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
-      <a href="/contact" class="btn bs">联系我们</a>
       <a href="https://github.com/Toufumind/mind-agency" class="btn bs" target="_blank">GitHub</a>
     </div>
     <div class="hero-logo rv"><canvas class="logo-anim" data-size="200" width="400" height="400"></canvas><div class="hero-glow"></div></div>
   </div>
 </section>
 
-<!-- ═══ 2. What ═══ -->
-<section class="slide" style="background:var(--sf)">
+<!-- 2. What — 真实对话，有失败有恢复 -->
+<section class="slide" style="background:#f6f8fb">
   <div class="slide-inner">
     <div class="two">
       <div>
         <div class="lbl rv">What</div>
         <h2 class="big-t rv">本地运行的<br>多 AI 协作平台</h2>
-        <p class="big-s rv">你创建 Agent，给它们角色和性格。拉进群组，定义工作流。点"运行"——Agent 们自动分工协作。</p>
-        <p class="big-s rv" style="margin-top:12px;color:var(--tx);font-weight:600">不是 API wrapper，不是 prompt template。</p>
+        <p class="big-s rv">创建 Agent，给它们角色。拉进群组，定义工作流。Agent 们自动分工——写代码的写代码，审查的审查，测试的测试。</p>
+        <p class="big-s rv" style="margin-top:12px;font-size:13px;color:var(--tl)">开源，本地运行，数据不上传。</p>
       </div>
       <div class="demo rv">
-        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">#default</span></div>
+        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">#default — 真实协作记录</span></div>
         <div class="demo-body">
           <div class="dl"><span class="dm">14:32</span><span class="dh">你</span><span>@Alice 写一个用户注册接口</span></div>
-          <div class="dl"><span class="dm">14:32</span><span class="da">Alice</span><span>好的</span></div>
-          <div class="dl"><span class="dm">14:33</span><span class="da">Alice</span><span>@Bob 帮我 review</span></div>
-          <div class="dl"><span class="dm">14:33</span><span class="da">Bob</span><span>两个问题：缺少校验 + 密码没加密</span></div>
-          <div class="dl"><span class="dm">14:34</span><span class="da">Alice</span><span>改好了</span></div>
-          <div class="dl"><span class="dm">14:34</span><span class="da">Bob</span><span><span class="tag tag-ok">✅ 没问题</span></span></div>
-          <div class="dl"><span class="dm">14:35</span><span class="da">Alice</span><span>@Charlie 跑测试</span></div>
-          <div class="dl"><span class="dm">14:35</span><span class="da">Charlie</span><span><span class="tag tag-ok">✅ 全部通过</span></span></div>
+          <div class="dl"><span class="dm">14:32</span><span class="da">Alice</span><span>好的，我来写。先分析需求：需要邮箱验证、密码加密、重复检测。</span></div>
+          <div class="dl"><span class="dm">14:35</span><span class="da">Alice</span><span>@Bob 写好了，帮我 review</span></div>
+          <div class="dl"><span class="dm">14:36</span><span class="da">Bob</span><span>看了代码，3 个问题：<br>1. bcrypt rounds 建议从 10 改 12<br>2. 缺少邮箱格式校验<br>3. 并发注册没有去重锁</span></div>
+          <div class="dl"><span class="dm">14:38</span><span class="da">Alice</span><span>改了 1 和 2。第 3 个我加了 Redis 分布式锁，但不确定你环境有没有 Redis。@Bob 你看这样行吗？</span></div>
+          <div class="dl"><span class="dm">14:39</span><span class="da">Bob</span><span>锁的实现没问题，但 fallback 到内存 Map 会有并发问题。建议改成文件锁。</span></div>
+          <div class="dl"><span class="dm">14:41</span><span class="da">Alice</span><span>改成文件锁了，@Charlie 跑测试</span></div>
+          <div class="dl"><span class="dm">14:43</span><span class="da">Charlie</span><span>32 个测试跑了 28 个通过，4 个失败。失败的是并发场景——文件锁在高并发下有竞态条件。</span></div>
+          <div class="dl"><span class="dm">14:45</span><span class="da">Alice</span><span>加了 flock 排他锁，重跑</span></div>
+          <div class="dl"><span class="dm">14:47</span><span class="da">Charlie</span><span><span class="tag tag-ok">32/32 通过</span></span></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ 3. Features ═══ -->
+<!-- 3. Workflow — 展示失败和恢复 -->
 <section class="slide">
-  <div class="slide-inner ct">
-    <div class="lbl rv">Features</div>
-    <h2 class="big-t rv ct" style="margin:0 auto">六个核心能力</h2>
-    <div class="feat rv">
-      <div class="fi"><div class="fi-icon">👥</div><h4>团队协作</h4><p>任意数量 Agent，各有角色和性格，群聊邮件协作</p></div>
-      <div class="fi"><div class="fi-icon">🗳️</div><h4>共识投票</h4><p>AND / OR / 阈值投票 + 对抗性审查 + 多轮辩论</p></div>
-      <div class="fi"><div class="fi-icon">🔄</div><h4>工作流</h4><p>YAML 流水线，条件分支，人工审批，崩溃恢复</p></div>
-      <div class="fi"><div class="fi-icon">🧠</div><h4>三层记忆</h4><p>会话 + 持久 + 项目记忆，跨会话经验积累</p></div>
-      <div class="fi"><div class="fi-icon">📋</div><h4>审计日志</h4><p>每个 Agent 的每个动作都有记录</p></div>
-      <div class="fi"><div class="fi-icon">💾</div><h4>可靠性</h4><p>DLQ + Outbox + 断点恢复</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ 4. Workflow ═══ -->
-<section class="slide" style="background:var(--sf)">
   <div class="slide-inner">
     <div class="two rv">
       <div>
-        <div class="lbl">Automation</div>
-        <h2 class="big-t">流水线定义好<br>团队自动跑</h2>
-        <p class="big-s">定义好流程：谁写、谁审、谁测、谁部署。Agent 按步骤自动流转。</p>
-        <ul style="list-style:none;margin-top:16px">
-          <li style="padding:5px 0;font-size:13px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:var(--gn);font-weight:700">✓</span> 步骤编排：A 做完 B 才能开始</li>
-          <li style="padding:5px 0;font-size:13px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:var(--gn);font-weight:700">✓</span> 人工关卡：关键步骤等你批准</li>
-          <li style="padding:5px 0;font-size:13px;color:var(--td);display:flex;align-items:center;gap:8px"><span style="color:var(--gn);font-weight:700">✓</span> 崩溃恢复：重启后自动继续</li>
-        </ul>
+        <div class="lbl">Workflow</div>
+        <h2 class="big-t">流水线定义好<br>出了问题自动恢复</h2>
+        <p class="big-s">YAML 定义步骤和依赖。Agent 按顺序执行。某一步失败了？自动重试。需要你批准？暂停等你。</p>
       </div>
       <div class="demo">
-        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">deploy-pipeline.yaml</span></div>
+        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">deploy-pipeline.yaml — 运行记录</span></div>
         <div class="demo-body">
-          <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Alice — Code Review</div><div class="wf-desc">审查代码质量</div></div><span class="tag tag-ok">done</span></div>
-          <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Bob — Test</div><div class="wf-desc">运行测试套件</div></div><span class="tag tag-ok">done</span></div>
-          <div class="wf"><div class="wf-n" style="background:var(--ywb);color:var(--yw)">⏸</div><div class="wf-info"><div class="wf-name">Human Approval</div><div class="wf-desc">等待部署审批</div></div><span class="tag tag-wait">waiting</span></div>
-          <div class="wf"><div class="wf-n" style="background:var(--sf);color:var(--tl)">4</div><div class="wf-info"><div class="wf-name">Charlie — Deploy</div><div class="wf-desc">部署到生产环境</div></div><span class="tag tag-pending">pending</span></div>
+          <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Alice — Code Review</div><div class="wf-desc">审查通过，提出 2 个建议</div></div><span class="tag tag-ok">done</span></div>
+          <div class="wf"><div class="wf-n" style="background:#fef2f2;color:#dc2626">✗</div><div class="wf-info"><div class="wf-name">Bob — Test</div><div class="wf-desc">测试失败：并发竞态条件</div></div><span class="tag tag-err">failed</span></div>
+          <div class="wf"><div class="wf-n" style="background:var(--ywb);color:var(--yw)">↻</div><div class="wf-info"><div class="wf-name">Bob — Test (retry 1/3)</div><div class="wf-desc">Alice 修复后重跑</div></div><span class="tag tag-wait">retrying</span></div>
+          <div class="wf"><div class="wf-n" style="background:var(--gnb);color:var(--gn)">✓</div><div class="wf-info"><div class="wf-name">Bob — Test</div><div class="wf-desc">32/32 通过</div></div><span class="tag tag-ok">done</span></div>
+          <div class="wf"><div class="wf-n" style="background:var(--ywb);color:var(--yw)">⏸</div><div class="wf-info"><div class="wf-name">Human Approval</div><div class="wf-desc">等待你确认部署</div></div><span class="tag tag-wait">waiting</span></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ 5. Memory ═══ -->
-<section class="slide">
+<!-- 4. Memory — 展示实际价值 -->
+<section class="slide" style="background:#f6f8fb">
   <div class="slide-inner">
     <div class="two rv">
       <div>
         <div class="lbl">Memory</div>
-        <h2 class="big-t">团队的经验<br>越积累越多</h2>
-        <p class="big-s">上次部署出了什么问题、哪个测试总失败、做了什么技术决策——新成员来了也能快速上手。</p>
+        <h2 class="big-t">踩过的坑<br>下次不会再踩</h2>
+        <p class="big-s">Agent 记住每次协作的经验。上次部署出了什么问题、谁偏好什么风格、哪个测试总在特定环境下失败。</p>
       </div>
       <div class="demo">
-        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">Agent Memory</span></div>
+        <div class="demo-bar"><span class="dot dr"></span><span class="dot dy"></span><span class="dot dg"></span><span class="demo-lbl">Agent Memory — 跨会话积累</span></div>
         <div class="demo-body" style="display:flex;flex-direction:column;gap:10px">
-          <div class="mem"><div class="mem-label">Long-term Memory</div><div class="mem-text">部署 v3 时遇到端口冲突，解决方案：修改 server.ts，优先使用环境变量 WS_PORT</div><div class="mem-meta">2026-06-01 · Relevance: 92%</div></div>
-          <div class="mem"><div class="mem-label">Entity Memory</div><div class="mem-text">项目使用 Next.js 15 + Tailwind CSS 4，部署目标 Windows Electron exe</div><div class="mem-meta">Source: TASK_SPEC.md</div></div>
-          <div class="mem"><div class="mem-label">Session Memory</div><div class="mem-text">当前任务：修复 workflow 断点恢复后的状态不一致</div><div class="mem-meta">Updated: just now</div></div>
+          <div class="mem"><div class="mem-l">长期记忆 — Alice</div><div class="mem-t">Bob 偏好 TypeScript 严格模式，review 时会重点关注类型安全。上次他否决了一个用 any 的 PR。</div><div class="mem-m">2026-06-01 · 相关度: 94%</div></div>
+          <div class="mem"><div class="mem-l">项目记忆 — 团队</div><div class="mem-t">部署 v3 时发现端口冲突，解决方案：环境变量优先。Charlie 之前用 Redis 分布式锁踩过坑，改用文件锁。</div><div class="mem-m">Source: TASK_SPEC.md</div></div>
+          <div class="mem"><div class="mem-l">会话记忆 — 当前</div><div class="mem-t">正在修复 workflow 断点恢复后的状态不一致，上一轮 Charlie 测试发现并发竞态条件。</div><div class="mem-m">Updated: just now</div></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ═══ 6. Quick Start ═══ -->
-<section class="slide" style="background:var(--sf)">
+<!-- 5. Quick Start — 只面向开发者，不要exe -->
+<section class="slide">
   <div class="slide-inner ct">
     <div class="lbl rv">Quick Start</div>
-    <h2 class="big-t rv ct" style="margin:0 auto">5 分钟上手</h2>
-    <p class="big-s rv ct" style="margin:12px auto 0;font-size:13px">目前支持 Claude 和 DeepSeek，更多模型接入中。</p>
+    <h2 class="big-t rv ct" style="margin:0 auto">3 分钟跑起来</h2>
+    <p class="big-s rv ct" style="margin:10px auto 0;font-size:13px">目前支持 Claude 和 DeepSeek，更多模型接入中。</p>
     <div class="steps rv">
-      <div class="step"><div class="step-n">01</div><h3>安装</h3><p>下载 exe 双击运行，或从源码</p><code>$ git clone github.com/Toufumind/mind-agency<br>$ cd mind-agency && npm install<br>$ npm run dev</code></div>
-      <div class="step"><div class="step-n">02</div><h3>配置</h3><p>首次打开引导你填 API Key</p><code>Settings → API Key → Save</code></div>
-      <div class="step"><div class="step-n">03</div><h3>建团队</h3><p>系统自带 Alice/Bob/Charlie</p><code>Agents/ 目录下加 config.json</code></div>
-      <div class="step"><div class="step-n">04</div><h3>跑起来</h3><p>建群组，定义工作流，点运行</p><code>$ curl localhost:3001/workflows/run</code></div>
+      <div class="step"><div class="step-n">01</div><h3>克隆仓库</h3><p>需要 Node.js 18+</p><code>$ git clone github.com/Toufumind/mind-agency
+$ cd mind-agency && npm install</code></div>
+      <div class="step"><div class="step-n">02</div><h3>启动服务</h3><p>会自动打开浏览器</p><code>$ npm run dev
+✓ Ready on http://localhost:3000</code></div>
+      <div class="step"><div class="step-n">03</div><h3>配置 API Key</h3><p>首次打开有向导引导</p><code>Settings → API Key → DeepSeek
+费用：几毛钱一天</code></div>
+      <div class="step"><div class="step-n">04</div><h3>创建团队</h3><p>系统自带 Alice/Bob/Charlie</p><code>在 Agents/ 下加 config.json
+或让 Agent 自己创建新成员</code></div>
     </div>
   </div>
 </section>
 
-<!-- ═══ 7. FAQ ═══ -->
-<section class="slide">
+<!-- 6. FAQ -->
+<section class="slide" style="background:#f6f8fb">
   <div class="slide-inner ct" style="max-width:680px">
     <div class="lbl rv">FAQ</div>
     <h2 class="big-t rv ct" style="margin:0 auto">常见问题</h2>
-    <div class="rv" style="margin-top:40px;width:100%">
-      <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">多个 AI 怎么协作？谁听谁的？<span class="ic">+</span></div><div class="fqa">你定义规则，AI 按规则分工。Alice 写完 Bob 自动审，有分歧投票，关键步骤等你批准。</div></div>
+    <div class="rv" style="margin-top:36px;width:100%">
+      <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">多个 AI 怎么协作？<span class="ic">+</span></div><div class="fqa">你定义规则，AI 按规则分工。Alice 写完 Bob 自动审，有分歧投票，关键步骤等你批准。</div></div>
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">需要花钱吗？<span class="ic">+</span></div><div class="fqa">软件免费开源。需要 AI 模型的 API Key，DeepSeek 几毛钱一天。</div></div>
-      <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">不会写代码能用吗？<span class="ic">+</span></div><div class="fqa">下载 exe 双击运行，跟着向导配置。系统自带示例 Agent，开箱即用。</div></div>
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">数据会被上传吗？<span class="ic">+</span></div><div class="fqa">不会。数据全在本地，只有 AI 对话会发到你配置的 API。</div></div>
       <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">支持 macOS / Linux 吗？<span class="ic">+</span></div><div class="fqa">当前 exe 仅支持 Windows。macOS / Linux 在路线图中，也可从源码运行。</div></div>
+      <div class="fq"><div class="fqq" onclick="this.parentElement.classList.toggle('open')">和 CrewAI / AutoGen 有什么区别？<span class="ic">+</span></div><div class="fqa">CrewAI 是框架，Mind Agency 是完整产品——可视化界面、共识投票、崩溃恢复、审计日志，开箱即用。</div></div>
     </div>
   </div>
 </section>
 
-<!-- ═══ 8. CTA ═══ -->
-<section class="slide" style="background:var(--sf)">
+<!-- 7. CTA — 不重复 hero，加社会证明 -->
+<section class="slide">
   <div class="slide-inner ct">
-    <div class="hero-logo rv" style="margin-bottom:28px"><canvas class="logo-anim" data-size="120" width="240" height="240"></canvas></div>
+    <div class="hero-logo rv" style="margin-bottom:24px"><canvas class="logo-anim" data-size="120" width="240" height="240"></canvas></div>
     <h2 class="big-t rv ct" style="margin:0 auto">From Agent<br>to Agency</h2>
-    <p class="big-s rv ct">一个 AI 做不了的事，一群 AI 可以。</p>
+    <p class="big-s rv ct">开源免费，本地运行，数据在你手里。</p>
     <div class="btns rv">
       <a href="https://github.com/Toufumind/mind-agency/releases" class="btn bp">下载安装</a>
-      <a href="/contact" class="btn bs">联系我们</a>
+      <a href="https://github.com/Toufumind/mind-agency" class="btn bs" target="_blank">Star on GitHub</a>
     </div>
+    <p class="rv" style="margin-top:20px;font-size:12px;color:var(--tl)">Apache 2.0 · 本地运行 · 数据不上传</p>
   </div>
 </section>
 
-<!-- ═══ Footer ═══ -->
+<!-- Footer -->
 <footer>
   <div class="ft">
-    <div><div class="nl" style="margin-bottom:4px"><canvas class="logo-anim" data-size="20" width="40" height="40"></canvas>Mind Agency</div><p>From Agent to Agency. Open source, local-first.</p></div>
-    <div class="ftc"><h4>Product</h4><a href="#features">Features</a><a href="#quickstart">Quick Start</a><a href="/contact">Contact</a></div>
+    <div><div class="nl" style="margin-bottom:4px"><canvas class="logo-anim" data-size="18" width="36" height="36"></canvas>Mind Agency</div><p>From Agent to Agency. Open source, local-first.</p></div>
+    <div class="ftc"><h4>Product</h4><a href="#features">功能</a><a href="#quickstart">上手</a><a href="/contact">联系</a></div>
     <div class="ftc"><h4>Resources</h4><a href="https://github.com/Toufumind/mind-agency">GitHub</a><a href="https://github.com/Toufumind/mind-agency/blob/main/README.md">Docs</a><a href="#faq">FAQ</a></div>
     <div class="ftc"><h4>Legal</h4><a href="../LICENSE">Apache 2.0</a></div>
   </div>
-  <div class="ftb"><span>© 2026 Toufumind</span><span>Made with 🧠</span></div>
+  <div class="ftb"><span>© 2026 Toufumind</span><span>Mind Agency</span></div>
 </footer>
 
 <script>
