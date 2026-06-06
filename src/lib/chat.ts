@@ -155,10 +155,11 @@ function sessionFile(agentName: string) {
 }
 
 // Session cache — avoid repeated reads of session.json during streaming
+// Returns a deep copy to prevent concurrent modification issues
 export function getChatHistory(agentName: string): ChatHistory {
   // Check cache first
   const cached = agentCache.get<ChatHistory>('session', agentName);
-  if (cached) return cached;
+  if (cached) return JSON.parse(JSON.stringify(cached)); // Deep copy
 
   const file = sessionFile(agentName);
   let data: ChatHistory;
@@ -170,7 +171,7 @@ export function getChatHistory(agentName: string): ChatHistory {
   }
 
   agentCache.set('session', agentName, data);
-  return data;
+  return JSON.parse(JSON.stringify(data)); // Deep copy
 }
 
 function saveChatHistory(agentName: string, data: ChatHistory) {
