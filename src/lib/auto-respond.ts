@@ -336,15 +336,18 @@ export async function autoRespond(
     agentCache.invalidate('groupChat', g);
   }
 
-  // Build signal
-  const result = buildSignal(agent);
+  // v0.5: Move buildSignal inside enqueueAgent to prevent race condition
+  // where two concurrent calls read the same state and overwrite each other
+  return enqueueAgent(agent, async () => {
+    // Build signal (reads state — now serialized per agent)
+    const result = buildSignal(agent);
 
-  // Nothing to do
-  if (!result) {
-    return { triggered: false, reason: 'no new signals' };
-  }
+    // Nothing to do
+    if (!result) {
+      return { triggered: false, reason: 'no new signals' };
+    }
 
-  const { signal, state, dirty } = result;
+    const { signal, state, dirty } = result;
 
   // Only spawn claude for: @mention, new email, or forced.
   // v0.4: Determine priority based on signal content
@@ -381,28 +384,26 @@ export async function autoRespond(
   // Build prompt and call agent with retry
   const prompt = signalToPrompt(agent, signal, options?.groupName);
 
-  // v0.4: Queue spawn per agent — one at a time, no duplicates
-  return enqueueAgent(agent, async () => {
-    const maxRetries = 3;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        setActivity(agent, 'processing', signal.urgent ? '处理通知' : '检查更新');
-        const { reply } = await chatOnce(agent, prompt, options?.groupName);
-        clearActivity(agent);
-        saveState(agent, state);
-        return { triggered: true, reply };
-      } catch (e: any) {
-        const isLast = attempt === maxRetries - 1;
-        if (isLast) {
-          return { triggered: false, reason: `all ${maxRetries} attempts failed: ${e.message}` };
-        }
-        const delay = Math.pow(2, attempt + 1) * 1000;
-        console.log(`[autoRespond] ${agent} chatOnce failed (attempt ${attempt + 1}/${maxRetries}): ${e.message}. Retrying in ${delay}ms...`);
-        await sleepMs(delay);
+  const maxRetries = 3;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      setActivity(agent, 'processing', signal.urgent ? '处理通知' : '检查更新');
+      const { reply } = await chatOnce(agent, prompt, options?.groupName);
+      clearActivity(agent);
+      saveState(agent, state);
+      return { triggered: true, reply };
+    } catch (e: any) {
+      const isLast = attempt === maxRetries - 1;
+      if (isLast) {
+        return { triggered: false, reason: `all ${maxRetries} attempts failed: ${e.message}` };
       }
+      const delay = Math.pow(2, attempt + 1) * 1000;
+      console.log(`[autoRespond] ${agent} chatOnce failed (attempt ${attempt + 1}/${maxRetries}): ${e.message}. Retrying in ${delay}ms...`);
+      await sleepMs(delay);
     }
-    return { triggered: false, reason: 'unreachable' };
-  });
+  }
+  return { triggered: false, reason: 'unreachable' };
+  }); // end enqueueAgent
 }
 
 // ── Heartbeat ────────────────────────────────────────────
