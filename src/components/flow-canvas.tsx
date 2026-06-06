@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ForceSimulation, type ForceNode, type ForceEdge } from '@/lib/force-simulation';
+import FlowCellsWebGL, { CELL_COLORS } from './flow-cells-webgl';
 import { Play, ZoomIn, ZoomOut, Maximize2, Pause, RotateCcw } from 'lucide-react';
 
 // ── Types ──
@@ -72,69 +73,6 @@ const TRIGGER_STYLE = {
   shadow: '0 0 20px rgba(167,139,250,0.25), inset 0 0 15px rgba(167,139,250,0.05)',
   textClass: 'fill-violet-400', animClass: 'node-breathe', badgeColor: '#a78bfa',
 };
-
-// ── Cell (workflow) colors ──
-const CELL_COLORS = [
-  { wall: '#6366f1', fill: 'rgba(99,102,241,0.06)', glow: 'rgba(99,102,241,0.15)' },
-  { wall: '#8b5cf6', fill: 'rgba(139,92,246,0.06)', glow: 'rgba(139,92,246,0.15)' },
-  { wall: '#ec4899', fill: 'rgba(236,72,153,0.06)', glow: 'rgba(236,72,153,0.15)' },
-  { wall: '#f59e0b', fill: 'rgba(245,158,11,0.06)', glow: 'rgba(245,158,11,0.15)' },
-  { wall: '#10b981', fill: 'rgba(16,185,129,0.06)', glow: 'rgba(16,185,129,0.15)' },
-  { wall: '#3b82f6', fill: 'rgba(59,130,246,0.06)', glow: 'rgba(59,130,246,0.15)' },
-];
-
-// Convex hull (Andrew's monotone chain)
-function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
-  if (points.length < 3) return points;
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: { x: number; y: number }[] = [];
-  for (const p of sorted) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
-  const upper: { x: number; y: number }[] = [];
-  for (const p of sorted.reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
-  return lower.slice(0, -1).concat(upper.slice(0, -1));
-}
-
-// Expand hull by padding
-function expandHull(hull: { x: number; y: number }[], padding: number): { x: number; y: number }[] {
-  if (hull.length < 3) return hull;
-  return hull.map((p, i) => {
-    const prev = hull[(i - 1 + hull.length) % hull.length];
-    const next = hull[(i + 1) % hull.length];
-    const dx = next.x - prev.x;
-    const dy = next.y - prev.y;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    // Normal vector (perpendicular, outward)
-    const nx = -dy / len;
-    const ny = dx / len;
-    // Check direction (ensure outward)
-    const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
-    const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
-    const dot = (p.x - cx) * nx + (p.y - cy) * ny;
-    const sign = dot >= 0 ? 1 : -1;
-    return { x: p.x + nx * padding * sign, y: p.y + ny * padding * sign };
-  });
-}
-
-// Smooth hull path (cubic bezier through points)
-function hullPath(points: { x: number; y: number }[]): string {
-  if (points.length < 3) return '';
-  const n = points.length;
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 0; i < n; i++) {
-    const p0 = points[(i - 1 + n) % n];
-    const p1 = points[i];
-    const p2 = points[(i + 1) % n];
-    const p3 = points[(i + 2) % n];
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-  }
-  return d + ' Z';
-}
 
 const STEP_ICONS: Record<string, string> = {
   trigger: '⚡', test: '🧪', build: '📦', deploy: '🚀', review: '🔍',
@@ -295,7 +233,20 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   return (
     <div className="relative flex-1 h-full overflow-hidden" style={{ background: 'radial-gradient(ellipse at center, #0f172a 0%, #020617 70%)' }}
       onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel}>
-      <svg ref={svgRef} className="w-full h-full" style={{ cursor: dragging ? 'grabbing' : 'grab' }}>
+      {/* ── WebGL cell blobs ── */}
+      <FlowCellsWebGL
+        cells={workflows.map((wf, wi) => ({
+          nodes: wf.steps.map(s => positions.get(`${wf.group}:${s.id}`)).filter(Boolean) as { x: number; y: number }[],
+          color: CELL_COLORS[wi % CELL_COLORS.length],
+        }))}
+        zoom={zoom}
+        pan={pan}
+        width={typeof window !== 'undefined' ? window.innerWidth : 1200}
+        height={typeof window !== 'undefined' ? window.innerHeight : 800}
+        time={time}
+      />
+
+      <svg ref={svgRef} className="w-full h-full" style={{ cursor: dragging ? 'grabbing' : 'grab', position: 'relative', zIndex: 1 }}>
         <defs>
           {/* Grid pattern */}
           <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -317,38 +268,13 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
               <feMerge><feMergeNode in="shadow" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
           ))}
-          {/* Cell blob filters — one per workflow color */}
-          {CELL_COLORS.map((c, i) => (
-            <filter key={`cell-${i}`} id={`cell-blob-${i}`} x="-40%" y="-40%" width="180%" height="180%"
-              colorInterpolationFilters="sRGB">
-              {/* Blur the source circles into a blob */}
-              <feGaussianBlur in="SourceGraphic" stdDeviation="50" result="blur" />
-              {/* Threshold: convert blurred alpha to sharp edge */}
-              <feColorMatrix in="blur" type="matrix"
-                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7" result="blob" />
-              {/* Composite: fill with cytoplasm color */}
-              <feFlood floodColor={c.fill} floodOpacity="1" result="fill" />
-              <feComposite in="fill" in2="blob" operator="in" result="cytoplasm" />
-              {/* Extract edge for cell wall */}
-              <feMorphology in="blob" operator="dilate" radius="3" result="dilated" />
-              <feGaussianBlur in="dilated" stdDeviation="2" result="dilatedBlur" />
-              <feComposite in="dilated" in2="dilatedBlur" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="edge" />
-              <feFlood floodColor={c.wall} floodOpacity="0.6" result="wallColor" />
-              <feComposite in="wallColor" in2="edge" operator="in" result="wall" />
-              {/* Merge: cytoplasm + wall */}
-              <feMerge>
-                <feMergeNode in="cytoplasm" />
-                <feMergeNode in="wall" />
-              </feMerge>
-            </filter>
-          ))}
         </defs>
 
         {/* Grid background */}
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* ── Cell blobs (shader-based organic shapes) ── */}
+          {/* ── Cell labels (rendered above WebGL layer) ── */}
           {workflows.map((wf, wi) => {
             const cellPts = wf.steps
               .map(s => positions.get(`${wf.group}:${s.id}`))
@@ -356,27 +282,17 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
             if (cellPts.length === 0) return null;
             const colors = CELL_COLORS[wi % CELL_COLORS.length];
             const isCurrent = wf.group === selectedGroup;
-            const opacity = selectedGroup ? (isCurrent ? 1 : 0.08) : 1;
-
-            // Calculate center for label
+            const opacity = selectedGroup ? (isCurrent ? 1 : 0.15) : 0.9;
             const cx = cellPts.reduce((s, p) => s + p.x, 0) / cellPts.length;
             const cy = cellPts.reduce((s, p) => s + p.y, 0) / cellPts.length;
-
+            const wallColor = `rgb(${Math.round(colors[0] * 255)},${Math.round(colors[1] * 255)},${Math.round(colors[2] * 255)})`;
             return (
-              <g key={`cell-${wf.group}`} opacity={opacity} style={{ transition: 'opacity 0.6s ease' }}>
-                {/* Blob source: large circles at each node position */}
-                <g filter={`url(#cell-blob-${wi % CELL_COLORS.length})`}>
-                  {cellPts.map((p, i) => (
-                    <circle key={i} cx={p.x} cy={p.y} r={70} fill={colors.fill} stroke="none" />
-                  ))}
-                </g>
-                {/* Label on top */}
-                <text x={cx} y={cy - 20} textAnchor="middle" fontSize="12" fontWeight="700"
-                  letterSpacing="0.5" fill={colors.wall} opacity={isCurrent ? 1 : 0.4}>
+              <g key={`cell-label-${wf.group}`} opacity={opacity} style={{ transition: 'opacity 0.5s' }}>
+                <text x={cx} y={cy - 25} textAnchor="middle" fontSize="13" fontWeight="700"
+                  letterSpacing="0.5" fill={wallColor}>
                   {wf.name}
                 </text>
-                <text x={cx} y={cy - 6} textAnchor="middle" fontSize="9"
-                  fill={colors.wall} opacity={isCurrent ? 0.6 : 0.2}>
+                <text x={cx} y={cy - 10} textAnchor="middle" fontSize="9" fill={wallColor} opacity="0.5">
                   {wf.steps.length} steps · #{wf.group}
                 </text>
               </g>
