@@ -15,14 +15,14 @@ import { getProvider, type AgentProvider } from './providers';
 import './providers/claude';
 import './providers/codex';
 import { AGENTS_DIR, GROUPS_DIR, MCP_DIR, MIND_DIR, default as DATA_DIR } from './data-dir';
-import { getMemoryContext } from './memory';
+import { getMemoryContext, invalidateMemoryCache } from './memory';
 import {
   isAssistantMsg, isUserMsg, isResultSuccess,
   isThinkingBlock, isTextBlock, isToolUseBlock, isToolResultBlock,
   getTokenUsage,
 } from './sdk-types';
 import { trackQuery, untrackQuery, killAllQueries } from './process-tracker';
-import { loadGoalContext } from './cli-commands';
+import { loadGoalContext, invalidateGoalsCache } from './cli-commands';
 import { setActivity, clearActivity } from './agent-activity';
 import { writeAudit } from './audit';
 
@@ -139,6 +139,10 @@ export function killAllClaudeProcesses(): number {
 const membershipCache = new Map<string, { data: string; ts: number }>();
 const MEMBERSHIP_CACHE_TTL = 300_000;
 
+// Group chat context cache — recent messages per group
+const groupChatCache = new Map<string, { data: string; ts: number }>();
+const GROUP_CHAT_CACHE_TTL = 30_000; // 30s — short TTL for chat freshness
+
 export interface ChatEvent {
   type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error';
   content?: string;
@@ -157,11 +161,27 @@ function sessionFile(agentName: string) {
   return path.join(AGENTS_DIR, agentName, 'chat', 'session.json');
 }
 
+// Session cache — avoid repeated reads of session.json during streaming
+const sessionCache = new Map<string, { data: ChatHistory; ts: number }>();
+const SESSION_CACHE_TTL = 10_000; // 10s — short TTL for streaming freshness
+
 export function getChatHistory(agentName: string): ChatHistory {
+  // Check cache first
+  const cached = sessionCache.get(agentName);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < SESSION_CACHE_TTL) return cached.data;
+
   const file = sessionFile(agentName);
-  if (!fs.existsSync(file)) return { sessionId: null, messages: [] };
-  try { return JSON.parse(fs.readFileSync(file, 'utf-8')); }
-  catch { return { sessionId: null, messages: [] }; }
+  let data: ChatHistory;
+  if (!fs.existsSync(file)) {
+    data = { sessionId: null, messages: [] };
+  } else {
+    try { data = JSON.parse(fs.readFileSync(file, 'utf-8')); }
+    catch { data = { sessionId: null, messages: [] }; }
+  }
+
+  sessionCache.set(agentName, { data, ts: now });
+  return data;
 }
 
 function saveChatHistory(agentName: string, data: ChatHistory) {
@@ -171,12 +191,15 @@ function saveChatHistory(agentName: string, data: ChatHistory) {
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
   fs.renameSync(tmp, file);
+  // Update cache with the new data
+  sessionCache.set(agentName, { data, ts: Date.now() });
 }
 
 export function clearChat(agentName: string) {
   const file = sessionFile(agentName);
   if (fs.existsSync(file)) fs.unlinkSync(file);
   membershipCache.delete(agentName);
+  sessionCache.delete(agentName);
 }
 
 // ── Builders ──────────────────────────────────────────────
@@ -184,14 +207,15 @@ export function clearChat(agentName: string) {
 function buildIdentity(agentName: string): string {
   const config = getAgentConfig(agentName);
 
-  // Read agent's own CLAUDE.md — this IS the agent's identity
-  const claudeMdPath = path.join(AGENTS_DIR, agentName, 'CLAUDE.md');
-  const claudeMdAlt = path.join(AGENTS_DIR, agentName, '.claude', 'CLAUDE.md');
-  let identity = '';
-  try {
-    if (fs.existsSync(claudeMdPath)) identity = fs.readFileSync(claudeMdPath, 'utf-8').trim();
-    else if (fs.existsSync(claudeMdAlt)) identity = fs.readFileSync(claudeMdAlt, 'utf-8').trim();
-  } catch {}
+  // Read agent's own CLAUDE.md — cached for performance
+  let identity = readClaudeMd(agentName);
+  if (!identity) {
+    // Fallback: try .claude/CLAUDE.md
+    const claudeMdAlt = path.join(AGENTS_DIR, agentName, '.claude', 'CLAUDE.md');
+    try {
+      if (fs.existsSync(claudeMdAlt)) identity = fs.readFileSync(claudeMdAlt, 'utf-8').trim();
+    } catch {}
+  }
   if (!identity) identity = `你是${agentName}，Mind Agency 团队成员。`;
 
   // Append behavioral config if agent has it
@@ -292,23 +316,40 @@ function getGroupMembership(agentName: string): string {
 
 function buildGroupChatContext(_agentName: string, groupName?: string): string {
   if (!groupName) return '';
+
+  // Check cache first
+  const cacheKey = groupName;
+  const cached = groupChatCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < GROUP_CHAT_CACHE_TTL) return cached.data;
+
   const chatDir = path.join(GROUPS_DIR, groupName, 'chat');
-  if (!fs.existsSync(chatDir)) return `\n群聊${groupName}:暂无消息,用group_send发言.`;
-  try {
-    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort();
-    if (files.length === 0) return `\n群聊${groupName}:暂无消息,用group_send发言.`;
-    // v0.4: Read last 5 files instead of just 1 (more context)
-    const recentFiles = files.slice(-5);
-    const msgs: string[] = [];
-    for (const f of recentFiles) {
-      try {
-        const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-        const truncated = raw.length > 800 ? raw.slice(-800) : raw;
-        msgs.push(`[${f.replace('.md','')}]\n${truncated}`);
-      } catch {}
-    }
-    return `\n群聊${groupName}最近消息:\n${msgs.join('\n---\n')}`;
-  } catch { return `\n群聊${groupName}:读取失败.`; }
+  let result: string;
+  if (!fs.existsSync(chatDir)) {
+    result = `\n群聊${groupName}:暂无消息,用group_send发言.`;
+  } else {
+    try {
+      const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort();
+      if (files.length === 0) {
+        result = `\n群聊${groupName}:暂无消息,用group_send发言.`;
+      } else {
+        // v0.4: Read last 10 files for richer context
+        const recentFiles = files.slice(-10);
+        const msgs: string[] = [];
+        for (const f of recentFiles) {
+          try {
+            const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
+            const truncated = raw.length > 1500 ? raw.slice(-1500) : raw;
+            msgs.push(`[${f.replace('.md','')}]\n${truncated}`);
+          } catch {}
+        }
+        result = `\n群聊${groupName}最近消息:\n${msgs.join('\n---\n')}`;
+      }
+    } catch { result = `\n群聊${groupName}:读取失败.`; }
+  }
+
+  groupChatCache.set(cacheKey, { data: result, ts: now });
+  return result;
 }
 
 /**
@@ -324,7 +365,7 @@ function buildMcpConfig(agentName: string) {
   const isWin = process.platform === 'win32';
   const electronExe = process.env.MIND_ELECTRON_EXE;
   const envBase: Record<string, string> = {
-    MIND_DATA_DIR: DATA_DIR, MIND_PROJECT_ROOT: DATA_DIR, MIND_API_URL: 'http://127.0.0.1:3000',
+    MIND_DATA_DIR: DATA_DIR, MIND_API_URL: 'http://127.0.0.1:3000',
   };
 
   // Prefer bundled .mjs, fallback to .ts
@@ -359,14 +400,37 @@ function buildMcpConfig(agentName: string) {
 // up options from the previous session via `continue: true`.
 
 const agentBaseOptions = new Map<string, Record<string, any>>();
-// Short TTL: short enough that UI config edits propagate within a minute,
-// long enough that prompt-cache prefixes stay stable across sequential calls.
-const BASE_OPTIONS_TTL = 60_000; // 1 min
+// 5 min TTL: stable enough for prompt-cache prefixes across multi-turn conversations
+const BASE_OPTIONS_TTL = 300_000; // 5 min
+
+// ── CLAUDE.md content cache ──────────────────────────────
+const claudeMdCache = new Map<string, { content: string; ts: number }>();
+const CLAUDE_MD_TTL = 300_000; // 5 min
+
+function readClaudeMd(agentName: string): string {
+  const cached = claudeMdCache.get(agentName);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < CLAUDE_MD_TTL) return cached.content;
+
+  const claudeMdPath = path.join(AGENTS_DIR, agentName, 'CLAUDE.md');
+  let content = '';
+  try {
+    if (fs.existsSync(claudeMdPath)) content = fs.readFileSync(claudeMdPath, 'utf-8').trim();
+  } catch {}
+
+  claudeMdCache.set(agentName, { content, ts: now });
+  return content;
+}
 
 export function invalidateAgentCache(agentName: string): void {
   agentBaseOptions.delete(agentName);
   configCache.delete(agentName);
   membershipCache.delete(agentName);
+  claudeMdCache.delete(agentName);
+  // Invalidate memory cache if agent name provided
+  if (typeof invalidateMemoryCache === 'function') invalidateMemoryCache(agentName);
+  // Invalidate goals cache
+  if (typeof invalidateGoalsCache === 'function') invalidateGoalsCache(agentName);
 }
 
 function buildBaseOptions(agentName: string) {
@@ -420,13 +484,22 @@ function savePartialState(agentName: string, opts: {
   if (!last) {
     // No prior save — persist user message so it's visible immediately
     ih.messages.push({ role: 'user', content: opts.userMessage, timestamp: new Date().toISOString() });
-  } else if (last.role === 'user') {
-    // First content chunk — append partial assistant reply
+  } else if (last.role === 'user' && last.content === opts.userMessage) {
+    // Same user message — append partial assistant reply (first chunk)
     ih.messages.push({ role: 'assistant', content: opts.fullReply, events: [...opts.allEvents], timestamp: new Date().toISOString() });
-  } else if (last.role === 'assistant') {
-    // Subsequent chunk — replace the partial assistant reply
+  } else if (last.role === 'assistant' && ih.messages.length >= 2 && ih.messages[ih.messages.length - 2]?.content === opts.userMessage) {
+    // Subsequent chunk of same conversation — replace the partial assistant reply
     last.content = opts.fullReply || last.content;
     last.events = [...opts.allEvents];
+  } else {
+    // New conversation — append both user message and assistant reply
+    ih.messages.push({ role: 'user', content: opts.userMessage, timestamp: new Date().toISOString() });
+    ih.messages.push({ role: 'assistant', content: opts.fullReply, events: [...opts.allEvents], timestamp: new Date().toISOString() });
+  }
+
+  // Keep only last 50 messages to prevent unbounded growth
+  if (ih.messages.length > 50) {
+    ih.messages = ih.messages.slice(-50);
   }
 
   ih.sessionId = opts.sessionId || ih.sessionId;
@@ -441,10 +514,10 @@ function savePartialState(agentName: string, opts: {
  */
 // ── v0.4: Provider-based chat stream ─────────────────────
 
+// Use cached getAgentConfig instead of uncached loadAgentConfig
 function loadAgentConfig(agentName: string): Record<string, unknown> | null {
-  const cf = path.join(AGENTS_DIR, agentName, 'config.json');
-  try { return fs.existsSync(cf) ? JSON.parse(fs.readFileSync(cf, 'utf-8')) : null; }
-  catch { return null; }
+  const config = getAgentConfig(agentName);
+  return config as unknown as Record<string, unknown> | null;
 }
 
 function createProviderStream(

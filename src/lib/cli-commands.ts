@@ -79,14 +79,30 @@ export function handleCliCommand(agentName: string, message: string, sessionId: 
   }
 }
 
+// ── Goals context cache ──────────────────────────────────
+const goalsCache = new Map<string, { data: string; ts: number }>();
+const GOALS_TTL = 60_000; // 1 min
+
+export function invalidateGoalsCache(agentName?: string): void {
+  if (agentName) goalsCache.delete(agentName);
+  else goalsCache.clear();
+}
+
 /**
  * Load active goals for system prompt injection.
- * Called from chat.ts during stream setup.
+ * Called from chat.ts during stream setup. Cached for performance.
  */
 export function loadGoalContext(agentName: string): string {
+  const cached = goalsCache.get(agentName);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < GOALS_TTL) return cached.data;
+
   const goals = loadGoals(agentName);
-  if (goals.length === 0) return '';
-  return `\n[当前会话目标]\n${goals.map((g, i) => `${i + 1}. ${g}`).join('\n')}`;
+  const result = goals.length === 0 ? '' :
+    `\n[当前会话目标]\n${goals.map((g, i) => `${i + 1}. ${g}`).join('\n')}`;
+
+  goalsCache.set(agentName, { data: result, ts: now });
+  return result;
 }
 
 // ── Command handlers ────────────────────────────────
@@ -101,6 +117,7 @@ function handleGoal(agentName: string, args: string): CliResult {
   const goals = loadGoals(agentName);
   goals.push(args);
   saveGoals(agentName, goals);
+  invalidateGoalsCache(agentName); // Invalidate cache after modification
   return {
     handled: true,
     directReply: `✅ 目标已记录: "${args}"\n当前共 ${goals.length} 个活跃目标。你可以随时用 \`/goal\` 查看。`,

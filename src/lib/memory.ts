@@ -55,6 +55,8 @@ updated: ${new Date(now).toISOString()}
 ${content}
 `;
   fs.writeFileSync(mp, body, 'utf-8');
+  // Invalidate cache so next getMemoryContext() reads fresh data
+  invalidateMemoryCache(agentName);
   return entry;
 }
 
@@ -174,55 +176,35 @@ export function deleteMemory(agentName: string, key: string): boolean {
   const mp = memPath(agentName, key);
   if (!fs.existsSync(mp)) return false;
   fs.unlinkSync(mp);
+  // Invalidate cache so next getMemoryContext() reads fresh data
+  invalidateMemoryCache(agentName);
   return true;
 }
 
-/** Get memory context for injection into chat prompt (top 5 most recent) */
-export function getMemoryContext(agentName: string): string {
-  const mems = listMemory(agentName);
-  if (mems.length === 0) return '';
-  const recent = mems.slice(0, 5);
-  return '\n[长期记忆]\n' + recent.map(m =>
-    `- ${m.key}: ${m.content.slice(0, 200)}`
-  ).join('\n');
+// ── Memory context cache ──────────────────────────────────
+const memoryContextCache = new Map<string, { data: string; ts: number }>();
+const MEMORY_CACHE_TTL = 60_000; // 1 min
+
+/** Invalidate memory cache for an agent (or all agents) */
+export function invalidateMemoryCache(agentName?: string): void {
+  if (agentName) memoryContextCache.delete(agentName);
+  else memoryContextCache.clear();
 }
 
-/** Get entity memory context (group tasks + config) */
-export function getEntityContext(agentName: string): string {
-  const parts: string[] = [];
-  if (!fs.existsSync(GROUPS_DIR)) return '';
+/** Get memory context for injection into chat prompt (top 5 most recent) — cached */
+export function getMemoryContext(agentName: string): string {
+  const cached = memoryContextCache.get(agentName);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < MEMORY_CACHE_TTL) return cached.data;
 
-  for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
-    if (!g.isDirectory() || g.name.startsWith('.')) continue;
-    const agDir = path.join(GROUPS_DIR, g.name, 'Agents');
-    if (!fs.existsSync(agDir)) continue;
-    const isMember = fs.readdirSync(agDir, { withFileTypes: true })
-      .some(e => e.isDirectory() && e.name.toLowerCase() === agentName.toLowerCase());
-    if (!isMember) continue;
+  const mems = listMemory(agentName);
+  const result = mems.length === 0 ? '' :
+    '\n[长期记忆]\n' + mems.slice(0, 5).map(m =>
+      `- ${m.key}: ${m.content.slice(0, 200)}`
+    ).join('\n');
 
-    // Read TASK_SPEC if exists
-    const specPath = path.join(GROUPS_DIR, g.name, 'TASK_SPEC.md');
-    if (fs.existsSync(specPath)) {
-      try {
-        const spec = fs.readFileSync(specPath, 'utf-8').slice(0, 300);
-        parts.push(`[${g.name}] ${spec}`);
-      } catch {}
-    }
-
-    // Read workflow.yaml summary if exists
-    const wfPath = path.join(GROUPS_DIR, g.name, 'workflow.yaml');
-    if (fs.existsSync(wfPath)) {
-      try {
-        const raw = fs.readFileSync(wfPath, 'utf-8');
-        // Extract just name + description from YAML (simple approach)
-        const nameMatch = raw.match(/^name:\s*(.+)/m);
-        const descMatch = raw.match(/^description:\s*(.+)/m);
-        if (nameMatch) parts.push(`[${g.name} workflow] ${nameMatch[1]}${descMatch ? ': ' + descMatch[1] : ''}`);
-      } catch {}
-    }
-  }
-
-  return parts.length > 0 ? '\n[实体记忆·团队上下文]\n' + parts.join('\n') : '';
+  memoryContextCache.set(agentName, { data: result, ts: now });
+  return result;
 }
 
 function parseMemoryFile(filePath: string): MemoryEntry | null {
