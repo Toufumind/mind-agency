@@ -14,6 +14,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { GROUPS_DIR, MIND_DIR, AGENTS_DIR } from './data-dir';
 import { loadGroupConfig } from './group-config';
+import { agentCache } from './cache';
 
 // ── Types ───────────────────────────────────────────────
 
@@ -91,32 +92,29 @@ const DEFAULT_RULES: ConsensusRule[] = [
   { action: 'group_kick', description: '踢出成员需要管理员批准', approvers: [{ type: 'group_admin' }], quorum: 1, logic: 'or' },
 ];
 
-// ── Load rules (cached) ──────────────────────────────────
-const rulesCache = new Map<string, { data: ConsensusRule[]; ts: number }>();
-const RULES_CACHE_TTL = 300_000; // 5 min
+// ── Load rules (cached via agentCache) ──────────────────
 
 function loadRules(group?: string): ConsensusRule[] {
   const cacheKey = group || '_default';
-  const cached = rulesCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < RULES_CACHE_TTL) return cached.data;
+  const cached = agentCache.get<ConsensusRule[]>('config', `rules:${cacheKey}`);
+  if (cached) return cached;
 
   let rules: ConsensusRule[];
   if (group) {
     const jsonFile = path.join(GROUPS_DIR, group, 'consensus.json');
-    try { if (fs.existsSync(jsonFile)) { const c = JSON.parse(fs.readFileSync(jsonFile, 'utf-8')); if (Array.isArray(c)) { rules = c; rulesCache.set(cacheKey, { data: rules, ts: now }); return rules; } } } catch {}
+    try { if (fs.existsSync(jsonFile)) { const c = JSON.parse(fs.readFileSync(jsonFile, 'utf-8')); if (Array.isArray(c)) { rules = c; agentCache.set('config', `rules:${cacheKey}`, rules); return rules; } } } catch {}
   }
   const systemFile = path.join(MIND_DIR, 'consensus.json');
-  try { if (fs.existsSync(systemFile)) { const c = JSON.parse(fs.readFileSync(systemFile, 'utf-8')); if (Array.isArray(c)) { rules = c; rulesCache.set(cacheKey, { data: rules, ts: now }); return rules; } } } catch {}
+  try { if (fs.existsSync(systemFile)) { const c = JSON.parse(fs.readFileSync(systemFile, 'utf-8')); if (Array.isArray(c)) { rules = c; agentCache.set('config', `rules:${cacheKey}`, rules); return rules; } } } catch {}
   rules = DEFAULT_RULES;
-  rulesCache.set(cacheKey, { data: rules, ts: now });
+  agentCache.set('config', `rules:${cacheKey}`, rules);
   return rules;
 }
 
 /** Invalidate rules cache */
 export function invalidateRulesCache(group?: string): void {
-  if (group) rulesCache.delete(group);
-  else rulesCache.clear();
+  if (group) agentCache.invalidate('config', `rules:${group}`);
+  else agentCache.invalidateRegion('config');
 }
 
 export function getRule(action: string, group?: string): ConsensusRule | null {
@@ -144,16 +142,13 @@ export function createRequest(opts: {
   return id;
 }
 
-// ── Resolve approvers (cached) ──────────────────────────
-const approversCache = new Map<string, { data: string[]; ts: number }>();
-const APPROVERS_CACHE_TTL = 60_000; // 1 min
+// ── Resolve approvers (cached via agentCache) ──────────
 
 export function resolveApprovers(rule: ConsensusRule, group: string, stepAgent?: string): string[] {
   // Cache key based on rule action + group + stepAgent
-  const cacheKey = `${rule.action}:${group}:${stepAgent || ''}`;
-  const cached = approversCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < APPROVERS_CACHE_TTL) return cached.data;
+  const cacheKey = `approvers:${rule.action}:${group}:${stepAgent || ''}`;
+  const cached = agentCache.get<string[]>('config', cacheKey, 60_000); // 1 min TTL
+  if (cached) return cached;
 
   const approvers = new Set<string>();
   const gc = loadGroupConfig(group);
@@ -172,7 +167,7 @@ export function resolveApprovers(rule: ConsensusRule, group: string, stepAgent?:
     }
   }
   const result = [...approvers];
-  approversCache.set(cacheKey, { data: result, ts: Date.now() });
+  agentCache.set('config', cacheKey, result);
   return result;
 }
 

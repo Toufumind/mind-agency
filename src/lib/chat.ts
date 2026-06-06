@@ -65,7 +65,7 @@ try {
         console.log(`[chat] model changed: ${prevModel || '(none)'} → ${process.env.ANTHROPIC_MODEL || '(none)'}`);
       }
       // Invalidate all agent caches — API key/URL/model change affects everyone
-      for (const key of agentBaseOptions.keys()) invalidateAgentCache(key);
+      agentCache.invalidateRegion('config');
     });
   }
 } catch { /* watcher optional */ }
@@ -92,9 +92,8 @@ function watchAgentConfig(agentName: string): void {
       if (existing) clearTimeout(existing);
       watchDebounce.set(agentName, setTimeout(() => {
         watchDebounce.delete(agentName);
-        const prev = (agentBaseOptions.get(agentName) as any)?.__ts;
         invalidateAgentCache(agentName);
-        console.log(`[chat] ${agentName}/${filename} changed → cache invalidated (prev_ts=${prev || 'none'})`);
+        console.log(`[chat] ${agentName}/${filename} changed → cache invalidated`);
       }, 500));
     });
     configWatchers.set(agentName, w);
@@ -252,9 +251,8 @@ interface AgentFullConfig {
   };
 }
 
-const configCache = new Map<string, AgentFullConfig>();
 export function getAgentConfig(agentName: string): AgentFullConfig {
-  const cached = configCache.get(agentName);
+  const cached = agentCache.get<AgentFullConfig>('config', agentName);
   if (cached) return cached;
   try {
     const cf = path.join(AGENTS_DIR, agentName, 'config.json');
@@ -268,12 +266,12 @@ export function getAgentConfig(agentName: string): AgentFullConfig {
         maxTurns: data.maxTurns,
         behavior: data.behavior,
       };
-      configCache.set(agentName, cfg);
+      agentCache.set('config', agentName, cfg);
       return cfg;
     }
   } catch {}
   const def = { roles: [] };
-  configCache.set(agentName, def);
+  agentCache.set('config', agentName, def);
   return def;
 }
 
@@ -385,18 +383,11 @@ function buildMcpConfig(agentName: string) {
 // We want a single set of base options per agent. The SDK picks
 // up options from the previous session via `continue: true`.
 
-const agentBaseOptions = new Map<string, Record<string, any>>();
-// 5 min TTL: stable enough for prompt-cache prefixes across multi-turn conversations
-const BASE_OPTIONS_TTL = 300_000; // 5 min
-
-// ── CLAUDE.md content cache ──────────────────────────────
-const claudeMdCache = new Map<string, { content: string; ts: number }>();
-const CLAUDE_MD_TTL = 300_000; // 5 min
+// ── CLAUDE.md content cache (via agentCache) ──────────────
 
 function readClaudeMd(agentName: string): string {
-  const cached = claudeMdCache.get(agentName);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < CLAUDE_MD_TTL) return cached.content;
+  const cached = agentCache.get<string>('identity', agentName);
+  if (cached !== null) return cached;
 
   const claudeMdPath = path.join(AGENTS_DIR, agentName, 'CLAUDE.md');
   let content = '';
@@ -404,16 +395,12 @@ function readClaudeMd(agentName: string): string {
     if (fs.existsSync(claudeMdPath)) content = fs.readFileSync(claudeMdPath, 'utf-8').trim();
   } catch {}
 
-  claudeMdCache.set(agentName, { content, ts: now });
+  agentCache.set('identity', agentName, content);
   return content;
 }
 
 export function invalidateAgentCache(agentName: string): void {
   agentCache.invalidateAgent(agentName);
-  // Also invalidate legacy caches
-  agentBaseOptions.delete(agentName);
-  configCache.delete(agentName);
-  claudeMdCache.delete(agentName);
   // Invalidate memory cache if agent name provided
   if (typeof invalidateMemoryCache === 'function') invalidateMemoryCache(agentName);
   // Invalidate goals cache
@@ -421,10 +408,8 @@ export function invalidateAgentCache(agentName: string): void {
 }
 
 function buildBaseOptions(agentName: string) {
-  const key = agentName;
-  const cached = agentBaseOptions.get(key);
-  const now = Date.now();
-  if (cached && (now - ((cached as any).__ts || 0)) < BASE_OPTIONS_TTL) return cached;
+  const cached = agentCache.get<Record<string, any>>('config', agentName + ':baseOptions');
+  if (cached) return cached;
 
   const agentDir = path.join(AGENTS_DIR, agentName);
   // Memory context layer — agent carries past context across sessions
@@ -443,8 +428,7 @@ function buildBaseOptions(agentName: string) {
     // maxTurns removed — agents can run indefinitely
   };
 
-  (opts as any).__ts = Date.now();
-  agentBaseOptions.set(key, opts);
+  agentCache.set('config', agentName + ':baseOptions', opts);
   return opts;
 }
 
