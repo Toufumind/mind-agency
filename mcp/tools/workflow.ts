@@ -32,10 +32,10 @@ export async function handleWorkflowTool(
 
   if (name === 'workflow_create') {
     const { group, name: wfName, description, steps: stepsJson } = a;
-    if (!group || !wfName || !stepsJson) { respond(id, { content: [{ type: 'text', text: 'group, name, and steps required' }], isError: true }); return true; }
+    if (!group || !wfName || !stepsJson) { respond(id, { content: [{ type: 'text', text: `错误：缺少必填参数。需要: group="${group || '???'}", name="${wfName || '???'}", steps（JSON 数组）` }], isError: true }); return true; }
     let steps;
     try { steps = JSON.parse(stepsJson); } catch { respond(id, { content: [{ type: 'text', text: 'steps must be valid JSON array' }], isError: true }); return true; }
-    if (!Array.isArray(steps) || steps.length === 0) { respond(id, { content: [{ type: 'text', text: 'steps must be non-empty array' }], isError: true }); return true; }
+    if (!Array.isArray(steps) || steps.length === 0) { respond(id, { content: [{ type: 'text', text: '错误：steps 不能为空数组。请提供至少一个步骤，格式: [{"id":"step1","agent":"Alice","action":"review","prompt":"..."}]' }], isError: true }); return true; }
 
     // v0.4: Add default reviewer to all steps if specified
     if (a.reviewer) {

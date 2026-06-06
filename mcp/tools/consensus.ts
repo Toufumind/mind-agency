@@ -26,35 +26,53 @@ export async function handleConsensusTool(
 
   if (name === 'decide') {
     const { group, decision, reason, requestId } = a;
-    if (!group || !decision) { respond(id, { content: [{ type: 'text', text: 'group and decision required' }], isError: true }); return true; }
-    if (!['APPROVED', 'REJECTED'].includes(decision)) { respond(id, { content: [{ type: 'text', text: 'decision must be APPROVED or REJECTED' }], isError: true }); return true; }
+    if (!group || !decision) { respond(id, { content: [{ type: 'text', text: `错误：缺少参数。需要: group="${group || '???'}", decision="APPROVED|REJECTED"` }], isError: true }); return true; }
+    if (!['APPROVED', 'REJECTED'].includes(decision)) { respond(id, { content: [{ type: 'text', text: `错误：decision 必须是 APPROVED 或 REJECTED，当前值: "${decision}"` }], isError: true }); return true; }
     const gDir = path.join(groupsDir(), group);
     const consensusDir = path.join(gDir, '.consensus');
-    // Try to find the specific request
-    if (requestId && exists(consensusDir)) {
-      const reqFile = path.join(consensusDir, `${requestId}.json`);
-      if (exists(reqFile)) {
-        try {
-          const req = JSON.parse(fs.readFileSync(reqFile, 'utf-8'));
-          if (!req.decisions) req.decisions = {};
-          req.decisions[agentName] = { decision, reason: reason || '', timestamp: Date.now() };
-          // Simple logic: first decision wins for or-logic
-          if (decision === 'APPROVED') req.status = 'approved';
-          else req.status = 'rejected';
-          fs.writeFileSync(reqFile, JSON.stringify(req, null, 2), 'utf-8');
-          emitBusEvent('task.completed', { taskId: `consensus:${group}:${requestId}`, by: agentName, decision });
-          respond(id, { content: [{ type: 'text', text: `决策已提交: ${decision}` }] });
-          return true;
-        } catch { /* fall through */ }
+
+    // v0.4: Find pending requests — try specific requestId, then find any pending for this agent
+    if (exists(consensusDir)) {
+      let targetReq: any = null;
+      let targetFile: string | null = null;
+
+      if (requestId) {
+        const reqFile = path.join(consensusDir, `${requestId}.json`);
+        if (exists(reqFile)) {
+          try { targetReq = JSON.parse(fs.readFileSync(reqFile, 'utf-8')); targetFile = reqFile; } catch {}
+        }
+      }
+      if (!targetReq) {
+        for (const f of readDir(consensusDir)) {
+          if (!f.name.endsWith('.json')) continue;
+          try {
+            const req = JSON.parse(fs.readFileSync(path.join(consensusDir, f.name), 'utf-8'));
+            if (req.status !== 'pending' && req.status !== 'rebuttal') continue;
+            const isApprover = req.approvers?.some((a: string) => a.toLowerCase() === agentName.toLowerCase()) ||
+              (req.approvers?.includes('human') && agentName === 'me') ||
+              req.requestedBy === agentName;
+            if (isApprover) { targetReq = req; targetFile = path.join(consensusDir, f.name); break; }
+          } catch {}
+        }
+      }
+      if (targetReq && targetFile) {
+        if (!targetReq.decisions) targetReq.decisions = {};
+        targetReq.decisions[agentName] = { decision, reason: reason || '', timestamp: Date.now() };
+        if (decision === 'APPROVED') targetReq.status = 'approved';
+        else targetReq.status = 'rejected';
+        fs.writeFileSync(targetFile, JSON.stringify(targetReq, null, 2), 'utf-8');
+        emitBusEvent('task.completed', { taskId: `consensus:${group}:${targetReq.id}`, by: agentName, decision });
+        respond(id, { content: [{ type: 'text', text: `决策已提交: ${decision} — ${targetReq.description || targetReq.action}` }] });
+        return true;
       }
     }
-    // Fallback: create a decision file
+    // Fallback
     const decDir = path.join(gDir, '.decisions');
     if (!exists(decDir)) fs.mkdirSync(decDir, { recursive: true });
     const decFile = path.join(decDir, `${Date.now()}_${agentName}.json`);
     fs.writeFileSync(decFile, JSON.stringify({ agent: agentName, decision, reason: reason || '', timestamp: Date.now() }), 'utf-8');
     writeAudit({ agent: agentName, action: 'workflow.decide', resource: `group:${group}`, details: decision });
-    respond(id, { content: [{ type: 'text', text: `决策已记录: ${decision}` }] });
+    respond(id, { content: [{ type: 'text', text: `决策已记录: ${decision}（无匹配请求，已创建决策文件）` }] });
     return true;
   }
 
