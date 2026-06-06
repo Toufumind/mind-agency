@@ -12,6 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { MIND_DIR, AGENTS_DIR, GROUPS_DIR } from './data-dir';
+import { agentCache } from './cache';
 
 function agentMemDir(agentName: string): string {
   return path.join(MIND_DIR, 'agents', agentName, 'memory');
@@ -58,6 +59,8 @@ ${content}
   // Invalidate all caches
   invalidateMemoryCache(agentName);
   invalidateSearchCache(agentName);
+  // Invalidate agent's baseOptions cache (system prompt contains memory)
+  agentCache.invalidate('config', agentName + ':baseOptions');
   return entry;
 }
 
@@ -215,6 +218,8 @@ export function deleteMemory(agentName: string, key: string): boolean {
   // Invalidate all caches
   invalidateMemoryCache(agentName);
   invalidateSearchCache(agentName);
+  // Invalidate agent's baseOptions cache (system prompt contains memory)
+  agentCache.invalidate('config', agentName + ':baseOptions');
   return true;
 }
 

@@ -401,6 +401,8 @@ function readClaudeMd(agentName: string): string {
 
 export function invalidateAgentCache(agentName: string): void {
   agentCache.invalidateAgent(agentName);
+  // Also invalidate baseOptions cache (contains system prompt with memory)
+  agentCache.invalidate('config', agentName + ':baseOptions');
   // Invalidate memory cache if agent name provided
   if (typeof invalidateMemoryCache === 'function') invalidateMemoryCache(agentName);
   // Invalidate goals cache
