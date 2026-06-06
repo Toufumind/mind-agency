@@ -58,7 +58,7 @@ export class ForceSimulation {
   config: ForceConfig;
   running = false;
   private animFrame: number | null = null;
-  private onTick: ((nodes: Map<string, ForceNode>) => void) | null = null;
+  private onTickCb: ((nodes: Map<string, ForceNode>) => void) | null = null;
 
   constructor(config?: Partial<ForceConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -90,7 +90,7 @@ export class ForceSimulation {
 
   /** Set callback for each tick */
   onTick(cb: (nodes: Map<string, ForceNode>) => void): void {
-    this.onTick = cb;
+    this.onTickCb = cb;
   }
 
   /** Start simulation */
@@ -178,7 +178,7 @@ export class ForceSimulation {
     }
 
     // Callback
-    if (this.onTick) this.onTick(this.nodes);
+    if (this.onTickCb) this.onTickCb(this.nodes);
 
     // Continue
     this.animFrame = requestAnimationFrame(() => this.tick());

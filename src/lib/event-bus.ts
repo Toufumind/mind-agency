@@ -47,8 +47,8 @@ export enum WorkflowPhase {
 }
 
 /** Map step action to workflow phase */
-export function phaseForAction(action: string): WorkflowPhase {
-  const a = action.toLowerCase();
+export function phaseForAction(action?: string): WorkflowPhase {
+  const a = (action || '').toLowerCase();
   if (a.includes('review')) return WorkflowPhase.REVIEW;
   if (a.includes('approve')) return WorkflowPhase.APPROVAL;
   if (a.includes('reject')) return WorkflowPhase.REVIEW;
@@ -316,7 +316,9 @@ export function parseReviewFindings(output: string): Array<{ file: string; line:
 /** Simulated executor — synthetic outputs for dev/testing, ChatDev-style reviews */
 export class SimulatedStepExecutor implements StepExecutor {
   async execute(step: WorkflowStep, ctx: Record<string, string>): Promise<string> {
-    const a = step.action.toLowerCase();
+    const a = (step.action || '').toLowerCase();
+    const agent = step.agent || 'unknown';
+    const action = step.action || 'execute';
     if (a.includes('review') || a.includes('audit')) {
       // ChatDev-style: precise file:line findings
       const findings = [
@@ -328,22 +330,22 @@ export class SimulatedStepExecutor implements StepExecutor {
       if (prevReview) {
         findings.push(`ISSUE|src/lib/event-bus.ts:173|prior fix not verified — re-review needed|Re-check backpressure logic after fix`);
       }
-      return `REVIEW_COMPLETE ACTION:${step.action} AGENT:${step.agent} DECISION:APPROVED\n${findings.join('\n')}`;
+      return `REVIEW_COMPLETE ACTION:${action} AGENT:${agent} DECISION:APPROVED\n${findings.join('\n')}`;
     }
-    if (a.includes('approve')) return `APPROVED ACTION:${step.action} AGENT:${step.agent}`;
-    if (a.includes('reject')) return `REJECTED ACTION:${step.action} AGENT:${step.agent}`;
-    if (a.includes('deploy')) return `DEPLOYED+PASSED ACTION:${step.action} AGENT:${step.agent}`;
-    if (a.includes('verify') || a.includes('test')) return `VERIFIED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('approve')) return `APPROVED ACTION:${action} AGENT:${agent}`;
+    if (a.includes('reject')) return `REJECTED ACTION:${action} AGENT:${agent}`;
+    if (a.includes('deploy')) return `DEPLOYED+PASSED ACTION:${action} AGENT:${agent}`;
+    if (a.includes('verify') || a.includes('test')) return `VERIFIED ACTION:${action} AGENT:${agent}`;
     if (a.includes('fix') || a.includes('修复')) {
       // Fixer step: extract findings from context and produce targeted fixes
       const allFindings = Object.values(ctx).flatMap(v => parseReviewFindings(v));
       if (allFindings.length > 0) {
-        return `FIXED ${allFindings.length} issues — ACTION:${step.action} AGENT:${step.agent}\n${allFindings.map(f => `FIXED|${f.file}:${f.line}|${f.desc}`).join('\n')}`;
+        return `FIXED ${allFindings.length} issues — ACTION:${action} AGENT:${agent}\n${allFindings.map(f => `FIXED|${f.file}:${f.line}|${f.desc}`).join('\n')}`;
       }
-      return `FIXED ACTION:${step.action} AGENT:${step.agent}`;
+      return `FIXED ACTION:${action} AGENT:${agent}`;
     }
-    if (a.includes('notify')) return `NOTIFIED ACTION:${step.action} AGENT:${step.agent}`;
-    return `COMPLETED ACTION:${step.action} AGENT:${step.agent}`;
+    if (a.includes('notify')) return `NOTIFIED ACTION:${action} AGENT:${agent}`;
+    return `COMPLETED ACTION:${action} AGENT:${agent}`;
   }
 }
 
@@ -372,9 +374,11 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
       : `${step.prompt}${promptSuffix}`;
 
     // ── Permission check — every step execution goes through the engine ──
-    const perm = checkToolPermission(step.agent, `workflow_step_${step.action}`, { stepId: step.id, action: step.action });
+    const agent = step.agent || 'unknown';
+    const action = step.action || 'execute';
+    const perm = checkToolPermission(agent, `workflow_step_${action}`, { stepId: step.id, action });
     if (!perm.allowed) {
-      throw new Error(`步骤 ${step.id} (${step.action}) 需要审批: ${perm.message}`);
+      throw new Error(`步骤 ${step.id} (${action}) 需要审批: ${perm.message}`);
     }
 
     // ── Execution with model fallback ──
@@ -383,10 +387,10 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
 
     for (let i = 0; i < models.length; i++) {
       try {
-        console.log(`[wf] ChatStepExecutor → ${step.agent} (${step.action}) model=${models[i]} len=${prompt.length}`);
+        console.log(`[wf] ChatStepExecutor → ${agent} (${action}) model=${models[i]} len=${prompt.length}`);
         // Pass model override to chatOnce — this sidesteps ANTHROPIC_MODEL env var
         const { createChatStream } = await import('./chat');
-        const stream = createChatStream(step.agent, prompt, undefined, models[i]);
+        const stream = createChatStream(agent, prompt, undefined, models[i]);
         const reader = stream.getReader();
         let reply = '';
         while (true) {
@@ -397,12 +401,12 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
         }
 
         // v0.4: Read structured result from task report file
-        const reportDir = path.join(MIND_DIR, 'agents', step.agent, '.task-reports');
+        const reportDir = path.join(MIND_DIR, 'agents', agent, '.task-reports');
         const reportPath = path.join(reportDir, `${step.id}.json`);
         if (fs.existsSync(reportPath)) {
           try {
             const report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
-            console.log(`[wf] ChatStepExecutor ← ${step.agent} task_report=${report.summary?.slice(0, 100)}`);
+            console.log(`[wf] ChatStepExecutor ← ${agent} task_report=${report.summary?.slice(0, 100)}`);
             // Clean up the report file
             fs.unlinkSync(reportPath);
             return `${report.status}: ${report.summary}${report.details ? '\n' + report.details : ''}`;
@@ -410,8 +414,8 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
         }
 
         // Fallback: use text output if agent didn't write to memory
-        console.log(`[wf] ChatStepExecutor ← ${step.agent} text=${reply.slice(0, 100)} (no memory entry)`);
-        return reply || `EMPTY_REPLY ACTION:${step.action} AGENT:${step.agent}`;
+        console.log(`[wf] ChatStepExecutor ← ${agent} text=${reply.slice(0, 100)} (no memory entry)`);
+        return reply || `EMPTY_REPLY ACTION:${action} AGENT:${agent}`;
       } catch (e: unknown) {
         lastError = e;
         const msg = e instanceof Error ? e.message : String(e);
@@ -546,7 +550,7 @@ export class WorkflowEngine {
     }
 
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_CREATED, { taskId: runId, title: `Workflow: ${def.name}`, stepsTotal: def.steps.length }, 'workflow-engine'));
-    this.executeDag(runId, def).then(() => {
+    this.executeDag(runId, def, triggerStepId).then(() => {
       const r = this.runs.get(runId);
       if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); }
       // v0.4: Complete checkpoint + append history
@@ -587,7 +591,7 @@ export class WorkflowEngine {
 
   // ── Core DAG execution ────────────────────────────────────────────
 
-  private async executeDag(runId: string, def: WorkflowDefinition): Promise<void> {
+  private async executeDag(runId: string, def: WorkflowDefinition, triggerStepId?: string): Promise<void> {
     const run = this.runs.get(runId); if (!run) return;
     const nodes = new Map<string, DagNode>();
     const compOnly = new Set<string>();
@@ -701,6 +705,7 @@ export class WorkflowEngine {
     const run = this.runs.get(runId);
     if (!run) return;
     const sid = node.step.id;
+    const agent = node.step.agent || 'unknown';
 
     // Build notification prompt with callback instructions
     const ctxStr = Object.entries(ctx).map(([k, v]) => `[${k}]: ${v.slice(0, 500)}`).join('\n\n');
@@ -716,14 +721,14 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     if (this.bus) {
       this.bus.emit(createEvent(EventType.TASK_ASSIGNED, {
         taskId: runId, stepId: sid, workflow: run.workflowName,
-        agent: node.step.agent, action: node.step.action,
+        agent, action: node.step.action,
         prompt, phase: phaseForAction(node.step.action),
       }, 'workflow-engine'));
     }
 
     // Also persist notification to agent's chat so it can be picked up
     try {
-      const notifDir = path.join(MIND_DIR, 'agents', node.step.agent, '.workflow-notifications');
+      const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
       if (!fs.existsSync(notifDir)) fs.mkdirSync(notifDir, { recursive: true });
       const notifPath = path.join(notifDir, `${runId}_${sid}.json`);
       fs.writeFileSync(notifPath, JSON.stringify({ runId, stepId: sid, prompt, createdAt: Date.now() }), 'utf-8');
@@ -734,13 +739,13 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     run.steps.set(sid, StepStatus.WAITING);
 
     // Add to agent's task queue
-    enqueueTask(node.step.agent, {
+    enqueueTask(agent, {
       runId, stepId: sid, workflow: run.workflowName,
       prompt: node.step.prompt || '',
       priority: (node.step.priority as any) || 'normal',
     });
 
-    console.log(`[wf] Notified ${node.step.agent} for ${sid} (run ${runId.slice(0, 8)})`);
+    console.log(`[wf] Notified ${agent} for ${sid} (run ${runId.slice(0, 8)})`);
   }
 
   /** Handle callback from agent — step completed */
@@ -755,12 +760,13 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     console.log(`[wf] Callback: ${stepId} ← ${output.slice(0, 100)} (run ${runId.slice(0, 8)})`);
 
     // Complete task in agent's task queue
+    const agentName = node.step.agent || 'unknown';
     const isFailed = /FAILED|ERROR/i.test(output);
-    completeTask(node.step.agent, runId, stepId, output.slice(0, 500), isFailed ? 'failed' : 'completed');
+    completeTask(agentName, runId, stepId, output.slice(0, 500), isFailed ? 'failed' : 'completed');
 
     // Clean up notification file
     try {
-      const notifPath = path.join(MIND_DIR, 'agents', node.step.agent, '.workflow-notifications', `${runId}_${stepId}.json`);
+      const notifPath = path.join(MIND_DIR, 'agents', agentName, '.workflow-notifications', `${runId}_${stepId}.json`);
       if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
     } catch {}
 
@@ -776,7 +782,7 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output }, 'workflow-engine'));
 
     // Read task report if exists
-    const reportDir = path.join(MIND_DIR, 'agents', node.step.agent, '.task-reports');
+    const reportDir = path.join(MIND_DIR, 'agents', agentName, '.task-reports');
     const reportPath = path.join(reportDir, `${stepId}.json`);
     if (fs.existsSync(reportPath)) {
       try {
@@ -1155,8 +1161,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       approvalId,
       runId: p.runId,
       stepId: p.stepId,
-      agent: p.node.step.agent,
-      prompt: p.node.step.prompt,
+      agent: p.node.step.agent || 'unknown',
+      prompt: p.node.step.prompt || '',
     }));
   }
 
@@ -1224,7 +1230,7 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
               run.steps.set(sid, StepStatus.FAILED);
               // Clean up notification file
               try {
-                const notifPath = path.join(MIND_DIR, 'agents', node.step.agent, '.workflow-notifications', `${rid}_${sid}.json`);
+                const notifPath = path.join(MIND_DIR, 'agents', node.step.agent || 'unknown', '.workflow-notifications', `${rid}_${sid}.json`);
                 if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
               } catch {}
               if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, {

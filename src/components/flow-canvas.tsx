@@ -164,7 +164,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
     sim.setNodes(allNodes.map((n, i) => ({ id: n.id, x: (Math.random() - 0.5) * 600, y: (Math.random() - 0.5) * 400 })));
     sim.setEdges(allEdges);
-    sim.onTick((nodes) => {
+    sim.onTick((nodes: Map<string, any>) => {
       const pos = new Map<string, { x: number; y: number }>();
       for (const [id, n] of nodes) pos.set(id, { x: n.x, y: n.y });
       setPositions(pos);
