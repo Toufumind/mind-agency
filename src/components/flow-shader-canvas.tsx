@@ -350,5 +350,5 @@ export default function FlowShaderCanvas({ width, height, zoom, pan, cells, node
     } catch (e) { console.error('WebGL render error:', e); }
   }, [width, height, zoom, pan, cells, nodes, edges, time]);
 
-  return <canvas ref={canvasRef} width={width} height={height} className="absolute inset-0" style={{ zIndex: 0 }} />;
+  return <canvas ref={canvasRef} width={width || 100} height={height || 100} className="absolute inset-0" style={{ zIndex: 0 }} />;
 }

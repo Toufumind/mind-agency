@@ -144,6 +144,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
   // ── Build simulation ──
   useEffect(() => {
+    try {
     const sim = new ForceSimulation({ repulsion: 1800, attraction: 0.025, gravity: 0.008, linkDistance: 200, damping: 0.92, maxVelocity: 6, interGroupRepulsion: 8, groupGravity: 0.04 });
     const allNodes: { id: string; group: string }[] = [];
     const allEdges: ForceEdge[] = [];
@@ -174,6 +175,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
     });
     sim.start();
     simRef.current = sim;
+    } catch (e) { console.error('Force simulation error:', e); }
     return () => sim.stop();
   }, [workflows]);
 
@@ -247,7 +249,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
           if (!pos) return null;
           const isTrigger = s.type === 'trigger';
           const status = getStepStatus(wf.group, s.id);
-          const statusNum = isTrigger ? 5 : { pending: 0, waiting: 1, in_progress: 2, completed: 3, failed: 4 }[status] || 0;
+          const statusNum = isTrigger ? 5 : ({ pending: 0, waiting: 1, in_progress: 2, completed: 3, failed: 4 } as Record<string, number>)[status] || 0;
           return { x: pos.x, y: pos.y, status: statusNum, isHovered: hoveredNode === `${wf.group}:${s.id}` ? 1 : 0 };
         }).filter(Boolean) as any[])}
         edges={edges.map(e => ({ x1: e.x1, y1: e.y1 + 28, x2: e.x2, y2: e.y2 - 28, active: e.active ? 1 : 0 }))}
