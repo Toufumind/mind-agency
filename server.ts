@@ -270,6 +270,30 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // ── POST /workflows/callback (v0.5) ────────────────────────────────
+
+  if (req.method === 'POST' && req.url === '/workflows/callback') {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { runId, stepId, output } = JSON.parse(body);
+        if (!runId || !stepId || !output) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'runId, stepId, output required' }));
+          return;
+        }
+        const ok = workflowEngine.callback(runId, stepId, output);
+        res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(ok ? { ok: true, runId, stepId } : { ok: false, error: 'run/step not found or not waiting' }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ── POST /workflows/cancel (v0.4) ───────────────────────────────────
 
   if (req.method === 'POST' && req.url === '/workflows/cancel') {

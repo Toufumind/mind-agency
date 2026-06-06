@@ -267,11 +267,11 @@ export function emitEvent(type: EventType, payload: Record<string, unknown>, sou
 
 // ═══════════════════════════════════════════════════ Workflow Engine ═══
 
-export enum StepStatus { PENDING = 'pending', BLOCKED = 'blocked', IN_PROGRESS = 'in_progress', COMPLETED = 'completed', SKIPPED = 'skipped', FAILED = 'failed' }
+export enum StepStatus { PENDING = 'pending', BLOCKED = 'blocked', IN_PROGRESS = 'in_progress', WAITING = 'waiting', COMPLETED = 'completed', SKIPPED = 'skipped', FAILED = 'failed' }
 export enum WorkflowStatus { IDLE = 'idle', RUNNING = 'running', COMPLETED = 'completed', FAILED = 'failed' }
 
 export interface WorkflowStepRoute { step: string; when: string; }
-export interface WorkflowStep { id: string; agent: string; action: string; prompt: string; notify?: string | string[]; condition?: string; dependsOn?: string[]; routes?: WorkflowStepRoute[]; timeout?: number; onFailure?: string; onReject?: string; onApprove?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
+export interface WorkflowStep { id: string; type?: 'step' | 'trigger'; agent?: string; action?: string; prompt?: string; trigger?: WorkflowTrigger; notify?: string | string[]; condition?: string; dependsOn?: string[]; routes?: WorkflowStepRoute[]; timeout?: number; onFailure?: string; onReject?: string; onApprove?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
 export interface WorkflowTrigger {
   type: 'manual' | 'file_change' | 'schedule' | 'event';
   /** For schedule: cron expression (e.g. "0 9 * * 1-5") */
@@ -443,20 +443,37 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
     };
   }
 
-  const steps = sl.map((s: any, i: number) => ({
-    id: s.id || `step_${i}`, agent: s.agent || 'unknown', action: s.action || 'execute',
-    prompt: s.prompt || '', notify: s.notify, condition: s.condition,
-    dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined),
-    timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined,
-    onReject: s.on_reject || s.onReject || undefined,
-    onApprove: s.on_approve || s.onApprove || undefined,
-    routes: Array.isArray(s.routes) ? s.routes.map((r: any) => ({ step: r.step || r.target, when: r.when || r.condition || '' })) : undefined,
-    maxRejectRetries: typeof s.max_reject_retries === 'number' ? Math.min(s.max_reject_retries, 10) : typeof s.maxRejectRetries === 'number' ? Math.min(s.maxRejectRetries, 10) : undefined,
-    retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined,
-    retryBackoff: s.retry_backoff || s.retryBackoff || undefined,
-    priority: s.priority || undefined, reviewer: s.reviewer || undefined,
-    reviewPrompt: s.review_prompt || s.reviewPrompt || undefined,
-  }));
+  const steps = sl.map((s: any, i: number) => {
+    const isTrigger = s.type === 'trigger' || (!s.agent && !s.prompt && s.trigger);
+    const trigger: WorkflowTrigger | undefined = s.trigger ? {
+      type: s.trigger.type || 'manual',
+      cron: s.trigger.cron,
+      eventType: s.trigger.event_type || s.trigger.eventType,
+      eventFilter: s.trigger.event_filter || s.trigger.eventFilter,
+      watchFile: s.trigger.watch_file || s.trigger.watchFile,
+      debounceMs: s.trigger.debounce_ms || s.trigger.debounceMs || 5000,
+    } : undefined;
+
+    return {
+      id: s.id || `step_${i}`,
+      type: isTrigger ? 'trigger' as const : 'step' as const,
+      agent: s.agent || (isTrigger ? undefined : 'unknown'),
+      action: s.action || (isTrigger ? 'trigger' : 'execute'),
+      prompt: s.prompt || '',
+      trigger,
+      notify: s.notify, condition: s.condition,
+      dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined),
+      timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined,
+      onReject: s.on_reject || s.onReject || undefined,
+      onApprove: s.on_approve || s.onApprove || undefined,
+      routes: Array.isArray(s.routes) ? s.routes.map((r: any) => ({ step: r.step || r.target, when: r.when || r.condition || '' })) : undefined,
+      maxRejectRetries: typeof s.max_reject_retries === 'number' ? Math.min(s.max_reject_retries, 10) : typeof s.maxRejectRetries === 'number' ? Math.min(s.maxRejectRetries, 10) : undefined,
+      retry: typeof s.retry === 'number' ? Math.min(s.retry, 10) : undefined,
+      retryBackoff: s.retry_backoff || s.retryBackoff || undefined,
+      priority: s.priority || undefined, reviewer: s.reviewer || undefined,
+      reviewPrompt: s.review_prompt || s.reviewPrompt || undefined,
+    };
+  });
 
   // v0.4: Validate — duplicate step IDs
   const ids = steps.map(s => s.id);
@@ -493,7 +510,7 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
 
 // ── DAG internal types ──────────────────────────────────────────────
 
-interface DagNode { step: WorkflowStep; deps: string[]; dependents: string[]; status: StepStatus; output: string; error: string; retryCount: number; maxRetries: number; rejectCount: number; maxRejectRetries: number; onFailure?: string; onReject?: string; onApprove?: string; routes?: WorkflowStepRoute[]; timeout: number; startedAt: number; }
+interface DagNode { step: WorkflowStep; deps: string[]; dependents: string[]; status: StepStatus; output: string; error: string; retryCount: number; maxRetries: number; rejectCount: number; maxRejectRetries: number; onFailure?: string; onReject?: string; onApprove?: string; routes?: WorkflowStepRoute[]; timeout: number; startedAt: number; notifiedAt: number; }
 const PRIORITY: Record<string, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 
 // ═══════════════════════════════════════════════════ WorkflowEngine ═══
@@ -588,7 +605,7 @@ export class WorkflowEngine {
           retryCount: 0, maxRetries: s.retry ?? 3,
           rejectCount: 0, maxRejectRetries: s.maxRejectRetries ?? 3,
           onFailure: s.onFailure, onReject: s.onReject, onApprove: s.onApprove,
-          routes: s.routes, timeout: s.timeout || 300000, startedAt: 0,
+          routes: s.routes, timeout: s.timeout || 300000, startedAt: 0, notifiedAt: 0,
         });
       }
       // Rebuild dependent links
@@ -605,6 +622,19 @@ export class WorkflowEngine {
     };
 
     addSteps(def.steps);
+
+    // Store nodes for callback lookup
+    this.runNodes.set(runId, nodes);
+
+    // ── Auto-complete trigger steps ──
+    for (const [id, node] of nodes) {
+      if (node.step.type === 'trigger') {
+        node.status = StepStatus.COMPLETED;
+        node.output = JSON.stringify(node.step.trigger || { type: 'manual' });
+        run.steps.set(id, StepStatus.COMPLETED);
+        console.log(`[wf] Trigger ${id} auto-completed`);
+      }
+    }
 
     // ── Cycle detection via DFS ──────────────────────────────────────
     const detectCycle = (nodesMap: Map<string, DagNode>): string | null => {
@@ -654,133 +684,239 @@ export class WorkflowEngine {
       throw new Error(`Circular dependency detected in workflow DAG: ${cyclePath}`);
     }
 
-    const maxIter = Math.max(nodes.size * 10, 1000); let iter = 0;
+    // ── Start scheduling (callback model) ──
+    this.schedule(runId);
+  }
 
-    while (iter++ < maxIter) {
-      if (run.status !== WorkflowStatus.RUNNING) return;
-      // v0.4: Check abort signal
-      const ac = this.abortControllers.get(runId);
-      if (ac?.signal.aborted) {
-        run.status = WorkflowStatus.FAILED;
-        run.completedAt = Date.now();
-        console.log(`[wf] Workflow ${runId.slice(0, 8)} cancelled`);
-        if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: 'cancelled', cancelled: true }, 'workflow-engine'));
-        return;
-      }
+  // ── Callback model: step notifies agent → agent calls back ────────────
 
-      // ── Dynamic reload: check if YAML was modified (v0.4: add + delete + modify) ─────────
-      if (yamlPath && iter > 1 && iter % 3 === 0) {
-        const mtime = this.getFileMtime(yamlPath);
-        if (mtime > lastYamlMtime) {
-          try {
-            const raw = fs.readFileSync(yamlPath, 'utf-8');
-            const newDef = parseWorkflowYaml(raw);
-            const newIds = new Set(newDef.steps.map(s => s.id));
-            const existingIds = new Set([...nodes.keys()]);
+  /** Store DAG nodes per run (for callback lookup) */
+  private runNodes = new Map<string, Map<string, DagNode>>();
 
-            // 1. Detect ADDED steps
-            const added = newDef.steps.filter(s => !existingIds.has(s.id));
-            if (added.length > 0) {
-              console.log(`[wf] Dynamic reload: +${added.length} added: ${added.map(s => s.id).join(', ')}`);
-              addSteps(added);
-            }
+  /** Notify agent to execute a step (fire-and-forget) */
+  private notifyAgent(runId: string, node: DagNode, nodes: Map<string, DagNode>, ctx: Record<string, string>): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    const sid = node.step.id;
 
-            // 2. Detect REMOVED steps (v0.4)
-            const removed = [...existingIds].filter(id => !newIds.has(id));
-            for (const id of removed) {
-              const node = nodes.get(id);
-              if (!node) continue;
-              if (node.status === StepStatus.IN_PROGRESS) {
-                console.log(`[wf] Dynamic reload: step "${id}" removed but running — will complete then discard`);
-                // Don't interrupt running steps — let them finish, then skip dependents
-              } else if (node.status === StepStatus.PENDING || node.status === StepStatus.BLOCKED) {
-                console.log(`[wf] Dynamic reload: -1 removed: ${id}`);
-                node.status = StepStatus.SKIPPED;
-                run.steps.set(id, StepStatus.SKIPPED);
-                nodes.delete(id);
-              }
-              // COMPLETED/FAILED steps — leave in history, just remove from active DAG
-            }
+    // Build notification prompt with callback instructions
+    const ctxStr = Object.entries(ctx).map(([k, v]) => `[${k}]: ${v.slice(0, 500)}`).join('\n\n');
+    const callbackInstr = `\n\n---\n\n【工作流回调】完成后请用 workflow_callback 报告结果：
+workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECTED 或 COMPLETED 或 FAILED", summary="结果摘要", details="详细说明")
+这一步的结果会被工作流引擎读取并决定下一步。`;
 
-            // 3. Detect MODIFIED steps (v0.4)
-            for (const newStep of newDef.steps) {
-              const existing = nodes.get(newStep.id);
-              if (!existing) continue; // already handled as "added"
-              if (existing.status !== StepStatus.PENDING && existing.status !== StepStatus.BLOCKED) continue; // only modify pending/blocked
-              // Check if definition changed
-              const oldDef = JSON.stringify({ agent: existing.step.agent, action: existing.step.action, prompt: existing.step.prompt, condition: existing.step.condition, dependsOn: existing.step.dependsOn });
-              const newDefStr = JSON.stringify({ agent: newStep.agent, action: newStep.action, prompt: newStep.prompt, condition: newStep.condition, dependsOn: newStep.dependsOn });
-              if (oldDef !== newDefStr) {
-                console.log(`[wf] Dynamic reload: ~1 modified: ${newStep.id}`);
-                existing.step = newStep;
-                // Rebuild deps if dependsOn changed
-                existing.deps = newStep.dependsOn || [];
-                existing.dependents = [];
-                for (const [oid, other] of nodes) {
-                  if (other.deps.includes(newStep.id)) other.dependents.push(newStep.id);
-                }
-              }
-            }
-          } catch (err) { /* parse errors ignored, Agent may be mid-write */ }
-          lastYamlMtime = mtime;
-        }
-      }
+    const prompt = ctxStr
+      ? `[工作流上下文]\n${ctxStr}\n\n---\n\n你的任务:\n${node.step.prompt}${callbackInstr}`
+      : `${node.step.prompt}${callbackInstr}`;
 
-      if (run.status !== WorkflowStatus.RUNNING) return;
-      const ready: DagNode[] = [];
+    // Emit notification event — the agent's MCP handler will pick this up
+    if (this.bus) {
+      this.bus.emit(createEvent(EventType.TASK_ASSIGNED, {
+        taskId: runId, stepId: sid, workflow: run.workflowName,
+        agent: node.step.agent, action: node.step.action,
+        prompt, phase: phaseForAction(node.step.action),
+      }, 'workflow-engine'));
+    }
 
-      for (const [id, node] of nodes) {
-        if (node.status !== StepStatus.PENDING && node.status !== StepStatus.BLOCKED) continue;
-        // Skip compensation-only steps (no deps, referenced via on_failure)
-        if (node.deps.length === 0 && compOnly.has(id) && node.status === StepStatus.PENDING) continue;
-        const depsOk = node.deps.every(depId => { const dn = nodes.get(depId); return dn && (dn.status === StepStatus.COMPLETED || dn.status === StepStatus.SKIPPED); });
-        if (!depsOk) { node.status = StepStatus.BLOCKED; run.steps.set(id, StepStatus.BLOCKED); continue; }
-        if (node.step.condition) {
-          const ctx: Record<string, string> = {};
-          for (const [sid, n] of nodes) {
-            if (n.output) ctx[sid] = n.output;
-            // v0.4: Include task report data in condition context
-            const report = run.taskReports.get(sid);
-            if (report) {
-              ctx[`${sid}.status`] = report.status;
-              ctx[`${sid}.summary`] = report.summary;
-              ctx[`${sid}.details`] = report.details;
-            }
+    // Also persist notification to agent's chat so it can be picked up
+    try {
+      const notifDir = path.join(MIND_DIR, 'agents', node.step.agent, '.workflow-notifications');
+      if (!fs.existsSync(notifDir)) fs.mkdirSync(notifDir, { recursive: true });
+      const notifPath = path.join(notifDir, `${runId}_${sid}.json`);
+      fs.writeFileSync(notifPath, JSON.stringify({ runId, stepId: sid, prompt, createdAt: Date.now() }), 'utf-8');
+    } catch {}
+
+    node.status = StepStatus.WAITING;
+    node.notifiedAt = Date.now();
+    run.steps.set(sid, StepStatus.WAITING);
+    console.log(`[wf] Notified ${node.step.agent} for ${sid} (run ${runId.slice(0, 8)})`);
+  }
+
+  /** Handle callback from agent — step completed */
+  callback(runId: string, stepId: string, output: string): boolean {
+    const run = this.runs.get(runId);
+    if (!run || run.status !== WorkflowStatus.RUNNING) return false;
+    const nodes = this.runNodes.get(runId);
+    if (!nodes) return false;
+    const node = nodes.get(stepId);
+    if (!node || node.status !== StepStatus.WAITING) return false;
+
+    console.log(`[wf] Callback: ${stepId} ← ${output.slice(0, 100)} (run ${runId.slice(0, 8)})`);
+
+    // Clean up notification file
+    try {
+      const notifPath = path.join(MIND_DIR, 'agents', node.step.agent, '.workflow-notifications', `${runId}_${stepId}.json`);
+      if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
+    } catch {}
+
+    // Set output and complete
+    node.output = output;
+    node.status = StepStatus.COMPLETED;
+    run.steps.set(stepId, StepStatus.COMPLETED);
+
+    // Save checkpoint
+    const grp = (run as any)._group as string | undefined;
+    if (grp) saveStepCheckpoint(grp, runId, { stepId, status: 'completed', output, retries: node.retryCount, timestamp: Date.now(), startedAt: node.startedAt, completedAt: Date.now(), durationMs: Date.now() - node.startedAt });
+
+    if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output }, 'workflow-engine'));
+
+    // Read task report if exists
+    const reportDir = path.join(MIND_DIR, 'agents', node.step.agent, '.task-reports');
+    const reportPath = path.join(reportDir, `${stepId}.json`);
+    if (fs.existsSync(reportPath)) {
+      try {
+        const report: TaskReport = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
+        run.taskReports.set(stepId, report);
+        fs.unlinkSync(reportPath);
+      } catch {}
+    }
+
+    // Evaluate routes
+    this.evaluatePostStep(runId, node, nodes, output);
+
+    // Continue scheduling
+    this.schedule(runId);
+
+    return true;
+  }
+
+  /** Evaluate routes, review branching, and continue DAG after step completion */
+  private evaluatePostStep(runId: string, node: DagNode, nodes: Map<string, DagNode>, output: string): void {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    const sid = node.step.id;
+
+    // Route evaluation
+    if (node.routes && node.routes.length > 0) {
+      const matchedRoute = node.routes.find(r => this.evalRouteCondition(r.when, output));
+      if (matchedRoute && nodes.has(matchedRoute.step)) {
+        console.log(`[wf] ${sid} routed to ${matchedRoute.step} (when: ${matchedRoute.when})`);
+        for (const depId of node.dependents) {
+          const dep = nodes.get(depId);
+          if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
+            dep.status = StepStatus.SKIPPED;
+            run.steps.set(depId, StepStatus.SKIPPED);
           }
-          if (!this.evalCond(node.step.condition, ctx)) { node.status = StepStatus.SKIPPED; run.steps.set(id, StepStatus.SKIPPED); continue; }
         }
-        ready.push(node);
-      }
-
-      if (ready.length === 0) { const pending = [...nodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED); if (pending.length === 0) break; for (const n of pending) { if (n.deps.some(depId => { const dn = nodes.get(depId); return dn && dn.status === StepStatus.FAILED; })) { n.status = StepStatus.SKIPPED; run.steps.set(n.step.id, StepStatus.SKIPPED); } } break; }
-
-      ready.sort((a, b) => (PRIORITY[a.step.priority || 'normal'] ?? 2) - (PRIORITY[b.step.priority || 'normal'] ?? 2));
-
-      // v0.4: Respect concurrency limit (global default + per-workflow override)
-      const maxConcurrent = (def as any).concurrency || this.getGlobalConcurrency();
-      if (ready.length <= maxConcurrent) {
-        await Promise.allSettled(ready.map(n => this.execNode(runId, n, nodes)));
-      } else {
-        // Execute in batches respecting the limit
-        for (let i = 0; i < ready.length; i += maxConcurrent) {
-          const batch = ready.slice(i, i + maxConcurrent);
-          await Promise.allSettled(batch.map(n => this.execNode(runId, n, nodes)));
-        }
+        const target = nodes.get(matchedRoute.step);
+        if (target) target.deps = target.deps.filter(d => d !== sid);
+        return;
       }
     }
 
-    let failed = false, allDone = true;
-    for (const [id, node] of nodes) { run.steps.set(id, node.status); if (node.status === StepStatus.FAILED) failed = true; if (node.status !== StepStatus.COMPLETED && node.status !== StepStatus.SKIPPED) allDone = false; }
-    run.status = failed ? WorkflowStatus.FAILED : (allDone ? WorkflowStatus.COMPLETED : WorkflowStatus.RUNNING);
-    run.completedAt = Date.now();
+    // Auto-review injection
+    if (node.step.reviewer) {
+      const reviewId = `${sid}_review`;
+      const reviewPrompt = node.step.reviewPrompt || `请审查以下步骤的输出。\n\n步骤: ${node.step.action} (由 ${node.step.agent} 执行)\n输出:\n${output.slice(0, 2000)}\n\n请检查是否正确、完整、符合要求。回复 APPROVED 或 REJECTED 及原因。`;
+      const reviewStep: WorkflowStep = { id: reviewId, agent: node.step.reviewer, action: 'review', prompt: reviewPrompt, dependsOn: [sid], priority: 'high' };
+      if (!nodes.has(reviewId)) {
+        nodes.set(reviewId, { step: reviewStep, deps: [sid], dependents: [], status: StepStatus.PENDING, output: '', error: '', retryCount: 0, maxRetries: 2, rejectCount: 0, maxRejectRetries: 3, timeout: 300000, startedAt: 0, notifiedAt: 0 });
+        node.dependents.push(reviewId);
+        run.steps.set(reviewId, StepStatus.PENDING);
+      }
+    }
+
+    // Review branching
+    if (sid.endsWith('_review')) {
+      const originalId = sid.replace(/_review$/, '');
+      const originalNode = nodes.get(originalId);
+      if (originalNode) {
+        if (/REJECTED/i.test(output)) {
+          const onReject = originalNode.onReject || originalNode.step.onReject;
+          if (onReject === 'fail') {
+            originalNode.status = StepStatus.FAILED;
+            originalNode.error = `Review rejected: ${output.slice(0, 500)}`;
+            run.steps.set(originalId, StepStatus.FAILED);
+          } else if (onReject && onReject !== 'retry' && nodes.has(onReject)) {
+            const target = nodes.get(onReject)!;
+            target.step = { ...target.step, prompt: `${target.step.prompt}\n\n---\n\n【审查反馈】${originalId} 被拒绝，原因：${output.slice(0, 1000)}` };
+            target.deps = target.deps.filter(d => d !== sid);
+          } else if (originalNode.rejectCount < originalNode.maxRejectRetries) {
+            originalNode.rejectCount++;
+            originalNode.status = StepStatus.PENDING;
+            originalNode.output = '';
+            originalNode.step = { ...originalNode.step, prompt: `${originalNode.step.prompt}\n\n---\n\n【审查反馈】上次提交被拒绝，原因：${output.slice(0, 1000)}\n请根据反馈修改后重新提交。` };
+            run.steps.set(originalId, StepStatus.PENDING);
+          } else {
+            originalNode.status = StepStatus.FAILED;
+            originalNode.error = `Review rejected ${originalNode.maxRejectRetries} times`;
+            run.steps.set(originalId, StepStatus.FAILED);
+          }
+        } else if (/APPROVED/i.test(output)) {
+          const onApprove = originalNode.onApprove || originalNode.step.onApprove;
+          if (onApprove && nodes.has(onApprove)) {
+            const target = nodes.get(onApprove);
+            if (target) target.deps = target.deps.filter(d => d !== sid);
+          }
+        }
+      }
+    }
+  }
+
+  /** Schedule ready steps in a run (callback model) */
+  schedule(runId: string): void {
+    const run = this.runs.get(runId);
+    if (!run || run.status !== WorkflowStatus.RUNNING) return;
+    const nodes = this.runNodes.get(runId);
+    if (!nodes) return;
+
+    // Check abort
+    const ac = this.abortControllers.get(runId);
+    if (ac?.signal.aborted) {
+      run.status = WorkflowStatus.FAILED;
+      run.completedAt = Date.now();
+      return;
+    }
+
+    // Find ready steps
+    const ready: DagNode[] = [];
+    for (const [id, node] of nodes) {
+      if (node.status !== StepStatus.PENDING && node.status !== StepStatus.BLOCKED) continue;
+      const depsOk = node.deps.every(depId => {
+        const dn = nodes.get(depId);
+        return dn && (dn.status === StepStatus.COMPLETED || dn.status === StepStatus.SKIPPED);
+      });
+      if (!depsOk) { node.status = StepStatus.BLOCKED; run.steps.set(id, StepStatus.BLOCKED); continue; }
+      ready.push(node);
+    }
+
+    // If no ready steps, check if run is done
+    if (ready.length === 0) {
+      const pending = [...nodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED || n.status === StepStatus.WAITING);
+      if (pending.length === 0) {
+        // All done
+        let failed = false;
+        for (const [, n] of nodes) { if (n.status === StepStatus.FAILED) failed = true; }
+        run.status = failed ? WorkflowStatus.FAILED : WorkflowStatus.COMPLETED;
+        run.completedAt = Date.now();
+        console.log(`[wf] Run ${runId.slice(0, 8)} ${run.status}`);
+      }
+      return;
+    }
+
+    // Execute ready steps
+    ready.sort((a, b) => (PRIORITY[a.step.priority || 'normal'] ?? 2) - (PRIORITY[b.step.priority || 'normal'] ?? 2));
+    for (const node of ready) {
+      this.execNode(runId, node, nodes);
+    }
   }
 
   private async execNode(runId: string, node: DagNode, nodes: Map<string, DagNode>): Promise<void> {
     const run = this.runs.get(runId); if (!run) return;
-    const sid = node.step.id; node.status = StepStatus.IN_PROGRESS; node.startedAt = Date.now(); run.steps.set(sid, StepStatus.IN_PROGRESS);
-    const phase = phaseForAction(node.step.action);
+    const sid = node.step.id;
+    const phase = phaseForAction(node.step.action || '');
 
-    // v0.3 P2: Human approval node — pause DAG, wait for POST /workflows/approve
+    // ── Trigger steps: auto-complete immediately ──
+    if (node.step.type === 'trigger') {
+      node.status = StepStatus.COMPLETED;
+      node.output = JSON.stringify(node.step.trigger || { type: 'manual' });
+      run.steps.set(sid, StepStatus.COMPLETED);
+      this.evaluatePostStep(runId, node, nodes, node.output);
+      this.schedule(runId);
+      return;
+    }
+
+    // ── Human approval: pause DAG, wait for POST /workflows/approve ──
     if (node.step.action === 'human_approval') {
       const approvalId = randomUUID().slice(0, 8);
       node.status = StepStatus.IN_PROGRESS; node.output = `AWAITING_HUMAN_APPROVAL approvalId=${approvalId}`;
@@ -822,173 +958,15 @@ export class WorkflowEngine {
     }
 
     try {
-      const out = await this.executor.execute(node.step, ctx);
-      node.output = out; node.status = StepStatus.COMPLETED; run.steps.set(sid, StepStatus.COMPLETED);
-
-      // v0.4: Read and store task report in run record
-      const reportDir = path.join(MIND_DIR, 'agents', node.step.agent, '.task-reports');
-      const reportPath = path.join(reportDir, `${sid}.json`);
-      if (fs.existsSync(reportPath)) {
-        try {
-          const report: TaskReport = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
-          run.taskReports.set(sid, report);
-          fs.unlinkSync(reportPath); // clean up
-          console.log(`[wf] Task report: ${sid} → ${report.status}: ${report.summary?.slice(0, 80)}`);
-        } catch {}
-      }
-
-      // v0.5: Route evaluation — if step has routes, evaluate conditions and follow first match
-      if (node.routes && node.routes.length > 0) {
-        const matchedRoute = node.routes.find(r => this.evalRouteCondition(r.when, out));
-        if (matchedRoute && nodes.has(matchedRoute.step)) {
-          console.log(`[wf] ${sid} routed to ${matchedRoute.step} (when: ${matchedRoute.when})`);
-          // Skip default downstream, route to target
-          for (const depId of node.dependents) {
-            const dep = nodes.get(depId);
-            if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
-              dep.status = StepStatus.SKIPPED;
-              run.steps.set(depId, StepStatus.SKIPPED);
-            }
-          }
-          // Unblock target by removing this step from its deps
-          const target = nodes.get(matchedRoute.step);
-          if (target) {
-            target.deps = target.deps.filter(d => d !== sid);
-          }
-          return;  // Skip auto-review injection — routes override it
-        }
-      }
-
-      // v0.4: Save step checkpoint
-      const grp = (run as any)._group as string | undefined;
-      if (grp) saveStepCheckpoint(grp, runId, { stepId: sid, status: 'completed', output: out, retries: node.retryCount, timestamp: Date.now(), startedAt: node.startedAt, completedAt: Date.now(), durationMs: Date.now() - node.startedAt });
-      if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output: out, phase }, 'workflow-engine'));
-      if (node.step.notify) { const nl = Array.isArray(node.step.notify) ? node.step.notify : [node.step.notify]; for (const to of nl) if (this.bus) this.bus.emit(createEvent(EventType.TASK_REVIEW_REQUESTED, { taskId: runId, stepId: sid, workflow: run.workflowName, from: node.step.agent, to, title: `${node.step.action}`, prompt: node.step.prompt.slice(0, 200), phase }, 'workflow-engine')); }
-
-      // v0.4: Auto-review — if step has a reviewer, insert a review step
-      if (node.step.reviewer) {
-        const reviewId = `${sid}_review`;
-        const reviewPrompt = node.step.reviewPrompt || `请审查以下步骤的输出。\n\n步骤: ${node.step.action} (由 ${node.step.agent} 执行)\n输出:\n${out.slice(0, 2000)}\n\n请检查是否正确、完整、符合要求。回复 APPROVED 或 REJECTED 及原因。`;
-        const reviewStep: WorkflowStep = {
-          id: reviewId, agent: node.step.reviewer, action: 'review',
-          prompt: reviewPrompt, dependsOn: [sid], priority: 'high',
-        };
-        // Inject review step into DAG
-        if (!nodes.has(reviewId)) {
-          nodes.set(reviewId, {
-            step: reviewStep, deps: [sid], dependents: [],
-            status: StepStatus.PENDING, output: '', error: '',
-            retryCount: 0, maxRetries: 2,
-            rejectCount: 0, maxRejectRetries: 3,
-            timeout: 300000, startedAt: 0,
-          });
-          node.dependents.push(reviewId);
-          run.steps.set(reviewId, StepStatus.PENDING);
-          console.log(`[wf] Auto-review: ${reviewId} assigned to ${node.step.reviewer}`);
-        }
-      }
-
-      // v0.5: Review branching — if this step is a review, route based on APPROVED/REJECTED
-      if (sid.endsWith('_review')) {
-        const originalId = sid.replace(/_review$/, '');
-        const originalNode = nodes.get(originalId);
-        if (originalNode) {
-          if (/REJECTED/i.test(out)) {
-            // ── REJECTED path ──
-            const onReject = originalNode.onReject || originalNode.step.onReject;
-            console.log(`[wf] Review ${sid} REJECTED → original ${originalId} onReject=${onReject || 'retry'}`);
-
-            if (onReject === 'fail') {
-              // Hard fail — mark original as failed, skip downstream
-              originalNode.status = StepStatus.FAILED;
-              originalNode.error = `Review rejected: ${out.slice(0, 500)}`;
-              run.steps.set(originalId, StepStatus.FAILED);
-              // Skip all dependents of the original step
-              for (const depId of originalNode.dependents) {
-                const dep = nodes.get(depId);
-                if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
-                  dep.status = StepStatus.SKIPPED;
-                  run.steps.set(depId, StepStatus.SKIPPED);
-                }
-              }
-            } else if (onReject && onReject !== 'retry' && nodes.has(onReject)) {
-              // Route to specified step — inject rejection reason into that step's prompt
-              console.log(`[wf] Review ${sid} REJECTED → routing to ${onReject}`);
-              const target = nodes.get(onReject)!;
-              target.step = {
-                ...target.step,
-                prompt: `${target.step.prompt}\n\n---\n\n【审查反馈】${originalId} 被拒绝，原因：${out.slice(0, 1000)}\n请根据反馈处理。`,
-              };
-              target.deps = target.deps.filter(d => d !== sid);
-              // Skip the review step's default downstream
-              for (const depId of node.dependents) {
-                const dep = nodes.get(depId);
-                if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
-                  dep.status = StepStatus.SKIPPED;
-                  run.steps.set(depId, StepStatus.SKIPPED);
-                }
-              }
-            } else {
-              // Default: retry — reset original step to PENDING with rejection context
-              if (originalNode.rejectCount < originalNode.maxRejectRetries) {
-                originalNode.rejectCount++;
-                originalNode.status = StepStatus.PENDING;
-                originalNode.output = '';  // clear old output
-                // Inject rejection reason into the step prompt
-                originalNode.step = {
-                  ...originalNode.step,
-                  prompt: `${originalNode.step.prompt}\n\n---\n\n【审查反馈】上次提交被拒绝，原因：${out.slice(0, 1000)}\n请根据反馈修改后重新提交。`,
-                };
-                run.steps.set(originalId, StepStatus.PENDING);
-                // Skip the review step's dependents (they'll be re-evaluated after retry)
-                for (const depId of node.dependents) {
-                  const dep = nodes.get(depId);
-                  if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
-                    dep.status = StepStatus.SKIPPED;
-                    run.steps.set(depId, StepStatus.SKIPPED);
-                  }
-                }
-                console.log(`[wf] ${originalId} retry ${originalNode.rejectCount}/${originalNode.maxRejectRetries} with rejection context`);
-              } else {
-                // Max reject retries exhausted — hard fail
-                originalNode.status = StepStatus.FAILED;
-                originalNode.error = `Review rejected ${originalNode.maxRejectRetries} times: ${out.slice(0, 500)}`;
-                run.steps.set(originalId, StepStatus.FAILED);
-                console.log(`[wf] ${originalId} failed after ${originalNode.maxRejectRetries} reject retries`);
-              }
-            }
-          } else if (/APPROVED/i.test(out)) {
-            // ── APPROVED path — route to onApprove target if specified ──
-            const onApprove = originalNode.onApprove || originalNode.step.onApprove;
-            if (onApprove && nodes.has(onApprove)) {
-              console.log(`[wf] Review ${sid} APPROVED → routing to ${onApprove}`);
-              // Skip default downstream of the review step, route to onApprove target
-              for (const depId of node.dependents) {
-                const dep = nodes.get(depId);
-                if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
-                  dep.status = StepStatus.SKIPPED;
-                  run.steps.set(depId, StepStatus.SKIPPED);
-                }
-              }
-              // Unblock the onApprove target by removing the review step as its dep
-              const target = nodes.get(onApprove);
-              if (target) {
-                target.deps = target.deps.filter(d => d !== sid);
-                // If all deps are now satisfied, it will be picked up in the next iteration
-              }
-            }
-            // If no onApprove, default behavior: continue with normal DAG flow
-          }
-        }
-      }
+      // v0.5: Callback model — notify agent, wait for callback
+      this.notifyAgent(runId, node, nodes, ctx);
+      return;  // DAG continues when agent calls workflow_callback
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err); node.error = msg;
-      if (node.retryCount < node.maxRetries) { node.retryCount++; run.stepRetries.set(sid, node.retryCount); node.status = StepStatus.PENDING; run.steps.set(sid, StepStatus.PENDING); const bf = node.step.retryBackoff === 'fixed' ? 3000 : Math.pow(2, node.retryCount) * 1000; await new Promise(r => setTimeout(r, bf)); return this.execNode(runId, node, nodes); }
-      node.status = StepStatus.FAILED; run.steps.set(sid, StepStatus.FAILED); run.rollbacks.push({ stepId: sid, reason: msg, timestamp: Date.now() });
-      // v0.4: Save step checkpoint on failure
-      const grpFail = (run as any)._group as string | undefined;
-      if (grpFail) saveStepCheckpoint(grpFail, runId, { stepId: sid, status: 'failed', output: node.output, error: msg, retries: node.retryCount, timestamp: Date.now(), startedAt: node.startedAt, completedAt: Date.now(), durationMs: Date.now() - node.startedAt });
-      if (node.onFailure && nodes.has(node.onFailure)) { const cn = nodes.get(node.onFailure)!; run.compensations.push(node.onFailure); if (cn.status === StepStatus.PENDING) { if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: node.onFailure, workflow: run.workflowName, agent: cn.step.agent, action: 'compensation', note: `Triggered by: ${sid}`, phase: WorkflowPhase.COMPENSATION }, 'workflow-engine')); await this.execNode(runId, cn, nodes); } return; }
+      const msg = err instanceof Error ? err.message : String(err);
+      node.error = msg;
+      node.status = StepStatus.FAILED;
+      run.steps.set(sid, StepStatus.FAILED);
+      run.rollbacks.push({ stepId: sid, reason: msg, timestamp: Date.now() });
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true, phase }, 'workflow-engine'));
     }
   }
@@ -1093,6 +1071,7 @@ export class WorkflowEngine {
         const oldest = finished.shift()!;
         this.runs.delete(oldest.runId);
         this.abortControllers.delete(oldest.runId);
+        this.runNodes.delete(oldest.runId);
       }
     }
   }
@@ -1213,6 +1192,27 @@ export class WorkflowEngine {
               taskId: rid, stepId: sid, workflow: run.workflowName,
               action: 'auto-retry', attempt: rt + 1,
             }, 'workflow-engine'));
+          }
+        }
+        // v0.5: Step timeout — if WAITING too long, mark as failed
+        if (s === StepStatus.WAITING) {
+          const nodes = this.runNodes.get(rid);
+          const node = nodes?.get(sid);
+          if (node && node.notifiedAt > 0) {
+            const elapsed = Date.now() - node.notifiedAt;
+            const timeout = node.step.timeout || 300000; // 5min default
+            if (elapsed > timeout) {
+              console.log(`[wf] Step ${sid} timed out after ${Math.round(elapsed / 1000)}s (run ${rid.slice(0, 8)})`);
+              node.status = StepStatus.FAILED;
+              node.error = `Step timed out after ${Math.round(elapsed / 1000)}s`;
+              run.steps.set(sid, StepStatus.FAILED);
+              if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, {
+                taskId: rid, stepId: sid, workflow: run.workflowName,
+                reason: `timeout: ${Math.round(elapsed / 1000)}s`, phase: WorkflowPhase.COMPLETED,
+              }, 'workflow-engine'));
+              // Continue scheduling to handle downstream
+              this.schedule(rid);
+            }
           }
         }
       }
