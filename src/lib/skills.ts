@@ -341,23 +341,50 @@ function removeFromAgents(skillName: string): void {
   }
 }
 
-// ── Skill RAG — Embedding-based retrieval ────────────────
-
-import { embed, cosineSimilarity } from './embedding';
+// ── Skill RAG — TF-IDF based retrieval ───────────────────
 
 interface SkillEntry {
   skillId: string;
   skillName: string;
   content: string;
-  embedding: number[];
+  tokens: string[];
 }
 
 // In-memory index (rebuilt on startup)
 let skillIndex: SkillEntry[] = [];
 
+/** Tokenize text (Chinese bigrams + English words) */
+function tokenize(text: string): string[] {
+  const lower = text.toLowerCase();
+  const tokens: string[] = [];
+  for (const m of lower.match(/[a-z0-9_]+/g) || []) tokens.push(m);
+  const cn = lower.match(/[一-鿿]+/g) || [];
+  for (const phrase of cn) {
+    for (let i = 0; i < phrase.length; i++) tokens.push(phrase[i]);
+    for (let i = 0; i < phrase.length - 1; i++) tokens.push(phrase.slice(i, i + 2));
+  }
+  return tokens;
+}
+
+/** TF-IDF score between query and skill */
+function tfidfScore(queryTokens: string[], skillTokens: string[]): number {
+  const skillSet = new Set(skillTokens);
+  let score = 0;
+  const unique = [...new Set(queryTokens)];
+  for (const qt of unique) {
+    const tf = queryTokens.filter(t => t === qt).length / queryTokens.length;
+    const inSkill = skillSet.has(qt) ? 1 : 0;
+    score += tf * inSkill;
+  }
+  // Exact substring bonus
+  const queryStr = queryTokens.join(' ');
+  const skillStr = skillTokens.join(' ');
+  if (skillStr.includes(queryStr)) score += 5;
+  return score;
+}
+
 /**
- * Build embedding index for all installed skills.
- * Each skill = one entry (entire prompt.md).
+ * Build TF-IDF index for all installed skills.
  */
 export function buildSkillIndex(): void {
   skillIndex = [];
@@ -376,7 +403,7 @@ export function buildSkillIndex(): void {
             skillId: skill.id,
             skillName: skill.name,
             content,
-            embedding: embed(content),
+            tokens: tokenize(content),
           });
         }
       } catch {}
@@ -394,13 +421,13 @@ export function searchRelevantSkills(task: string, topK = 3): SkillEntry[] {
   if (skillIndex.length === 0) buildSkillIndex();
   if (skillIndex.length === 0) return [];
 
-  const taskEmbedding = embed(task);
+  const queryTokens = tokenize(task);
 
   return skillIndex
-    .map(s => ({ ...s, score: cosineSimilarity(taskEmbedding, s.embedding) }))
+    .map(s => ({ ...s, score: tfidfScore(queryTokens, s.tokens) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK)
-    .filter(s => s.score > 0.1);
+    .filter(s => s.score > 0);
 }
 
 // ── Load skills context (RAG version) ────────────────────
