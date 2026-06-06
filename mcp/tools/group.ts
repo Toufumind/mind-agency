@@ -201,6 +201,8 @@ export async function handleGroupTool(
     if (!config.memberRoles) config.memberRoles = {};
     config.memberRoles[target] = role;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    // Invalidate caches
+    agentCache.invalidate('membership', target);
     respond(id, { content: [{ type: 'text', text: `${target} role set to ${role} in ${group}` }] });
     return true;
   }
