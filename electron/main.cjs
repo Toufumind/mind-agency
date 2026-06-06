@@ -127,8 +127,9 @@ function createWindow() {
   win.once('ready-to-show', () => {
     win.show();
     win.focus();
-    // v0.4: Check for updates after window is ready
+    // v0.4: Check for updates after window is ready + periodic check
     setTimeout(checkForUpdates, 5000);
+    setInterval(checkForUpdates, 3600_000); // check every hour
   });
 
   win.on('closed', () => { win = null; });

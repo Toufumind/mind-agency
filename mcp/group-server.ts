@@ -124,7 +124,7 @@ function readGroupChat(groupName: string, limit = 20): ChatMsg[] {
     .filter(f => f.name.endsWith('.md'))
     .map(f => f.name)
     .sort()
-    .slice(-3);
+    .slice(-20);
   const msgs: ChatMsg[] = [];
   for (const f of files) {
     try {
