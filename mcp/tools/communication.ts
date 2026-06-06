@@ -37,7 +37,7 @@ export async function handleCommunicationTool(
     writeAudit({ agent: agentName, action: 'group.send', resource: `group:${group}`, details: message.slice(0, 200) });
     emitBusEvent('message.sent', { group, from: agentName, body: message.slice(0, 200) });
     // Check for @mentions
-    const mentionRe = /@([A-Za-z0-9_-]+)/g;
+    const mentionRe = /@([A-Za-z0-9_一-鿿㐀-䶿]+)/g;
     let m;
     while ((m = mentionRe.exec(message)) !== null) {
       const mentioned = m[1];
@@ -76,7 +76,7 @@ export async function handleCommunicationTool(
     const emailDir = path.join(recipientDir, 'email');
     if (!exists(emailDir)) fs.mkdirSync(emailDir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const safeSubject = subject.replace(/[^a-zA-Z0-9一-鿿\s\-_]/g, '').replace(/\s+/g, '_').slice(0, 50);
+    const safeSubject = subject.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, '_').slice(0, 50);
     const filename = `${ts}_${safeSubject}.md`;
     const content = `---\nfrom: ${agentName}\nto: ${to}\nsubject: ${subject}\ndate: ${new Date().toISOString()}\n---\n\n${emailBody || ''}\n`;
     fs.writeFileSync(path.join(emailDir, filename), content, 'utf-8');

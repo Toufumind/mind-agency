@@ -39,7 +39,7 @@ export function getAgentGroups(agentName: string): string[] {
 
 // ── HTTP helpers ──────────────────────────────────────────
 
-/** Fire-and-forget HTTP POST */
+/** Fire-and-forget HTTP POST (v0.4: timeout + error logging) */
 export function httpPost(urlStr: string, body: Record<string, unknown>) {
   try {
     const data = JSON.stringify(body);
@@ -47,12 +47,14 @@ export function httpPost(urlStr: string, body: Record<string, unknown>) {
     const req = http.request({
       hostname: u.hostname, port: u.port, path: u.pathname,
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), 'Connection': 'keep-alive' },
+      timeout: 5000,
     }, (res) => { res.resume(); });
-    req.on('error', () => { /* WS server may not be running */ });
+    req.on('error', (e) => { console.warn(`[mcp] httpPost ${urlStr}: ${e.message}`); });
+    req.on('timeout', () => { req.destroy(); console.warn(`[mcp] httpPost ${urlStr}: timeout`); });
     req.write(data);
     req.end();
-  } catch { /* ignore */ }
+  } catch (e: unknown) { console.warn(`[mcp] httpPost ${urlStr}: ${e instanceof Error ? e.message : String(e)}`); }
 }
 
 /** Simple JSON fetch with timeout */
@@ -80,7 +82,7 @@ export function readGroupChat(groupName: string, limit = 20): ChatMsg[] {
     .filter(f => f.name.endsWith('.md'))
     .map(f => f.name)
     .sort()
-    .slice(-3);
+    .slice(-limit);
   const msgs: ChatMsg[] = [];
   for (const f of files) {
     try {
