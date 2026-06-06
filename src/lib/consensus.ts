@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import { GROUPS_DIR, MIND_DIR, AGENTS_DIR } from './data-dir';
 import { loadGroupConfig } from './group-config';
 import { agentCache } from './cache';
+import { getAgentConfig } from './chat';
 
 // ── Types ───────────────────────────────────────────────
 
@@ -161,7 +162,14 @@ export function resolveApprovers(rule: ConsensusRule, group: string, stepAgent?:
       case 'group_owner': if (gc?.owner) approvers.add(gc.owner); break;
       case 'group_admin': if (gc) { if (gc.owner) approvers.add(gc.owner); for (const admin of gc.admins) approvers.add(admin); } break;
       case 'role': {
-        if (fs.existsSync(AGENTS_DIR)) for (const d of fs.readdirSync(AGENTS_DIR, { withFileTypes: true })) { if (!d.isDirectory() || d.name.startsWith('.')) continue; try { const cfg = JSON.parse(fs.readFileSync(path.join(AGENTS_DIR, d.name, 'config.json'), 'utf-8')); if (cfg.roles?.includes(a.role!)) approvers.add(d.name); } catch {} }
+        // Use cached getAgentConfig instead of direct file reads
+        if (fs.existsSync(AGENTS_DIR)) {
+          for (const d of fs.readdirSync(AGENTS_DIR, { withFileTypes: true })) {
+            if (!d.isDirectory() || d.name.startsWith('.')) continue;
+            const cfg = getAgentConfig(d.name);
+            if (cfg.roles?.includes(a.role!)) approvers.add(d.name);
+          }
+        }
         break;
       }
     }
