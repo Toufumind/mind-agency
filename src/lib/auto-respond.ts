@@ -20,7 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { chatOnce, getAgentConfig } from './chat';
-import { AGENTS_DIR, GROUPS_DIR } from './data-dir';
+import { AGENTS_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
 import { loadState, saveState, ensureGroup, getAgentGroups, invalidateGroupsCache, type AgentState } from './state';
 import { setActivity, clearActivity } from './agent-activity';
 import { agentCache } from './cache';
@@ -245,6 +245,25 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
   // ── 3. Clean up stale groups from state ────────────
   for (const g of Object.keys(state.groups)) {
     if (!currentGroups.includes(g)) delete state.groups[g];
+  }
+
+  // ── 2c. Workflow notifications ─────────────────────
+  const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
+  if (fs.existsSync(notifDir)) {
+    const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
+    if (notifFiles.length > 0) {
+      // Read the first notification
+      try {
+        const notif = JSON.parse(fs.readFileSync(path.join(notifDir, notifFiles[0]), 'utf-8'));
+        signal.mentions.push({
+          group: 'workflow',
+          from: 'workflow-engine',
+          snippet: `[工作流任务] ${notif.stepId}: ${(notif.prompt || '').slice(0, 100)}`,
+        });
+        signal.urgent = true;
+        dirty = true;
+      } catch {}
+    }
   }
 
   // ── 3. Nothing new? ───────────────────────────────
