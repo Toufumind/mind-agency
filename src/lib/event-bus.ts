@@ -887,6 +887,23 @@ export class WorkflowEngine {
                   run.steps.set(depId, StepStatus.SKIPPED);
                 }
               }
+            } else if (onReject && onReject !== 'retry' && nodes.has(onReject)) {
+              // Route to specified step — inject rejection reason into that step's prompt
+              console.log(`[wf] Review ${sid} REJECTED → routing to ${onReject}`);
+              const target = nodes.get(onReject)!;
+              target.step = {
+                ...target.step,
+                prompt: `${target.step.prompt}\n\n---\n\n【审查反馈】${originalId} 被拒绝，原因：${out.slice(0, 1000)}\n请根据反馈处理。`,
+              };
+              target.deps = target.deps.filter(d => d !== sid);
+              // Skip the review step's default downstream
+              for (const depId of node.dependents) {
+                const dep = nodes.get(depId);
+                if (dep && (dep.status === StepStatus.PENDING || dep.status === StepStatus.BLOCKED)) {
+                  dep.status = StepStatus.SKIPPED;
+                  run.steps.set(depId, StepStatus.SKIPPED);
+                }
+              }
             } else {
               // Default: retry — reset original step to PENDING with rejection context
               if (originalNode.rejectCount < originalNode.maxRejectRetries) {

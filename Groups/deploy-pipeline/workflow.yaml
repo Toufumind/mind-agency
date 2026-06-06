@@ -12,9 +12,17 @@ steps:
       运行 npm test 确认所有测试通过。
       回复: TEST_PASS 或 TEST_FAIL + 失败的测试
     reviewer: Bob
-    onReject: retry
     onApprove: build
+    onReject: fix_test
     maxRejectRetries: 2
+
+  - id: fix_test
+    agent: Alice
+    action: fix
+    prompt: |
+      修复失败的测试。
+      回复: FIXED
+    dependsOn: [test]
 
   - id: build
     agent: Bob
@@ -22,10 +30,19 @@ steps:
     prompt: |
       运行 npm run build 确认构建成功。
       回复: BUILD_PASS + 产物大小
+    dependsOn: [test]
     reviewer: Charlie
-    onReject: retry
     onApprove: deploy_staging
+    onReject: fix_build
     maxRejectRetries: 2
+
+  - id: fix_build
+    agent: Bob
+    action: fix
+    prompt: |
+      修复构建错误。
+      回复: FIXED
+    dependsOn: [build]
 
   - id: deploy_staging
     agent: Charlie
