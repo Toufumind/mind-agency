@@ -144,25 +144,27 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   // ── Build simulation ──
   useEffect(() => {
     const sim = new ForceSimulation({ repulsion: 1800, attraction: 0.025, gravity: 0.008, linkDistance: 200, damping: 0.92, maxVelocity: 6 });
-    const allNodes: { id: string }[] = [];
+    const allNodes: { id: string; group: string }[] = [];
     const allEdges: ForceEdge[] = [];
 
     for (let wi = 0; wi < workflows.length; wi++) {
       const wf = workflows[wi];
-      const baseX = wf.position?.x ?? (wi * 600 - (workflows.length * 300));
-      const baseY = wf.position?.y ?? 0;
 
       for (let si = 0; si < wf.steps.length; si++) {
         const step = wf.steps[si];
         const nid = `${wf.group}:${step.id}`;
-        allNodes.push({ id: nid });
+        allNodes.push({ id: nid, group: wf.group });
         for (const dep of step.dependsOn || []) {
           allEdges.push({ source: `${wf.group}:${dep}`, target: nid });
         }
       }
     }
 
-    sim.setNodes(allNodes.map((n, i) => ({ id: n.id, x: (Math.random() - 0.5) * 600, y: (Math.random() - 0.5) * 400 })));
+    sim.setNodes(allNodes.map((n, i) => ({
+      id: n.id, group: n.group,
+      x: (Math.random() - 0.5) * 600,
+      y: (Math.random() - 0.5) * 400,
+    })));
     sim.setEdges(allEdges);
     sim.onTick((nodes: Map<string, any>) => {
       const pos = new Map<string, { x: number; y: number }>();

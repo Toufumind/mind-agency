@@ -22,6 +22,8 @@ export interface ForceNode {
   fy?: number;
   /** Node metadata */
   data?: any;
+  /** Group ID for inter-group repulsion */
+  group?: string;
 }
 
 export interface ForceEdge {
@@ -123,7 +125,7 @@ export class ForceSimulation {
       n.vy = 0;
     }
 
-    // 1. Repulsion — all pairs
+    // 1. Repulsion — all pairs (stronger between different groups)
     for (let i = 0; i < nodeArr.length; i++) {
       for (let j = i + 1; j < nodeArr.length; j++) {
         const a = nodeArr[i], b = nodeArr[j];
@@ -132,7 +134,10 @@ export class ForceSimulation {
         let dy = a.y - b.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; dist = 1; }
-        const force = repulsion / (dist * dist);
+        // Inter-group repulsion: 3x stronger between different workflows
+        const sameGroup = a.group && b.group && a.group === b.group;
+        const forceMultiplier = sameGroup ? 1 : 3;
+        const force = (repulsion * forceMultiplier) / (dist * dist);
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
         if (a.fx === undefined) { a.vx += fx; a.vy += fy; }
