@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 
 // ══════════════════════════════════════════════════════════════
 //  Flow GPU — 全 shader 渲染引擎
@@ -240,6 +240,7 @@ export default function FlowGPU(props: GPUProps) {
   const progRef = useRef<WebGLProgram | null>(null);
   const bufRef = useRef<WebGLBuffer | null>(null);
   const initRef = useRef(false);
+  const [shaderOk, setShaderOk] = useState(true);
 
   // Init WebGL once
   useEffect(() => {
@@ -266,7 +267,8 @@ export default function FlowGPU(props: GPUProps) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       initRef.current = true;
-    } catch (e) { console.error('WebGL init:', e); }
+      setShaderOk(true);
+    } catch (e) { console.error('WebGL init:', e); setShaderOk(false); }
   }, []);
 
   // Render every frame
@@ -354,10 +356,13 @@ export default function FlowGPU(props: GPUProps) {
 
   useEffect(() => { render(); }, [render]);
 
-  return (
-    <>
+  const tc = THEMES[props.theme] || THEMES['deep-space'];
+  const bgCss = `rgb(${Math.round(tc.bg[0]*255)},${Math.round(tc.bg[1]*255)},${Math.round(tc.bg[2]*255)})`;
+
+  return (<>
       <canvas ref={canvasRef} width={width || 100} height={height || 100}
-        className="absolute inset-0" style={{ background: 'transparent' }} />
+        className="absolute inset-0"
+        style={{ background: shaderOk ? 'transparent' : bgCss }} />
       {/* SVG overlay — ONLY click targets + text labels, no visual rendering */}
       <svg width={width} height={height} className="absolute inset-0" style={{ zIndex: 1 }}>
         <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
