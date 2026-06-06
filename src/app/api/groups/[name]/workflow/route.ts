@@ -149,9 +149,17 @@ async function handleUpdate(group: string, body: any) {
     try { parseWorkflowYaml(yaml); } catch {
       return NextResponse.json({ error: 'Invalid YAML: cannot parse workflow' }, { status: 400 });
     }
-  } else if (body.name && Array.isArray(body.steps)) {
+  } else if (Array.isArray(body.steps)) {
+    // Read existing workflow name if not provided
+    let wfName = body.name || '';
+    if (!wfName && fs.existsSync(wfPath)) {
+      try {
+        const existing = parseWorkflowYaml(fs.readFileSync(wfPath, 'utf-8'));
+        wfName = existing.name || group;
+      } catch { wfName = group; }
+    }
     const lines = [
-      `name: ${body.name}`,
+      `name: ${wfName}`,
       body.description ? `description: "${body.description}"` : '',
       'steps:',
     ].filter(Boolean);

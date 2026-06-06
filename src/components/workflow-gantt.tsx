@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 
 interface StepData {
   id: string;
@@ -60,20 +61,68 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
     return () => document.removeEventListener('click', h);
   }, [ctx]);
 
-  // Global right-click on document — catch if inside Gantt
+  // Right-click: DOM-based context menu (works in all browsers)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      if (e.button !== 2) return;
       const target = e.target as HTMLElement;
       const container = boxRef.current;
       if (!container || !container.contains(target)) return;
       if (target.closest('[draggable]')) return;
       e.preventDefault();
+
+      // Remove any existing menu
+      const old = document.getElementById('gantt-ctx-menu');
+      if (old) old.remove();
+
+      // Find agent from lane
       const laneEl = target.closest('[data-agent]');
       const agent = laneEl?.getAttribute('data-agent') || '';
-      setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } });
+
+      // Create context menu
+      const menu = document.createElement('div');
+      menu.id = 'gantt-ctx-menu';
+      menu.style.cssText = `position:fixed;z-index:9999;background:var(--color-canvas);border:1px solid var(--color-border);border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.15);padding:4px;width:140px;left:${Math.min(e.clientX, window.innerWidth - 160)}px;top:${Math.min(e.clientY, window.innerHeight - 120)}px;`;
+
+      const mkBtn = (text: string, cls: string, cb: () => void) => {
+        const b = document.createElement('button');
+        b.textContent = text;
+        b.style.cssText = 'width:100%;text-align:left;padding:6px 12px;font-size:12px;cursor:pointer;border:none;background:transparent;' + cls;
+        b.onmouseenter = () => b.style.background = 'var(--color-surface)';
+        b.onmouseleave = () => b.style.background = 'transparent';
+        b.onclick = (ev) => { ev.stopPropagation(); menu.remove(); cb(); };
+        return b;
+      };
+
+      menu.appendChild(mkBtn('✎ 编辑', '', () => {
+        // Find the closest card to the click position
+        const cards = container.querySelectorAll('[draggable]');
+        let closestCard: any = null;
+        let minDist = Infinity;
+        cards.forEach(c => {
+          const r = c.getBoundingClientRect();
+          const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+          const d = Math.hypot(e.clientX - cx, e.clientY - cy);
+          if (d < minDist) { minDist = d; closestCard = c; }
+        });
+        if (closestCard) {
+          const stepId = closestCard.getAttribute('data-step-id') || '';
+          const step = steps.find(s => s.id === stepId);
+          if (step) onStepClick?.(step);
+        }
+      }));
+      menu.appendChild(mkBtn('+ 添加步骤', '', () => onStepAdd?.({ id: '', agent, action: 'execute', status: 'pending' })));
+      if (onStepDelete) {
+        menu.appendChild(mkBtn('× 删除', 'color:var(--color-destructive);', () => {}));
+      }
+
+      document.body.appendChild(menu);
+      // Close on next click
+      const close = (ev: MouseEvent) => { if (!menu.contains(ev.target as Node)) { menu.remove(); document.removeEventListener('mousedown', close); } };
+      setTimeout(() => document.addEventListener('mousedown', close), 0);
     };
-    document.addEventListener('contextmenu', handler, true);
-    return () => document.removeEventListener('contextmenu', handler, true);
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
   }, []);
 
   // Callback ref for container
@@ -219,7 +268,11 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
           <div className="flex-1 flex">
             {layers.map((layer, li) => (
               <div key={li} className="flex-1 flex items-center justify-center gap-1 px-1 py-1.5 border-r border-border/30 last:border-r-0 min-h-[60px]"
-                onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } }); }}>
+                ref={(el) => {
+                  if (!el) return;
+                  const h = (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } }); };
+                  el.oncontextmenu = h;
+                }}>
                 {agentSteps.filter(s => layer.includes(s.id)).map(s => {
                   const st = s.status || 'pending';
                   const c = C[st] || C.pending;
@@ -289,14 +342,19 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
         );
       })()}
 
-      {/* Context menu */}
-      {ctx && (
-        <div data-ctx-menu className="fixed z-50 bg-canvas border border-border rounded-xl shadow-2xl py-1 w-36" style={{ left: Math.min(ctx.x, window.innerWidth - 160), top: Math.min(ctx.y, window.innerHeight - 120) }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => { onStepClick?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">✎ 编辑</button>
-          <button onClick={() => { onStepAdd?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">+ 添加步骤</button>
-          {onStepDelete && <button onClick={() => { onStepDelete(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-destructive hover:bg-destructive-muted">× 删除</button>}
-        </div>
-      )}
+      {/* Context menu — rendered via portal to body */}
+      {ctx && typeof document !== 'undefined' && (() => {
+        const menu = (
+          <div data-ctx-menu className="fixed z-[9999] bg-canvas border border-border rounded-xl shadow-2xl py-1 w-36"
+            style={{ left: Math.min(ctx.x, window.innerWidth - 160), top: Math.min(ctx.y, window.innerHeight - 120) }}
+            onClick={e => e.stopPropagation()}>
+            <button onClick={() => { onStepClick?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">✎ 编辑</button>
+            <button onClick={() => { onStepAdd?.(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-foreground hover:bg-surface">+ 添加步骤</button>
+            {onStepDelete && <button onClick={() => { onStepDelete(ctx.s); setCtx(null); }} className="w-full text-left px-3 py-1.5 text-[12px] text-destructive hover:bg-destructive-muted">× 删除</button>}
+          </div>
+        );
+        return ReactDOM.createPortal(menu, document.body);
+      })()}
     </div>
   );
 }
