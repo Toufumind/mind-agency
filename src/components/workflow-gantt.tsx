@@ -19,10 +19,12 @@ interface StepData {
 interface Props {
   steps: StepData[];
   progress: number;
+  allAgents?: string[];
   onStepClick?: (step: StepData) => void;
   onStepDelete?: (step: StepData) => void;
   onStepAdd?: (afterStep?: StepData) => void;
   onStepMove?: (stepId: string, newAgent: string) => void;
+  onAddAgent?: (agent: string) => void;
 }
 
 const C: Record<string, { bg: string; bd: string; tx: string }> = {
@@ -38,7 +40,7 @@ const IC: Record<string, string> = {
   pending: '○', in_progress: '◉', completed: '✓', failed: '✗', skipped: '–', blocked: '◐',
 };
 
-export default function WorkflowGantt({ steps, progress, onStepClick, onStepDelete, onStepAdd, onStepMove }: Props) {
+export default function WorkflowGantt({ steps, progress, allAgents, onStepClick, onStepDelete, onStepAdd, onStepMove, onAddAgent }: Props) {
   const [hov, setHov] = useState<string | null>(null);
   const [tip, setTip] = useState({ x: 0, y: 0 });
   const [ctx, setCtx] = useState<{ x: number; y: number; s: StepData } | null>(null);
@@ -239,12 +241,20 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
           // Find which agent lane was clicked
           const laneEl = target.closest('[data-agent]');
           const agent = laneEl?.getAttribute('data-agent') || lanes[0]?.[0] || '';
-          setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } });
         }
       }}>
       {/* Header */}
       <div className="flex border-b border-border bg-surface-alt h-7">
-        <div className="w-[72px] shrink-0 border-r border-border/50 flex items-center justify-center">
+        <div className="w-[72px] shrink-0 border-r border-border/50 flex items-center justify-center gap-1">
+          {onAddAgent && allAgents && allAgents.length > 0 && (
+            <select onChange={e => { if (e.target.value) onAddAgent(e.target.value); e.target.value = ''; }}
+              className="text-[10px] bg-transparent text-muted-foreground hover:text-foreground outline-none cursor-pointer" title="添加 Agent">
+              <option value="">+Agent</option>
+              {allAgents.filter(a => !lanes.some(([l]) => l === a)).map(a => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          )}
           {onStepAdd && (
             <button onClick={() => onStepAdd()} className="text-[10px] text-muted-foreground hover:text-foreground" title="添加步骤">+</button>
           )}
@@ -263,16 +273,12 @@ export default function WorkflowGantt({ steps, progress, onStepClick, onStepDele
           onDragOver={e => onDragOver(e, agent)}
           onDrop={e => onDrop(e, agent)}
           onDragEnd={onDragEnd}
-          onContextMenu={e => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, s: { id: "", agent, action: "execute", status: "pending" } }); }}>
+          >
           <div className="w-[72px] shrink-0 flex items-center px-2 text-[9px] font-semibold text-muted border-r border-border/50">{agent}</div>
           <div className="flex-1 flex">
             {layers.map((layer, li) => (
               <div key={li} className="flex-1 flex items-center justify-center gap-1 px-1 py-1.5 border-r border-border/30 last:border-r-0 min-h-[60px]"
-                ref={(el) => {
-                  if (!el) return;
-                  const h = (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY, s: { id: '', agent, action: 'execute', status: 'pending' } }); };
-                  el.oncontextmenu = h;
-                }}>
+                >
                 {agentSteps.filter(s => layer.includes(s.id)).map(s => {
                   const st = s.status || 'pending';
                   const c = C[st] || C.pending;

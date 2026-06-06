@@ -36,6 +36,7 @@ export default function WorkflowsPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [hoveredStep, setHoveredStep] = useState<string | null>(null);
+  const [allAgents, setAllAgents] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +54,12 @@ export default function WorkflowsPage() {
     } catch { setWorkflows([]); }
     setLoading(false);
   }, []);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    fetch('/api/agents').then(r => r.json()).then(d => {
+      if (d?.agents) setAllAgents(d.agents.map((a: any) => a.name));
+    }).catch(() => {});
+  }, [load]);
 
   const trigger = async (g: string) => {
     setTriggering(g);
@@ -204,6 +210,7 @@ export default function WorkflowsPage() {
                       <WorkflowGantt
                         steps={stepsWithTiming}
                         progress={progress}
+                        allAgents={allAgents}
                         onStepClick={(s) => { openEditor(wf.group, s); }}
                         onStepDelete={(s) => {
                           if (confirm(`删除步骤 "${s.id}"？`)) {
@@ -243,6 +250,14 @@ export default function WorkflowsPage() {
                             method: 'PUT', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ steps }),
                           });
+                        }}
+                        onAddAgent={(agent) => {
+                          const newStep = { id: `step_${Date.now()}`, agent, action: 'execute', prompt: '' };
+                          const steps = [...(wf.stepsList || []), newStep];
+                          fetch(`/api/groups/${wf.group}/workflow`, {
+                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ steps }),
+                          }).then(() => load());
                         }}
                       />
                     </div>
