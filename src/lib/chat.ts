@@ -602,12 +602,12 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
     }
   }
 
-  // Build task context for RAG
+  // Build task context
   const baseOpts = buildBaseOptions(agentName);
   const groupChatCtx = buildGroupChatContext(agentName, groupName);
   const goalsCtx = loadGoalContext(agentName);
 
-  // Skills: RAG-based, injected into user message
+  // Skills: RAG-based, appended to user message (latest content)
   let skillsCtx = '';
   try {
     const skillsMod = require('./skills');
@@ -615,8 +615,8 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   } catch {}
 
   const fullPrompt = groupChatCtx
-    ? groupChatCtx + (goalsCtx ? '\n' + goalsCtx : '') + (skillsCtx ? '\n' + skillsCtx : '') + '\n\n---\n\n' + userMessage
-    : (goalsCtx ? goalsCtx + '\n' : '') + (skillsCtx ? skillsCtx + '\n' : '') + userMessage;
+    ? groupChatCtx + (goalsCtx ? '\n' + goalsCtx : '') + '\n\n---\n\n' + userMessage + (skillsCtx ? '\n\n' + skillsCtx : '')
+    : (goalsCtx ? goalsCtx + '\n\n---\n\n' : '') + userMessage + (skillsCtx ? '\n\n' + skillsCtx : '');
   const ts = () => new Date().toISOString();
 
   return new ReadableStream<ChatEvent>({
