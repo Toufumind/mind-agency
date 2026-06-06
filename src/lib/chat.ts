@@ -593,9 +593,9 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   const agentDir = path.join(AGENTS_DIR, agentName);
   if (!fs.existsSync(agentDir)) return quickError(`Agent "${agentName}" not found`);
 
-  // v0.4: Check agent's provider config — delegate to provider if non-Claude
+  // v0.5: Default to claude-proxy (RAG-enabled) unless explicitly set to 'claude'
   const agentConfig = loadAgentConfig(agentName);
-  const providerName = (agentConfig?.provider as string) || 'claude';
+  const providerName = (agentConfig?.provider as string) || 'claude-proxy';
   if (providerName !== 'claude') {
     const provider = getProvider(providerName);
     if (provider) {
