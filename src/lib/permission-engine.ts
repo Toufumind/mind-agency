@@ -91,24 +91,38 @@ function formatDescription(template: string, ctx: Record<string, string>): strin
   return s;
 }
 
+// Cache for approved requests (5 min TTL, matches the approval window)
+const approvedRequestCache = new Map<string, { data: string | null; ts: number }>();
+const APPROVED_CACHE_TTL = 30_000; // 30s cache (shorter than 5min approval window)
+
 function findApprovedRequest(agentName: string, toolName: string, context: Record<string, string>): string | null {
   const group = context.group || '_global';
-  const dir = path.join(GROUPS_DIR, group, '.consensus');
-  if (!fs.existsSync(dir)) return null;
+  const cacheKey = `${group}:${agentName}:${toolName}`;
+  const cached = approvedRequestCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && (now - cached.ts) < APPROVED_CACHE_TTL) return cached.data;
 
-  try {
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.json')) continue;
-      const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8'));
-      if (
-        data.action === toolName &&
-        data.requestedBy === agentName &&
-        data.status === 'approved' &&
-        Date.now() - data.createdAt < 300_000 // 5 min window
-      ) {
-        return data.id;
+  const dir = path.join(GROUPS_DIR, group, '.consensus');
+  let result: string | null = null;
+
+  if (fs.existsSync(dir)) {
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith('.json')) continue;
+        const data = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8'));
+        if (
+          data.action === toolName &&
+          data.requestedBy === agentName &&
+          data.status === 'approved' &&
+          now - data.createdAt < 300_000 // 5 min window
+        ) {
+          result = data.id;
+          break;
+        }
       }
-    }
-  } catch {}
-  return null;
+    } catch {}
+  }
+
+  approvedRequestCache.set(cacheKey, { data: result, ts: now });
+  return result;
 }
