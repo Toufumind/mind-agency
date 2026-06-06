@@ -606,13 +606,15 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
     }
   }
 
-  const baseOpts = buildBaseOptions(agentName, userMessage);
+  // Build full task context for RAG (userMessage + group chat + goals)
   const groupChatCtx = buildGroupChatContext(agentName, groupName);
-  // Inject persistent goals from /goal command
   const goalsCtx = loadGoalContext(agentName);
   const fullPrompt = groupChatCtx
     ? groupChatCtx + (goalsCtx ? '\n' + goalsCtx : '') + '\n\n---\n\n' + userMessage
     : (goalsCtx ? goalsCtx + '\n\n---\n\n' : '') + userMessage;
+
+  // Pass full task context to RAG for better skill matching
+  const baseOpts = buildBaseOptions(agentName, fullPrompt);
   const ts = () => new Date().toISOString();
 
   return new ReadableStream<ChatEvent>({
