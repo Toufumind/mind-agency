@@ -24,6 +24,9 @@ export interface RenderData {
   edgeX2: number[]; edgeY2: number[];
   edgeActive: number[];
   theme: string;
+  zoom: number;
+  panX: number;
+  panY: number;
 }
 
 // ── Theme colors ──
@@ -241,8 +244,8 @@ export class FlowRenderer {
       // Uniforms
       f2('u_res', w, h);
       f1('u_time', time * 0.016);
-      f1('u_zoom', data.theme ? 1 : 1); // zoom passed separately
-      f2('u_pan', 0, 0); // pan passed separately
+      f1('u_zoom', data.zoom);
+      f2('u_pan', data.panX, data.panY);
       f3('u_bg', tc.bg[0], tc.bg[1], tc.bg[2]);
       f3('u_grid', tc.grid[0], tc.grid[1], tc.grid[2]);
       f3('u_nodeFill', tc.nodeFill[0], tc.nodeFill[1], tc.nodeFill[2]);
