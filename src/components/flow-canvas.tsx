@@ -91,7 +91,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
     if(draggingNode&&simRef.current){simRef.current.unpin(draggingNode)}
     setDraggingNode(null);setDragging(false);
   },[draggingNode]);
-  const onWheel=useCallback((e:React.WheelEvent)=>{e.preventDefault();setZoom(z=>Math.min(3,Math.max(0.15,z*(e.deltaY>0?0.92:1.08))))},[]);
+  // onWheel removed — using native event listener with {passive:false}
   const getStatus=useCallback((g:string,s:string)=>runs[g]?.[0]?.steps?.[s]||'pending',[runs]);
 
   const onTriggerClick=useCallback((group:string)=>{const wf=workflows.find(w=>w.group===group);if(!wf)return;const t=wf.steps.filter(s=>s.type==='trigger');if(t.length===1)onTrigger(group,t[0].id);else if(t.length>1)setTriggerPopup({group,triggers:t});else onTrigger(group)},[workflows,onTrigger]);
@@ -115,9 +115,6 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
     for(const e of edges){if(!map.has(e.group))map.set(e.group,[]);map.get(e.group)!.push(e)}
     return map;
   },[edges]);
-
-  const W=typeof window!=='undefined'?window.innerWidth:1200;
-  const H=typeof window!=='undefined'?window.innerHeight:800;
 
   const canvasBg=isDark?'#0a0a0f':'#f5f5f0';
   const edgeIdle=isDark?'#334155':'#d1d5db';

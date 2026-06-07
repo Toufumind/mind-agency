@@ -127,7 +127,7 @@ export class ForceSimulation {
 
     // Reset forces
     for (const n of nodeArr) {
-      if (n.fx !== undefined) { n.x = n.fx; n.y = n.fy!; n.vx = 0; n.vy = 0; continue; }
+      if (n.fx !== undefined) { n.x = n.fx; n.y = n.fy ?? n.y; n.vx = 0; n.vy = 0; continue; }
       n.vx = 0;
       n.vy = 0;
     }

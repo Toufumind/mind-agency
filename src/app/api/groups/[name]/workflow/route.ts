@@ -8,6 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import * as yamlLib from 'js-yaml';
 import fs from 'fs';
 import path from 'path';
 import { GROUPS_DIR } from '@/lib/data-dir';
@@ -35,7 +36,7 @@ export async function GET(
 
   // ?action=history — get completed workflow run history (v0.4)
   if (searchParams.get('action') === 'history') {
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const limit = Math.max(1, Math.min(200, parseInt(searchParams.get('limit') || '50', 10) || 50));
     const history = loadRunHistory(name, limit);
     return NextResponse.json({ history });
   }
@@ -102,7 +103,7 @@ export async function POST(
   }
 
   // Trigger
-  const result = await triggerWorkflow(name);
+  const result = await triggerWorkflow(name, body.triggerStepId);
   if ('error' in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
@@ -143,7 +144,7 @@ export async function DELETE(
 async function handleUpdate(group: string, body: any) {
   const wfPath = path.join(GROUPS_DIR, group, WF_FILE);
 
-  let yaml: string;
+  let yaml = '';
   if (typeof body.yaml === 'string' && body.yaml.trim()) {
     yaml = body.yaml;
     try { parseWorkflowYaml(yaml); } catch {
@@ -158,26 +159,22 @@ async function handleUpdate(group: string, body: any) {
         wfName = existing.name || group;
       } catch { wfName = group; }
     }
-    const lines = [
-      `name: ${wfName}`,
-      body.description ? `description: "${body.description}"` : '',
-      'steps:',
-    ].filter(Boolean);
+    // Build structured object, then serialize with yaml.dump (safe, no injection)
+    const wfObj: any = { name: wfName, steps: [] };
+    if (body.description) wfObj.description = body.description;
     for (const s of body.steps) {
-      lines.push(`  - id: ${s.id || s.agent}`);
-      lines.push(`    agent: ${s.agent || 'unknown'}`);
-      lines.push(`    action: ${s.action || 'execute'}`);
-      if (s.dependsOn) {
-        const deps = Array.isArray(s.dependsOn) ? s.dependsOn.join(', ') : s.dependsOn;
-        lines.push(`    dependsOn: [${deps}]`);
-      }
-      if (s.condition) lines.push(`    condition: "${s.condition}"`);
-      if (s.prompt) lines.push(`    prompt: |\n      ${s.prompt.replace(/\n/g, '\n      ')}`);
-      if (s.priority) lines.push(`    priority: ${s.priority}`);
-      if (s.retry) lines.push(`    retry: ${s.retry}`);
-      if (s.timeout) lines.push(`    timeout: ${s.timeout}`);
+      const step: any = { id: s.id || s.agent || `step_${wfObj.steps.length}`, agent: s.agent || 'unknown', action: s.action || 'execute' };
+      if (s.dependsOn) step.dependsOn = Array.isArray(s.dependsOn) ? s.dependsOn : [s.dependsOn];
+      if (s.condition) step.condition = s.condition;
+      if (s.prompt) step.prompt = s.prompt;
+      if (s.priority) step.priority = s.priority;
+      if (s.retry) step.retry = s.retry;
+      if (s.timeout) step.timeout = s.timeout;
+      if (s.reviewer) step.reviewer = s.reviewer;
+      if (s.routes) step.routes = s.routes;
+      wfObj.steps.push(step);
     }
-    yaml = lines.join('\n') + '\n';
+    yaml = yamlLib.dump(wfObj);
   } else {
     return NextResponse.json({ error: 'Provide yaml string or {name, steps[]}' }, { status: 400 });
   }
