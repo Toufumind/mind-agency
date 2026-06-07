@@ -67,6 +67,8 @@ export class ForceSimulation {
   running = false;
   private animFrame: number | null = null;
   private onTickCb: ((nodes: Map<string, ForceNode>) => void) | null = null;
+  private tickCount = 0;
+  private static readonly MAX_TICKS = 1000;
 
   constructor(config?: Partial<ForceConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -208,7 +210,8 @@ export class ForceSimulation {
       n.y += n.vy;
     }
 
-    // Convergence check — stop if all nodes settled
+    // Convergence check — stop if all nodes settled or max ticks reached
+    this.tickCount++;
     let maxSpeed = 0;
     for (const n of nodeArr) {
       if (n.fx !== undefined) continue;
@@ -219,8 +222,8 @@ export class ForceSimulation {
     // Callback
     if (this.onTickCb) this.onTickCb(this.nodes);
 
-    // Continue if not settled
-    if (maxSpeed > 0.01) {
+    // Continue if not settled and not over max ticks
+    if (maxSpeed > 0.01 && this.tickCount < ForceSimulation.MAX_TICKS) {
       this.animFrame = requestAnimationFrame(() => this.tick());
     }
   }

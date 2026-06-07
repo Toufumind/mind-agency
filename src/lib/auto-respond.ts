@@ -432,28 +432,30 @@ export async function autoRespond(
 const lastHeartbeat = new Map<string, number>();
 
 export async function agentHeartbeat(agent: string, intervalMs: number): Promise<{ triggered: boolean; reply?: string; reason?: string }> {
-  const config = getConfig(agent);
-  if (!config.autoRespondToEmail) return { triggered: false, reason: 'autoRespond disabled' };
+  return enqueueAgent(agent, async () => {
+    const config = getConfig(agent);
+    if (!config.autoRespondToEmail) return { triggered: false, reason: 'autoRespond disabled' };
 
-  const now = Date.now();
-  const last = lastHeartbeat.get(agent) || 0;
-  if (now - last < intervalMs) {
-    return { triggered: false, reason: `throttled (${now - last}ms < ${intervalMs}ms)` };
-  }
-  lastHeartbeat.set(agent, now);
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      setActivity(agent, 'processing', '心跳检查');
-      const { reply } = await chatOnce(agent, '[Heartbeat] 你被唤醒了。请自主检查是否有需要处理的事项。如果有，在群里同步进展。如果没有，忽略这条消息即可。用中文。');
-      clearActivity(agent);
-      return { triggered: true, reply };
-    } catch (e: any) {
-      if (attempt === 2) return { triggered: false, reason: `all 3 attempts failed: ${e.message}` };
-      await sleepMs(Math.pow(2, attempt + 1) * 1000);
+    const now = Date.now();
+    const last = lastHeartbeat.get(agent) || 0;
+    if (now - last < intervalMs) {
+      return { triggered: false, reason: `throttled (${now - last}ms < ${intervalMs}ms)` };
     }
-  }
-  return { triggered: false, reason: 'unreachable' };
+    lastHeartbeat.set(agent, now);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        setActivity(agent, 'processing', '心跳检查');
+        const { reply } = await chatOnce(agent, '[Heartbeat] 你被唤醒了。请自主检查是否有需要处理的事项。如果有，在群里同步进展。如果没有，忽略这条消息即可。用中文。');
+        clearActivity(agent);
+        return { triggered: true, reply };
+      } catch (e: any) {
+        if (attempt === 2) return { triggered: false, reason: `all 3 attempts failed: ${e.message}` };
+        await sleepMs(Math.pow(2, attempt + 1) * 1000);
+      }
+    }
+    return { triggered: false, reason: 'unreachable' };
+  });
 }
 
 // ── Batch poll ──────────────────────────────────────────

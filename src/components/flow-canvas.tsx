@@ -181,10 +181,16 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const canvasBg=isDark?'#0a0a0f':'#f5f5f0';
   const nodeText=isDark?'text-white':'text-gray-900';
 
-  // No WebGL — pure SVG rendering
+  // Window dimensions — responsive to resize
+  const [dims, setDims] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 1200, h: typeof window !== 'undefined' ? window.innerHeight : 800 });
+  useEffect(() => {
+    const onResize = () => setDims({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
-  const W = typeof window !== 'undefined' ? window.innerWidth : 1200;
-  const H = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const W = dims.w;
+  const H = dims.h;
   const edgeIdle_ = isDark ? '#334155' : '#d1d5db';
   const edgeActive_ = isDark ? '#3b82f6' : '#2563eb';
 

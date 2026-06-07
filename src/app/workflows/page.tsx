@@ -66,12 +66,12 @@ export default function WorkflowsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Poll for run status updates every 8s (skip group scan, only fetch runs)
+  // Poll for run status updates (setTimeout-based with backoff)
   useEffect(() => {
     let failCount = 0;
-    const timer = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
       try {
-        // Use existing workflow list instead of re-scanning groups
         const runMap: Record<string, RunInfo[]> = {};
         await Promise.allSettled(workflows.map(async (wf) => {
           try {
@@ -82,8 +82,10 @@ export default function WorkflowsPage() {
         setRuns(runMap);
         failCount = 0;
       } catch { failCount++; }
-    }, Math.min(8000 + failCount * 2000, 30000)); // backoff on failure
-    return () => clearInterval(timer);
+      timer = setTimeout(poll, Math.min(8000 + failCount * 2000, 30000));
+    };
+    poll();
+    return () => clearTimeout(timer);
   }, [workflows]);
 
   const handleTrigger = async (group: string, triggerStepId?: string) => {

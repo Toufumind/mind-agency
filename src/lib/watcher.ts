@@ -17,15 +17,19 @@ import { GROUPS_DIR, AGENTS_DIR } from './data-dir';
 type Callback = (dir: string) => void;
 
 let directoryWatchers: fs.FSWatcher[] = [];
-let fileWatchers: fs.StatWatcher[] = [];
+let fileWatchers: { watcher: fs.StatWatcher; path: string }[] = [];
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let callback: Callback | null = null;
+let dirtyDirs = new Set<string>();
 
 function debouncedTrigger(dir: string) {
-  if (debounceTimer) clearTimeout(debounceTimer);
+  dirtyDirs.add(dir);
+  if (debounceTimer) return; // already pending, will fire with all dirty dirs
   debounceTimer = setTimeout(() => {
-    if (callback) callback(dir);
+    const dirs = [...dirtyDirs];
+    dirtyDirs.clear();
     debounceTimer = null;
+    for (const d of dirs) { if (callback) callback(d); }
   }, 500);
 }
 
@@ -59,7 +63,7 @@ export function startWatcher(onChange: Callback): void {
 
 export function stopWatcher(): void {
   for (const w of directoryWatchers) { try { w.close(); } catch {} }
-  for (const w of fileWatchers) { try { w.unref(); } catch {} }
+  for (const fw of fileWatchers) { try { fs.unwatchFile(fw.path); } catch {} }
   directoryWatchers = [];
   fileWatchers = [];
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
@@ -79,7 +83,7 @@ export function stopWatcher(): void {
  */
 export function refreshFileWatchers(): void {
   // Tear down old
-  for (const w of fileWatchers) { try { w.unref(); } catch {} }
+  for (const fw of fileWatchers) { try { fs.unwatchFile(fw.path); } catch {} }
   fileWatchers = [];
 
   const filesToWatch: string[] = [];
@@ -129,7 +133,7 @@ export function refreshFileWatchers(): void {
           debouncedTrigger(baseDir);
         }
       });
-      fileWatchers.push(w);
+      fileWatchers.push({ watcher: w, path: fp });
     } catch {}
   }
 

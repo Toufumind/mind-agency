@@ -154,9 +154,9 @@ async function tickHeartbeat(): Promise<void> {
     .filter(e => e.isDirectory() && !e.name.startsWith('.'))
     .map(e => e.name);
 
-  for (const name of agentNames) {
+  // Parallel heartbeats — no serial blocking
+  await Promise.allSettled(agentNames.map(async (name) => {
     try {
-      // Read per-agent heartbeat interval from config.json, fall back to default
       let interval = DEFAULT_HEARTBEAT_MS;
       const cfgPath = path.join(AGENTS_DIR, name, 'config.json');
       if (fs.existsSync(cfgPath)) {
@@ -165,8 +165,7 @@ async function tickHeartbeat(): Promise<void> {
           if (cfg.heartbeatIntervalMs) interval = cfg.heartbeatIntervalMs;
         } catch (err) { console.error(`[scheduler] heartbeat config(${name}):`, err); }
       }
-
       await agentHeartbeat(name, interval);
     } catch (err) { console.error(`[scheduler] heartbeat(${name}):`, err); }
-  }
+  }));
 }
