@@ -16,6 +16,7 @@ interface FlowCanvasProps {
   workflows: WorkflowDef[]; runs: Record<string, RunInfo[]>;
   onSelectWorkflow: (g: string | null) => void; selectedGroup: string | null;
   onTrigger: (g: string, triggerStepId?: string) => void;
+  onRefresh?: () => void;
 }
 
 const CELL_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
@@ -33,7 +34,7 @@ const ICONS: Record<string, string> = { trigger:'⚡',test:'🧪',build:'📦',d
 function getIcon(s: WorkflowStep): string { if(s.type==='trigger') return '⚡'; const a=(s.action||'').toLowerCase(); for(const[k,v] of Object.entries(ICONS)) if(a.includes(k)) return v; return ICONS.default; }
 function fmtTime(ms: number): string { const s=Math.round(ms/1000); return s<60?`${s}s`:`${Math.floor(s/60)}m${s%60?` ${s%60}s`:''}`; }
 
-export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selectedGroup, onTrigger }: FlowCanvasProps) {
+export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selectedGroup, onTrigger, onRefresh }: FlowCanvasProps) {
   const { theme } = useTheme();
   const isDark = !['notion','minimal-white','warm-wood','solarized-light'].includes(theme);
   const [positions, setPositions] = useState<Map<string,{x:number;y:number}>>(new Map());
@@ -44,6 +45,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const [hoveredNode, setHoveredNode] = useState<string|null>(null);
   const [draggingNode, setDraggingNode] = useState<string|null>(null);
   const [triggerPopup, setTriggerPopup] = useState<{group:string;triggers:WorkflowStep[]}|null>(null);
+  const [contextMenu, setContextMenu] = useState<{x:number;y:number}|null>(null);
   const [time, setTime] = useState(0);
   const simRef = useRef<ForceSimulation|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -53,7 +55,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
   // Throttled position update — only re-render every 3rd frame
   const frameCount = useRef(0);
-  useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key==='Escape'){onSelectWorkflow(null);setTriggerPopup(null)}if(e.key==='+'||e.key==='=')setZoom(z=>Math.min(3,z*1.2));if(e.key==='-')setZoom(z=>Math.max(0.15,z/1.2));if(e.key==='0'){setZoom(1);setPan({x:0,y:0})}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[onSelectWorkflow]);
+  useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key==='Escape'){onSelectWorkflow(null);setTriggerPopup(null);setContextMenu(null)}if(e.key==='+'||e.key==='=')setZoom(z=>Math.min(3,z*1.2));if(e.key==='-')setZoom(z=>Math.max(0.15,z/1.2));if(e.key==='0'){setZoom(1);setPan({x:0,y:0})}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[onSelectWorkflow]);
   // Native wheel listener (React onWheel is passive, can't preventDefault)
   useEffect(()=>{const el=containerRef.current;if(!el)return;const h=(e:WheelEvent)=>{e.preventDefault();setZoom(z=>Math.min(3,Math.max(0.15,z*(e.deltaY>0?0.92:1.08))))};el.addEventListener('wheel',h,{passive:false});return()=>el.removeEventListener('wheel',h)},[]);
   useEffect(()=>{try{localStorage.setItem('flow-pan',JSON.stringify(pan))}catch{}},[pan]);
@@ -135,7 +137,9 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
   return (
     <div ref={containerRef} className="relative flex-1 h-full overflow-hidden" style={{background:canvasBg,cursor:dragging?'grabbing':'grab'}}
-      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}>
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}
+      onContextMenu={(e)=>{e.preventDefault();const mx=Math.min(e.clientX,window.innerWidth-170);const my=Math.min(e.clientY,window.innerHeight-100);setContextMenu({x:mx,y:my})}}
+      onClick={()=>setContextMenu(null)}>
 
       {/* ── SVG: all visuals ── */}
       <svg width={W} height={H} className="absolute inset-0" style={{zIndex:1}}>
@@ -278,6 +282,21 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
               </button>
             ))}
             <button onClick={()=>setTriggerPopup(null)} className={`w-full mt-3 px-3 py-2 text-[11px] rounded-xl transition ${isDark?'text-slate-500 hover:bg-slate-800':'text-gray-400 hover:bg-gray-100'}`}>取消</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Context menu ── */}
+      {contextMenu&&(
+        <div className="absolute z-50" style={{left:contextMenu.x,top:contextMenu.y}} onClick={e=>e.stopPropagation()}>
+          <div className={`border rounded-xl shadow-2xl py-1 w-40 ${isDark?'bg-slate-900 border-slate-700/50':'bg-white border-gray-200'}`}>
+            <button onClick={()=>{setZoom(1);setPan({x:0,y:0});setContextMenu(null)}} className={`w-full text-left px-3 py-2 text-[12px] flex items-center gap-2 transition ${isDark?'hover:bg-slate-800 text-slate-300':'hover:bg-gray-100 text-gray-700'}`}>
+              <Maximize2 size={12} /> 居中画布
+            </button>
+            <button onClick={()=>{onRefresh?.();setContextMenu(null)}} className={`w-full text-left px-3 py-2 text-[12px] flex items-center gap-2 transition ${isDark?'hover:bg-slate-800 text-slate-300':'hover:bg-gray-100 text-gray-700'}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              刷新
+            </button>
           </div>
         </div>
       )}

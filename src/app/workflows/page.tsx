@@ -27,6 +27,12 @@ export default function WorkflowsPage() {
   const [runs, setRuns] = useState<Record<string, RunInfo[]>>({});
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{msg:string;type:'ok'|'error'}|null>(null);
+
+  const showToast = useCallback((msg: string, type: 'ok'|'error' = 'ok') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,46 +43,40 @@ export default function WorkflowsPage() {
         fetch(`/api/groups/${encodeURIComponent(g)}/workflow`).then(r => r.json()).catch(() => null)
       ));
       const wfs: WorkflowDef[] = [];
+      const runMap: Record<string, RunInfo[]> = {};
       for (let i = 0; i < groups.length; i++) {
         const wr = results[i];
         if (wr && wr.name && Array.isArray(wr.stepsList) && wr.stepsList.length > 0) {
           wfs.push({ group: groups[i], name: wr.name, description: wr.description, steps: wr.stepsList, position: wr.position });
         }
+        // Extract runs from the per-group workflow response
+        if (wr?.runs) {
+          runMap[groups[i]] = wr.runs;
+        }
       }
       setWorkflows(wfs);
-    } catch { setWorkflows([]); }
-
-    // Load runs
-    try {
-      const stats = await fetch('/api/system/status').then(r => r.json()).catch(() => null);
-      if (stats?.workflows) {
-        const runMap: Record<string, RunInfo[]> = {};
-        for (const r of stats.workflows.runs || []) {
-          if (!runMap[r.group]) runMap[r.group] = [];
-          runMap[r.group].push(r);
-        }
-        setRuns(runMap);
-      }
-    } catch {}
+      setRuns(runMap);
+    } catch (e) { setWorkflows([]); showToast('加载工作流失败', 'error'); }
 
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // Poll for updates every 5s
+  // Poll for run status updates every 5s
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const stats = await fetch('/api/system/status').then(r => r.json()).catch(() => null);
-        if (stats?.workflows) {
-          const runMap: Record<string, RunInfo[]> = {};
-          for (const r of stats.workflows.runs || []) {
-            if (!runMap[r.group]) runMap[r.group] = [];
-            runMap[r.group].push(r);
-          }
-          setRuns(runMap);
-        }
+        const gr = await fetch('/api/groups/scan').then(r => r.json()).catch(() => null);
+        const groups: string[] = gr?.groups || [];
+        const runMap: Record<string, RunInfo[]> = {};
+        await Promise.all(groups.map(async (g) => {
+          try {
+            const data = await fetch(`/api/groups/${encodeURIComponent(g)}/workflow?action=runs`).then(r => r.json());
+            if (data?.runs) runMap[g] = data.runs;
+          } catch {}
+        }));
+        setRuns(runMap);
       } catch {}
     }, 5000);
     return () => clearInterval(timer);
@@ -84,13 +84,21 @@ export default function WorkflowsPage() {
 
   const handleTrigger = async (group: string, triggerStepId?: string) => {
     try {
-      await fetch('/api/groups/' + group + '/workflow', {
+      const res = await fetch('/api/groups/' + group + '/workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ triggerStepId }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        showToast(`触发失败: ${err.error || res.statusText}`, 'error');
+        return;
+      }
+      showToast(`已触发 ${group} 工作流`, 'ok');
       setTimeout(load, 1000);
-    } catch {}
+    } catch (e) {
+      showToast(`网络错误: ${e instanceof Error ? e.message : 'Unknown'}`, 'error');
+    }
   };
 
   const selectedWorkflow = workflows.find(w => w.group === selectedGroup) || null;
@@ -113,6 +121,7 @@ export default function WorkflowsPage() {
               onSelectWorkflow={setSelectedGroup}
               selectedGroup={selectedGroup}
               onTrigger={handleTrigger}
+              onRefresh={load}
             />
 
             {/* Right Panel */}
@@ -127,6 +136,17 @@ export default function WorkflowsPage() {
           </>
         )}
       </main>
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-[100] px-4 py-2.5 rounded-xl text-[12px] font-medium shadow-xl backdrop-blur-md transition-all duration-300 ${
+          toast.type === 'ok'
+            ? 'bg-emerald-500/90 text-white'
+            : 'bg-red-500/90 text-white'
+        }`}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }
