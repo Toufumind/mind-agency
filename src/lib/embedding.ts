@@ -49,7 +49,8 @@ export function embed(text: string): number[] {
   for (const s of shingles_) {
     const h = fnvHash(s);
     for (let i = 0; i < HASH_BITS; i++) {
-      v[i] += (h & (1 << i)) ? 1 : -1;
+      // Use (h >>> (i % 32)) & 1 to avoid 32-bit overflow in (1 << i)
+      v[i] += ((h >>> (i % 32)) & 1) ? 1 : -1;
     }
   }
   // Binarize

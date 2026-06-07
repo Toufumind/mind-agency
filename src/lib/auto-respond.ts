@@ -391,7 +391,7 @@ export async function autoRespond(
   // v0.4: Priority-based debounce — critical bypasses, low has longer window
   const now = Date.now();
   const last = lastSpawn.get(agent) || 0;
-  const window = signal.priority === 'critical' ? 5_000 : signal.priority === 'low' ? 120_000 : DEBOUNCE_IDLE;
+  const window = signal.priority === 'critical' ? DEBOUNCE_URGENT : signal.priority === 'low' ? 120_000 : DEBOUNCE_IDLE;
   if (!options?.force && now - last < window) {
     // Save state to advance chatCheck (prevent re-scanning) but don't advance emailCheck
     // so the agent will process emails on next allowed spawn
