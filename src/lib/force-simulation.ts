@@ -86,6 +86,7 @@ export class ForceSimulation {
         y: old?.y ?? (i * 100) + this.config.centerY - (steps.length * 50),
         vx: old?.vx ?? 0,
         vy: old?.vy ?? 0,
+        group: (s as any).group,
         data: s,
       });
     }

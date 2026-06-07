@@ -1,5 +1,6 @@
 'use client';
 import { useMemo } from 'react';
+import { useTheme } from '@/lib/theme';
 import { X, Play, Clock, CheckCircle, XCircle, Loader, ArrowRight, Zap } from 'lucide-react';
 
 interface WorkflowStep {
@@ -33,15 +34,21 @@ function buildTree(steps: WorkflowStep[], statuses: Record<string, string>): Tre
       childrenMap.get(dep)!.push(s.id);
     }
   }
-  const roots = steps.filter(s => !s.dependsOn?.length || s.type === 'trigger');
-  const rootIds = new Set(roots.map(r => r.id));
-  for (const childIds of childrenMap.values()) for (const cid of childIds) rootIds.delete(cid);
+  // Find true roots: steps that are NOT targeted by any other step
+  const allTargets = new Set<string>();
+  for (const s of steps) for (const dep of s.dependsOn || []) allTargets.add(dep);
+  const rootIds = steps.filter(s => !allTargets.has(s.id) || s.type === 'trigger').map(s => s.id);
 
-  function build(id: string): TreeNode {
-    const step = stepMap.get(id)!;
-    return { step, children: (childrenMap.get(id) || []).map(build), status: statuses[id] || 'pending', routes: step.routes };
+  const visited = new Set<string>();
+  function build(id: string): TreeNode | null {
+    if (visited.has(id)) return null;
+    visited.add(id);
+    const step = stepMap.get(id);
+    if (!step) return null;
+    const childIds = childrenMap.get(id) || [];
+    return { step, children: childIds.map(build).filter(Boolean) as TreeNode[], status: statuses[id] || 'pending', routes: step.routes };
   }
-  return [...rootIds].map(build);
+  return rootIds.map(build).filter(Boolean) as TreeNode[];
 }
 
 const STATUS_CFG: Record<string, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {

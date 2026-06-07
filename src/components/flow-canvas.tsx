@@ -46,7 +46,8 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const [triggerPopup, setTriggerPopup] = useState<{group:string;triggers:WorkflowStep[]}|null>(null);
   const simRef = useRef<ForceSimulation|null>(null);
 
-  useEffect(()=>{let raf:number;const t=()=>{raf=requestAnimationFrame(t)};raf=requestAnimationFrame(t);return()=>cancelAnimationFrame(raf)},[]);
+  // Throttled position update — only re-render every 3rd frame
+  const frameCount = useRef(0);
   useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key==='Escape'){onSelectWorkflow(null);setTriggerPopup(null)}if(e.key==='+'||e.key==='=')setZoom(z=>Math.min(3,z*1.2));if(e.key==='-')setZoom(z=>Math.max(0.15,z/1.2));if(e.key==='0'){setZoom(1);setPan({x:0,y:0})}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[onSelectWorkflow]);
   useEffect(()=>{try{localStorage.setItem('flow-pan',JSON.stringify(pan))}catch{}},[pan]);
   useEffect(()=>{try{localStorage.setItem('flow-zoom',String(zoom))}catch{}},[zoom]);
@@ -65,7 +66,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
         return { id: n.id, group: n.group, x: 200 + gs + (Math.random()-0.5)*200, y: 200 + (i % 20) * 70 };
       }));
       sim.setEdges(allEdges);
-      sim.onTick((nodes)=>{const pos=new Map<string,{x:number;y:number}>();for(const[id,n]of nodes)pos.set(id,{x:n.x,y:n.y});setPositions(pos)});
+      sim.onTick((nodes)=>{frameCount.current++;if(frameCount.current%3!==0)return;const pos=new Map<string,{x:number;y:number}>();for(const[id,n]of nodes)pos.set(id,{x:n.x,y:n.y});setPositions(pos)});
       sim.start();simRef.current=sim;return()=>sim.stop();
     }catch(e){console.error('Sim:',e)}
   },[workflows]);

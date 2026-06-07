@@ -33,18 +33,15 @@ export default function WorkflowsPage() {
     try {
       const gr = await fetch('/api/groups/scan').then(r => r.json());
       const groups: string[] = gr.groups || [];
+      const results = await Promise.all(groups.map(g =>
+        fetch(`/api/groups/${g}/workflow`).then(r => r.json()).catch(() => null)
+      ));
       const wfs: WorkflowDef[] = [];
-      for (const g of groups) {
-        try {
-          const wr = await fetch(`/api/groups/${g}/workflow`).then(r => r.json());
-          if (wr.name && wr.steps > 0) {
-            wfs.push({
-              group: g, name: wr.name, description: wr.description,
-              steps: wr.stepsList || [],
-              position: wr.position,
-            });
-          }
-        } catch {}
+      for (let i = 0; i < groups.length; i++) {
+        const wr = results[i];
+        if (wr && wr.name && Array.isArray(wr.stepsList) && wr.stepsList.length > 0) {
+          wfs.push({ group: groups[i], name: wr.name, description: wr.description, steps: wr.stepsList, position: wr.position });
+        }
       }
       setWorkflows(wfs);
     } catch { setWorkflows([]); }
