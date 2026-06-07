@@ -42,6 +42,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({x:0,y:0});
   const [hoveredNode, setHoveredNode] = useState<string|null>(null);
+  const [draggingNode, setDraggingNode] = useState<string|null>(null);
   const [triggerPopup, setTriggerPopup] = useState<{group:string;triggers:WorkflowStep[]}|null>(null);
   const simRef = useRef<ForceSimulation|null>(null);
 
@@ -69,9 +70,23 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
     }catch(e){console.error('Sim:',e)}
   },[workflows]);
 
-  const onDown=useCallback((e:React.MouseEvent)=>{if((e.target as HTMLElement).closest('.wf-node'))return;setDragging(true);setDragStart({x:e.clientX-pan.x,y:e.clientY-pan.y})},[pan]);
-  const onMove=useCallback((e:React.MouseEvent)=>{if(dragging)setPan({x:e.clientX-dragStart.x,y:e.clientY-dragStart.y})},[dragging,dragStart]);
-  const onUp=useCallback(()=>setDragging(false),[]);
+  const onDown=useCallback((e:React.MouseEvent)=>{
+    const nodeEl=(e.target as HTMLElement).closest('.wf-node');
+    if(nodeEl){const nid=nodeEl.getAttribute('data-nid');if(nid){setDraggingNode(nid);e.stopPropagation();return}}
+    setDragging(true);setDragStart({x:e.clientX-pan.x,y:e.clientY-pan.y});
+  },[pan]);
+  const onMove=useCallback((e:React.MouseEvent)=>{
+    if(draggingNode){
+      const sim=simRef.current;if(!sim)return;
+      const wx=(e.clientX-pan.x)/zoom;const wy=(e.clientY-pan.y)/zoom;
+      sim.pin(draggingNode,wx,wy);
+      setPositions(prev=>{const next=new Map(prev);next.set(draggingNode!,{x:wx,y:wy});return next});
+    } else if(dragging){setPan({x:e.clientX-dragStart.x,y:e.clientY-dragStart.y})}
+  },[dragging,dragStart,draggingNode,pan,zoom]);
+  const onUp=useCallback(()=>{
+    if(draggingNode&&simRef.current){simRef.current.unpin(draggingNode)}
+    setDraggingNode(null);setDragging(false);
+  },[draggingNode]);
   const onWheel=useCallback((e:React.WheelEvent)=>{e.preventDefault();setZoom(z=>Math.min(3,Math.max(0.15,z*(e.deltaY>0?0.92:1.08))))},[]);
   const getStatus=useCallback((g:string,s:string)=>runs[g]?.[0]?.steps?.[s]||'pending',[runs]);
 
@@ -193,7 +208,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
                   const bg=isDark?STATUS_BG[status]:STATUS_BG_LIGHT[status];
                   const icon=getIcon(step);
                   return(
-                    <g key={step.id} className="wf-node" transform={`translate(${pos.x},${pos.y})`} style={{cursor:'pointer'}}
+                    <g key={step.id} className="wf-node" data-nid={`${wf.group}:${step.id}`} transform={`translate(${pos.x},${pos.y})`} style={{cursor:draggingNode===`${wf.group}:${step.id}`?'grabbing':'pointer'}}
                       onMouseEnter={()=>setHoveredNode(`${wf.group}:${step.id}`)} onMouseLeave={()=>setHoveredNode(null)}
                       onClick={()=>isTrigger?onTriggerClick(wf.group):onSelectWorkflow(wf.group)}>
                       {/* Cell glow for active */}
