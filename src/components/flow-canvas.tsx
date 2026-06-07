@@ -20,18 +20,14 @@ interface FlowCanvasProps {
 
 const CELL_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#14b8a6'];
 const STATUS_BG: Record<string, string> = {
-  pending: 'bg-slate-800 border-slate-600', waiting: 'bg-slate-800 border-yellow-500',
-  in_progress: 'bg-slate-800 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.4)]',
-  completed: 'bg-slate-800 border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)]',
-  failed: 'bg-slate-800 border-red-500 shadow-[0_0_16px_rgba(239,68,68,0.4)]',
-  skipped: 'bg-slate-800 border-slate-600',
+  pending: 'fill-slate-800 stroke-slate-600', waiting: 'fill-slate-800 stroke-yellow-500',
+  in_progress: 'fill-slate-800 stroke-blue-500', completed: 'fill-slate-800 stroke-green-500',
+  failed: 'fill-slate-800 stroke-red-500', skipped: 'fill-slate-800 stroke-slate-600',
 };
 const STATUS_BG_LIGHT: Record<string, string> = {
-  pending: 'bg-white border-gray-300', waiting: 'bg-white border-yellow-400',
-  in_progress: 'bg-white border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]',
-  completed: 'bg-white border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.2)]',
-  failed: 'bg-white border-red-500 shadow-[0_0_16px_rgba(239,68,68,0.3)]',
-  skipped: 'bg-white border-gray-300',
+  pending: 'fill-white stroke-gray-300', waiting: 'fill-white stroke-yellow-400',
+  in_progress: 'fill-white stroke-blue-500', completed: 'fill-white stroke-green-500',
+  failed: 'fill-white stroke-red-500', skipped: 'fill-white stroke-gray-300',
 };
 const ICONS: Record<string, string> = { trigger:'⚡',test:'🧪',build:'📦',deploy:'🚀',review:'🔍',fix:'🔧',verify:'✅',notify:'📢',research:'📚',synthesize:'📝',present:'📊',done:'🏁',human_approval:'👤',default:'📋' };
 function getIcon(s: WorkflowStep): string { if(s.type==='trigger') return '⚡'; const a=(s.action||'').toLowerCase(); for(const[k,v] of Object.entries(ICONS)) if(a.includes(k)) return v; return ICONS.default; }
@@ -56,10 +52,17 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
   useEffect(()=>{
     try{
-      const sim=new ForceSimulation({repulsion:1800,attraction:0.025,gravity:0.008,linkDistance:200,damping:0.92,maxVelocity:6,interGroupRepulsion:8,groupGravity:0.04});
+      const sim=new ForceSimulation({repulsion:2500,attraction:0.02,gravity:0.015,linkDistance:180,damping:0.9,maxVelocity:8,interGroupRepulsion:15,groupGravity:0.08,centerX:500,centerY:400});
       const allNodes:{id:string;group:string}[]=[];const allEdges:ForceEdge[]=[];
       for(const wf of workflows){for(const step of wf.steps){allNodes.push({id:`${wf.group}:${step.id}`,group:wf.group});for(const dep of step.dependsOn||[])allEdges.push({source:`${wf.group}:${dep}`,target:`${wf.group}:${step.id}`})}}
-      sim.setNodes(allNodes.map(n=>({id:n.id,group:n.group,x:(Math.random()-0.5)*600,y:(Math.random()-0.5)*400})));
+      // Group nodes by workflow, space groups apart initially
+      const groupStart: Record<string, number> = {};
+      let gIdx = 0;
+      for (const wf of workflows) { groupStart[wf.group] = gIdx; gIdx += 500; }
+      sim.setNodes(allNodes.map((n,i)=>{
+        const gs = groupStart[n.group] || 0;
+        return { id: n.id, group: n.group, x: 200 + gs + (Math.random()-0.5)*200, y: 200 + (i % 20) * 70 };
+      }));
       sim.setEdges(allEdges);
       sim.onTick((nodes)=>{const pos=new Map<string,{x:number;y:number}>();for(const[id,n]of nodes)pos.set(id,{x:n.x,y:n.y});setPositions(pos)});
       sim.start();simRef.current=sim;return()=>sim.stop();
@@ -138,7 +141,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
               const dx=next.x-prev.x;const dy=next.y-prev.y;const len=Math.sqrt(dx*dx+dy*dy)||1;
               const nx=-dy/len;const ny=dx/len;
               const dot=(p.x-cx_)*nx+(p.y-cy_)*ny;const sign=dot>=0?1:-1;
-              return{x:p.x+nx*70*sign,y:p.y+ny*70*sign};
+              return{x:p.x+nx*100*sign,y:p.y+ny*100*sign};
             });
             // Smooth path
             const n=expanded.length;let d=`M${expanded[0].x},${expanded[0].y}`;
@@ -146,7 +149,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
             d+=' Z';
             return(
               <g key={`cell-${wf.group}`} opacity={opacity} style={{transition:'opacity 0.5s'}}>
-                <path d={d} fill={color} fillOpacity={isCurrent?0.08:0.04} stroke={color} strokeWidth={isCurrent?2:1} strokeDasharray={isCurrent?'none':'8 4'} opacity={isCurrent?0.8:0.4} filter="url(#cell-glow)" style={{transition:'all 0.3s'}}/>
+                <path d={d} fill={color} fillOpacity={isCurrent?0.12:0.06} stroke={color} strokeWidth={isCurrent?2.5:1.5} strokeDasharray={isCurrent?'none':'8 4'} opacity={isCurrent?0.9:0.6} filter="url(#cell-glow)" style={{transition:'all 0.3s'}}/>
                 <text x={cx_} y={cy_-30} textAnchor="middle" fontSize="14" fontWeight="700" fill={color} opacity={isCurrent?1:0.5} style={{pointerEvents:'none'}}>{wf.name}</text>
                 <text x={cx_} y={cy_-14} textAnchor="middle" fontSize="10" fill={color} opacity={isCurrent?0.6:0.25} style={{pointerEvents:'none'}}>{wf.steps.length} steps · #{wf.group}</text>
               </g>
