@@ -52,12 +52,12 @@ function buildTree(steps: WorkflowStep[], statuses: Record<string, string>): Tre
 }
 
 const STATUS_CFG: Record<string, { icon: typeof CheckCircle; color: string; bg: string; label: string }> = {
-  pending:     { icon: Clock,       color: 'text-slate-500',    bg: 'bg-slate-800/50',   label: '等待' },
-  waiting:     { icon: Clock,       color: 'text-yellow-400',   bg: 'bg-yellow-500/10',  label: '等待中' },
-  in_progress: { icon: Loader,      color: 'text-blue-400',     bg: 'bg-blue-500/10',    label: '进行中' },
-  completed:   { icon: CheckCircle, color: 'text-green-400',    bg: 'bg-green-500/10',   label: '完成' },
-  failed:      { icon: XCircle,     color: 'text-red-400',      bg: 'bg-red-500/10',     label: '失败' },
-  skipped:     { icon: Clock,       color: 'text-slate-600',    bg: 'bg-slate-800/30',   label: '跳过' },
+  pending:     { icon: Clock,       color: 'text-slate-500',    bg: 'bg-gray-100',   label: '等待' },
+  waiting:     { icon: Clock,       color: 'text-yellow-500',   bg: 'bg-yellow-50',  label: '等待中' },
+  in_progress: { icon: Loader,      color: 'text-blue-500',     bg: 'bg-blue-50',    label: '进行中' },
+  completed:   { icon: CheckCircle, color: 'text-green-500',    bg: 'bg-green-50',   label: '完成' },
+  failed:      { icon: XCircle,     color: 'text-red-500',      bg: 'bg-red-50',     label: '失败' },
+  skipped:     { icon: Clock,       color: 'text-slate-400',    bg: 'bg-gray-50',   label: '跳过' },
 };
 
 const ICONS: Record<string, string> = { trigger: '⚡', test: '🧪', build: '📦', deploy: '🚀', review: '🔍', fix: '🔧', verify: '✅', notify: '📢', research: '📚', synthesize: '📝', present: '📊', done: '🏁', human_approval: '👤', default: '📋' };

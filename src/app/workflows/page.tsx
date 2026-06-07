@@ -34,7 +34,7 @@ export default function WorkflowsPage() {
       const gr = await fetch('/api/groups/scan').then(r => r.json());
       const groups: string[] = gr.groups || [];
       const results = await Promise.all(groups.map(g =>
-        fetch(`/api/groups/${g}/workflow`).then(r => r.json()).catch(() => null)
+        fetch(`/api/groups/${encodeURIComponent(g)}/workflow`).then(r => r.json()).catch(() => null)
       ));
       const wfs: WorkflowDef[] = [];
       for (let i = 0; i < groups.length; i++) {

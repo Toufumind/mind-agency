@@ -45,10 +45,13 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const [draggingNode, setDraggingNode] = useState<string|null>(null);
   const [triggerPopup, setTriggerPopup] = useState<{group:string;triggers:WorkflowStep[]}|null>(null);
   const simRef = useRef<ForceSimulation|null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Throttled position update — only re-render every 3rd frame
   const frameCount = useRef(0);
   useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key==='Escape'){onSelectWorkflow(null);setTriggerPopup(null)}if(e.key==='+'||e.key==='=')setZoom(z=>Math.min(3,z*1.2));if(e.key==='-')setZoom(z=>Math.max(0.15,z/1.2));if(e.key==='0'){setZoom(1);setPan({x:0,y:0})}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[onSelectWorkflow]);
+  // Native wheel listener (React onWheel is passive, can't preventDefault)
+  useEffect(()=>{const el=containerRef.current;if(!el)return;const h=(e:WheelEvent)=>{e.preventDefault();setZoom(z=>Math.min(3,Math.max(0.15,z*(e.deltaY>0?0.92:1.08))))};el.addEventListener('wheel',h,{passive:false});return()=>el.removeEventListener('wheel',h)},[]);
   useEffect(()=>{try{localStorage.setItem('flow-pan',JSON.stringify(pan))}catch{}},[pan]);
   useEffect(()=>{try{localStorage.setItem('flow-zoom',String(zoom))}catch{}},[zoom]);
 
@@ -123,14 +126,14 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const nodeSub=isDark?'text-slate-400':'text-gray-500';
 
   return(
-    <div className="relative flex-1 h-full overflow-hidden" style={{background:canvasBg,cursor:dragging?'grabbing':'grab'}}
-      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onWheel={onWheel}>
+    <div ref={containerRef} className="relative flex-1 h-full overflow-hidden" style={{background:canvasBg,cursor:dragging?'grabbing':'grab'}}
+      onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp}>
 
       {/* ── SVG: cells + edges ── */}
       <svg className="absolute inset-0 w-full h-full" style={{overflow:'visible'}}>
         <defs>
-          <marker id="arrow-d" viewBox="0 0 10 6" refX="9" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill={edgeIdle} opacity="0.5"/></marker>
-          <marker id="arrow-a" viewBox="0 0 10 6" refX="9" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill={edgeActive}/></marker>
+          <marker id="flow-arrow-d" viewBox="0 0 10 6" refX="9" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill={edgeIdle} opacity="0.5"/></marker>
+          <marker id="flow-arrow-a" viewBox="0 0 10 6" refX="9" refY="3" markerWidth="8" markerHeight="6" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill={edgeActive}/></marker>
           <filter id="cell-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="25" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           {isDark && <filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>}
         </defs>
@@ -179,16 +182,9 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
             return(
               <g key={e.key} opacity={selectedGroup?(e.group===selectedGroup?1:0.15):0.8} style={{transition:'opacity 0.3s'}}>
                 {e.active&&<path d={pathD} fill="none" stroke={edgeActive} strokeWidth="8" opacity="0.1" strokeDasharray="20 10"><animate attributeName="stroke-dashoffset" from="0" to="-30" dur="1s" repeatCount="indefinite"/></path>}
-                <path d={pathD} fill="none" stroke={e.active?edgeActive:edgeIdle} strokeWidth={e.active?2.5:1.2} strokeDasharray={e.active?'10 5':'4 8'} strokeLinecap="round" markerEnd={e.active?'url(#arrow-a)':'url(#arrow-d)'}>
+                <path d={pathD} fill="none" stroke={e.active?edgeActive:edgeIdle} strokeWidth={e.active?2.5:1.2} strokeDasharray={e.active?'10 5':'4 8'} strokeLinecap="round" markerEnd={e.active?'url(#flow-arrow-a)':'url(#flow-arrow-d)'}>
                   {e.active&&<animate attributeName="stroke-dashoffset" from="0" to="-15" dur="0.8s" repeatCount="indefinite"/>}
                 </path>
-                {e.active&&[0,0.33,0.66].map((off,pi)=>{
-                  const t=((Date.now()*0.001+off)%1);
-                  const t2=t*t;const mt=1-t;const mt2=mt*mt;
-                  const px=mt2*e.x1+2*mt*t*mx+t2*e.x2;
-                  const py=mt2*e.y1+2*mt*t*my+t2*e.y2;
-                  return <circle key={pi} cx={px} cy={py} r={2.5-t*1.5} fill={edgeActive} opacity={0.8-t*0.6}><animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite" begin={`${off}s`}/></circle>;
-                })}
               </g>
             );
           })}

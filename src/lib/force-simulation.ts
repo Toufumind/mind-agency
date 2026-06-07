@@ -157,9 +157,10 @@ export class ForceSimulation {
       const a = this.nodes.get(e.source);
       const b = this.nodes.get(e.target);
       if (!a || !b) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; dist = 1; }
       const force = (dist - linkDistance) * attraction;
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
