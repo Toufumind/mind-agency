@@ -64,8 +64,19 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   // Throttled position update — only re-render every 3rd frame
   const frameCount = useRef(0);
   useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;if(e.key==='Escape'){onSelectWorkflow(null);setTriggerPopup(null);setContextMenu(null)}if(e.key==='+'||e.key==='=')setZoom(z=>Math.min(3,z*1.2));if(e.key==='-')setZoom(z=>Math.max(0.15,z/1.2));if(e.key==='0'){setZoom(1);setPan({x:0,y:0})}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[onSelectWorkflow]);
-  // Native wheel listener (React onWheel is passive, can't preventDefault)
-  useEffect(()=>{const el=containerRef.current;if(!el)return;const h=(e:WheelEvent)=>{e.preventDefault();setZoom(z=>Math.min(3,Math.max(0.15,z*(e.deltaY>0?0.92:1.08))))};el.addEventListener('wheel',h,{passive:false});return()=>el.removeEventListener('wheel',h)},[]);
+  // Native wheel listener — zoom centered on mouse position
+  useEffect(()=>{const el=containerRef.current;if(!el)return;const h=(e:WheelEvent)=>{
+    e.preventDefault();
+    const rect=el.getBoundingClientRect();
+    const mx=e.clientX-rect.left;const my=e.clientY-rect.top;
+    const factor=e.deltaY>0?0.92:1.08;
+    setZoom(z=>{
+      const newZ=Math.min(3,Math.max(0.15,z*factor));
+      // Adjust pan so mouse position stays fixed
+      setPan((p:{x:number;y:number})=>({x:mx-(mx-p.x)*(newZ/z),y:my-(my-p.y)*(newZ/z)}));
+      return newZ;
+    });
+  };el.addEventListener('wheel',h,{passive:false});return()=>el.removeEventListener('wheel',h)},[]);
   useEffect(()=>{try{localStorage.setItem('flow-pan',JSON.stringify(pan))}catch{}},[pan]);
   useEffect(()=>{try{localStorage.setItem('flow-zoom',String(zoom))}catch{}},[zoom]);
 
@@ -91,15 +102,23 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const onDown=useCallback((e:React.MouseEvent)=>{
     const nodeEl=(e.target as HTMLElement).closest('.wf-node');
     if(nodeEl){const nid=nodeEl.getAttribute('data-nid');if(nid){setDraggingNode(nid);e.stopPropagation();return}}
-    setDragging(true);setDragStart({x:e.clientX-pan.x,y:e.clientY-pan.y});
+    const rect=containerRef.current?.getBoundingClientRect();
+    const ox=rect?rect.left:0;const oy=rect?rect.top:0;
+    setDragging(true);setDragStart({x:e.clientX-ox-pan.x,y:e.clientY-oy-pan.y});
   },[pan]);
   const onMove=useCallback((e:React.MouseEvent)=>{
     if(draggingNode){
       const sim=simRef.current;if(!sim)return;
-      const wx=(e.clientX-pan.x)/zoom;const wy=(e.clientY-pan.y)/zoom;
+      const rect=containerRef.current?.getBoundingClientRect();
+      const ox=rect?rect.left:0;const oy=rect?rect.top:0;
+      const wx=(e.clientX-ox-pan.x)/zoom;const wy=(e.clientY-oy-pan.y)/zoom;
       sim.pin(draggingNode,wx,wy);
       setPositions(prev=>{const next=new Map(prev);next.set(draggingNode!,{x:wx,y:wy});return next});
-    } else if(dragging){setPan({x:e.clientX-dragStart.x,y:e.clientY-dragStart.y})}
+    } else if(dragging){
+      const rect=containerRef.current?.getBoundingClientRect();
+      const ox=rect?rect.left:0;const oy=rect?rect.top:0;
+      setPan({x:e.clientX-ox-dragStart.x,y:e.clientY-oy-dragStart.y});
+    }
   },[dragging,dragStart,draggingNode,pan,zoom]);
   const onUp=useCallback(()=>{
     if(draggingNode&&simRef.current){simRef.current.unpin(draggingNode)}
