@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Sidebar from '@/components/sidebar';
 import FlowCanvas from '@/components/flow-canvas';
 import FlowPanel from '@/components/flow-panel';
@@ -28,10 +28,13 @@ export default function WorkflowsPage() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{msg:string;type:'ok'|'error'}|null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   const showToast = useCallback((msg: string, type: 'ok'|'error' = 'ok') => {
+    clearTimeout(toastTimer.current);
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
   }, []);
 
   const load = useCallback(async () => {
@@ -63,24 +66,25 @@ export default function WorkflowsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Poll for run status updates every 5s
+  // Poll for run status updates every 8s (skip group scan, only fetch runs)
   useEffect(() => {
+    let failCount = 0;
     const timer = setInterval(async () => {
       try {
-        const gr = await fetch('/api/groups/scan').then(r => r.json()).catch(() => null);
-        const groups: string[] = gr?.groups || [];
+        // Use existing workflow list instead of re-scanning groups
         const runMap: Record<string, RunInfo[]> = {};
-        await Promise.all(groups.map(async (g) => {
+        await Promise.allSettled(workflows.map(async (wf) => {
           try {
-            const data = await fetch(`/api/groups/${encodeURIComponent(g)}/workflow?action=runs`).then(r => r.json());
-            if (data?.runs) runMap[g] = data.runs;
+            const data = await fetch(`/api/groups/${encodeURIComponent(wf.group)}/workflow?action=runs`).then(r => r.json());
+            if (data?.runs) runMap[wf.group] = data.runs;
           } catch {}
         }));
         setRuns(runMap);
-      } catch {}
-    }, 5000);
+        failCount = 0;
+      } catch { failCount++; }
+    }, Math.min(8000 + failCount * 2000, 30000)); // backoff on failure
     return () => clearInterval(timer);
-  }, []);
+  }, [workflows]);
 
   const handleTrigger = async (group: string, triggerStepId?: string) => {
     try {

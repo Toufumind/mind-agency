@@ -140,7 +140,7 @@ export class ForceSimulation {
         let dx = a.x - b.x;
         let dy = a.y - b.y;
         let dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; dist = 1; }
+        if (dist < 1) { dx = (i % 2 === 0 ? 1 : -1) * 0.7; dy = (j % 2 === 0 ? 1 : -1) * 0.7; dist = 1; }
         // Inter-group repulsion: much stronger between different workflows
         const sameGroup = a.group && b.group && a.group === b.group;
         const forceMultiplier = sameGroup ? 1 : interGroupRepulsion;
@@ -208,11 +208,21 @@ export class ForceSimulation {
       n.y += n.vy;
     }
 
+    // Convergence check — stop if all nodes settled
+    let maxSpeed = 0;
+    for (const n of nodeArr) {
+      if (n.fx !== undefined) continue;
+      const s = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
+      if (s > maxSpeed) maxSpeed = s;
+    }
+
     // Callback
     if (this.onTickCb) this.onTickCb(this.nodes);
 
-    // Continue
-    this.animFrame = requestAnimationFrame(() => this.tick());
+    // Continue if not settled
+    if (maxSpeed > 0.01) {
+      this.animFrame = requestAnimationFrame(() => this.tick());
+    }
   }
 
   /** Get bounds of all nodes */

@@ -50,8 +50,16 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   const simRef = useRef<ForceSimulation|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Animation timer
-  useEffect(() => { const id = setInterval(() => setTime(t => t + 1), 50); return () => clearInterval(id); }, []);
+  // Animation timer — pause when tab hidden
+  useEffect(() => {
+    let id: ReturnType<typeof setInterval>;
+    const start = () => { id = setInterval(() => setTime(t => t + 1), 50); };
+    const stop = () => clearInterval(id);
+    const onVisChange = () => document.hidden ? stop() : start();
+    document.addEventListener('visibilitychange', onVisChange);
+    start();
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisChange); };
+  }, []);
 
   // Throttled position update — only re-render every 3rd frame
   const frameCount = useRef(0);
@@ -102,6 +110,35 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
 
   const onTriggerClick=useCallback((group:string)=>{const wf=workflows.find(w=>w.group===group);if(!wf)return;const t=wf.steps.filter(s=>s.type==='trigger');if(t.length===1)onTrigger(group,t[0].id);else if(t.length>1)setTriggerPopup({group,triggers:t});else onTrigger(group)},[workflows,onTrigger]);
 
+  // Pre-compute hull data (memoized)
+  const hullData = useMemo(() => {
+    const C = [[0.388,0.400,0.945],[0.545,0.361,0.965],[0.925,0.282,0.600],[0.961,0.620,0.043],[0.063,0.725,0.502],[0.231,0.510,0.965]];
+    const cross = (o:{x:number;y:number},a:{x:number;y:number},b:{x:number;y:number})=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
+    return workflows.map((wf, wi) => {
+      const pts = wf.steps.map(s => positions.get(`${wf.group}:${s.id}`)).filter(Boolean) as {x:number;y:number}[];
+      if (pts.length < 2) return null;
+      const color = C[wi % C.length];
+      const col = `rgb(${Math.round(color[0]*255)},${Math.round(color[1]*255)},${Math.round(color[2]*255)})`;
+      const sorted = [...pts].sort((a,b)=>a.x-b.x||a.y-b.y);
+      const lower:{x:number;y:number}[]=[];for(const p of sorted){while(lower.length>=2&&cross(lower[lower.length-2],lower[lower.length-1],p)<=0)lower.pop();lower.push(p)}
+      const upper:{x:number;y:number}[]=[];for(const p of [...sorted].reverse()){while(upper.length>=2&&cross(upper[upper.length-2],upper[upper.length-1],p)<=0)upper.pop();upper.push(p)}
+      const hull=lower.slice(0,-1).concat(upper.slice(0,-1));
+      if(hull.length<3) return null;
+      const cx_=hull.reduce((s,p)=>s+p.x,0)/hull.length;
+      const cy_=hull.reduce((s,p)=>s+p.y,0)/hull.length;
+      const expanded=hull.map((p,i)=>{
+        const prev=hull[(i-1+hull.length)%hull.length];const next=hull[(i+1)%hull.length];
+        const dx=next.x-prev.x;const dy=next.y-prev.y;const len=Math.sqrt(dx*dx+dy*dy)||1;
+        const nx=-dy/len;const ny=dx/len;const dot=(p.x-cx_)*nx+(p.y-cy_)*ny;const sign=dot>=0?1:-1;
+        return{x:p.x+nx*100*sign,y:p.y+ny*100*sign};
+      });
+      const n=expanded.length;let d=`M${expanded[0].x},${expanded[0].y}`;
+      for(let i=0;i<n;i++){const p0=expanded[(i-1+n)%n];const p1=expanded[i];const p2=expanded[(i+1)%n];const p3=expanded[(i+2)%n];d+=` C${p1.x+(p2.x-p0.x)/6},${p1.y+(p2.y-p0.y)/6},${p2.x-(p3.x-p1.x)/6},${p2.y-(p3.y-p1.y)/6},${p2.x},${p2.y}`}
+      d+=' Z';
+      return { path: d, cx: cx_, cy: cy_, col, group: wf.group, name: wf.name, steps: wf.steps.length };
+    });
+  }, [workflows, positions]);
+
   // Build edge data
   const edges=useMemo(()=>{
     const result:{x1:number;y1:number;x2:number;y2:number;active:boolean;key:string;group:string}[]=[];
@@ -123,10 +160,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   },[edges]);
 
   const canvasBg=isDark?'#0a0a0f':'#f5f5f0';
-  const edgeIdle=isDark?'#334155':'#d1d5db';
-  const edgeActive=isDark?'#3b82f6':'#2563eb';
   const nodeText=isDark?'text-white':'text-gray-900';
-  const nodeSub=isDark?'text-slate-400':'text-gray-500';
 
   // No WebGL — pure SVG rendering
 
@@ -149,52 +183,20 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
           <filter id="cell-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="20" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         </defs>
         <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
-          {/* ── Cell hulls (SVG with glow) ── */}
-          {workflows.map((wf, wi) => {
-            const pts = wf.steps.map(s => positions.get(`${wf.group}:${s.id}`)).filter(Boolean) as { x: number; y: number }[];
-            if (pts.length < 2) return null;
-            const C = [[0.388,0.400,0.945],[0.545,0.361,0.965],[0.925,0.282,0.600],[0.961,0.620,0.043],[0.063,0.725,0.502],[0.231,0.510,0.965]];
-            const color = C[wi % C.length];
-            const col = `rgb(${Math.round(color[0]*255)},${Math.round(color[1]*255)},${Math.round(color[2]*255)})`;
-            const isCurrent = wf.group === selectedGroup;
+          {/* ── Cell hulls (pre-computed) ── */}
+          {hullData.map((h, wi) => {
+            if (!h) return null;
+            const isCurrent = h.group === selectedGroup;
             const opacity = selectedGroup ? (isCurrent ? 1 : 0.08) : 1;
-            const sorted = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
-            const cross = (o: {x:number;y:number}, a: {x:number;y:number}, b: {x:number;y:number}) => (a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
-            const lower: {x:number;y:number}[] = [];
-            for (const p of sorted) { while (lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], p) <= 0) lower.pop(); lower.push(p); }
-            const upper: {x:number;y:number}[] = [];
-            for (const p of [...sorted].reverse()) { while (upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], p) <= 0) upper.pop(); upper.push(p); }
-            const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
-            if (hull.length < 3) return null;
-            const cx_ = hull.reduce((s, p) => s + p.x, 0) / hull.length;
-            const cy_ = hull.reduce((s, p) => s + p.y, 0) / hull.length;
-            const expanded = hull.map((p, i) => {
-              const prev = hull[(i - 1 + hull.length) % hull.length];
-              const next = hull[(i + 1) % hull.length];
-              const dx = next.x - prev.x; const dy = next.y - prev.y;
-              const len = Math.sqrt(dx * dx + dy * dy) || 1;
-              const nx = -dy / len; const ny = dx / len;
-              const dot = (p.x - cx_) * nx + (p.y - cy_) * ny;
-              const sign = dot >= 0 ? 1 : -1;
-              return { x: p.x + nx * 100 * sign, y: p.y + ny * 100 * sign };
-            });
-            const n = expanded.length;
-            let d = `M${expanded[0].x},${expanded[0].y}`;
-            for (let i = 0; i < n; i++) {
-              const p0 = expanded[(i - 1 + n) % n]; const p1 = expanded[i];
-              const p2 = expanded[(i + 1) % n]; const p3 = expanded[(i + 2) % n];
-              d += ` C${p1.x+(p2.x-p0.x)/6},${p1.y+(p2.y-p0.y)/6},${p2.x-(p3.x-p1.x)/6},${p2.y-(p3.y-p1.y)/6},${p2.x},${p2.y}`;
-            }
-            d += ' Z';
             return (
-              <g key={`cell-${wf.group}`} opacity={opacity} style={{transition:'opacity 0.5s'}}>
-                <path d={d} fill={col} fillOpacity={isCurrent ? 0.12 : 0.06} stroke={col}
+              <g key={`cell-${h.group}`} opacity={opacity} style={{transition:'opacity 0.5s'}}>
+                <path d={h.path} fill={h.col} fillOpacity={isCurrent ? 0.12 : 0.06} stroke={h.col}
                   strokeWidth={isCurrent ? 2.5 : 1.5} strokeDasharray={isCurrent ? 'none' : '8 4'}
                   opacity={isCurrent ? 0.9 : 0.6} filter="url(#cell-glow)" style={{transition:'all 0.3s'}} />
-                <text x={cx_} y={cy_ - 35} textAnchor="middle" fontSize="13" fontWeight="700" fill={col}
-                  opacity={isCurrent ? 1 : 0.5} style={{pointerEvents:'none'}}>{wf.name}</text>
-                <text x={cx_} y={cy_ - 20} textAnchor="middle" fontSize="9" fill={col} opacity={isCurrent ? 0.6 : 0.25}
-                  style={{pointerEvents:'none'}}>{wf.steps.length} steps · #{wf.group}</text>
+                <text x={h.cx} y={h.cy - 35} textAnchor="middle" fontSize="13" fontWeight="700" fill={h.col}
+                  opacity={isCurrent ? 1 : 0.5} style={{pointerEvents:'none'}}>{h.name}</text>
+                <text x={h.cx} y={h.cy - 20} textAnchor="middle" fontSize="9" fill={h.col} opacity={isCurrent ? 0.6 : 0.25}
+                  style={{pointerEvents:'none'}}>{h.steps} steps · #{h.group}</text>
               </g>
             );
           })}

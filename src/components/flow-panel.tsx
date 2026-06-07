@@ -6,7 +6,7 @@ import { X, Play, Clock, CheckCircle, XCircle, Loader, Zap, ChevronDown, Chevron
 // ── Types ──
 interface WorkflowStep { id: string; type?: string; agent?: string; action?: string; prompt?: string; dependsOn?: string[]; routes?: { step: string; when: string }[]; reviewer?: string; priority?: string; trigger?: any; }
 interface RunInfo { runId: string; status: string; steps: Record<string, string>; startedAt: number; completedAt?: number; }
-interface FlowPanelProps { workflow: { group: string; name: string; description?: string; steps: WorkflowStep[] } | null; run: RunInfo | null; onClose: () => void; onTrigger: (g: string, triggerStepId?: string) => void; }
+interface FlowPanelProps { workflow: { group: string; name: string; description?: string; steps: WorkflowStep[] } | null; run: RunInfo | null; onClose: () => void; onTrigger: (g: string, triggerStepId?: string) => void; onRefresh?: () => void; }
 
 // ── Tree ──
 interface TreeNode { step: WorkflowStep; children: TreeNode[]; status: string; }
@@ -84,7 +84,7 @@ function TreeNodeView({ node, depth, isDark }: { node: TreeNode; depth: number; 
 }
 
 // ── Main Panel ──
-export default function FlowPanel({ workflow, run, onClose, onTrigger }: FlowPanelProps) {
+export default function FlowPanel({ workflow, run, onClose, onTrigger, onRefresh }: FlowPanelProps) {
   const { theme } = useTheme();
   const isDark = !['notion', 'minimal-white', 'warm-wood', 'solarized-light'].includes(theme);
   const tree = useMemo(() => workflow ? buildTree(workflow.steps, run?.steps || {}) : [], [workflow, run]);
@@ -126,7 +126,7 @@ export default function FlowPanel({ workflow, run, onClose, onTrigger }: FlowPan
             <Play size={12} /> 触发运行
           </button>
           {isRunning && (
-            <button className={`flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] rounded-xl border transition ${isDark ? 'border-slate-600 text-slate-400 hover:bg-slate-800' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}>
+            <button onClick={() => onRefresh?.()} className={`flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] rounded-xl border transition ${isDark ? 'border-slate-600 text-slate-400 hover:bg-slate-800' : 'border-gray-300 text-gray-500 hover:bg-gray-50'}`}>
               <RotateCw size={12} /> 刷新
             </button>
           )}
