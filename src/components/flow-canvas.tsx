@@ -53,7 +53,7 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
   // Animation timer — pause when tab hidden
   useEffect(() => {
     let id: ReturnType<typeof setInterval>;
-    const start = () => { id = setInterval(() => setTime(t => t + 1), 50); };
+    const start = () => { id = setInterval(() => setTime(t => t + 1), 100); };
     const stop = () => clearInterval(id);
     const onVisChange = () => document.hidden ? stop() : start();
     document.addEventListener('visibilitychange', onVisChange);

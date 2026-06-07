@@ -87,18 +87,15 @@ function tokenize(text: string): string[] {
   return tokens;
 }
 
-/** Fallback: TF-IDF scoring */
-function scoreMatch(query: string, key: string, content: string): number {
-  const qTokens = tokenize(query);
-  if (qTokens.length === 0) return 0;
-  const keyTokens = new Set(tokenize(key));
-  const contentTokens = new Set(tokenize(content));
+/** Fallback: TF-IDF scoring (pre-tokenized for performance) */
+function scoreMatchPreTokenized(queryTokens: string[], keyTokens: Set<string>, contentTokens: Set<string>, rawQuery: string, rawText: string): number {
+  if (queryTokens.length === 0) return 0;
   let score = 0;
-  for (const qt of [...new Set(qTokens)]) {
-    const tf = qTokens.filter(t => t === qt).length / qTokens.length;
+  for (const qt of [...new Set(queryTokens)]) {
+    const tf = queryTokens.filter(t => t === qt).length / queryTokens.length;
     score += tf * ((keyTokens.has(qt) ? 2 : 0) + (contentTokens.has(qt) ? 1 : 0));
   }
-  if ((key + ' ' + content).toLowerCase().includes(query.toLowerCase())) score += 5;
+  if (rawText.toLowerCase().includes(rawQuery.toLowerCase())) score += 5;
   return score;
 }
 
@@ -183,9 +180,9 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
     return finalResults;
   } catch {
     // Fallback to TF-IDF if embedding model not available
-    const q = query.toLowerCase();
+    const queryTokens = tokenize(query);
     const results = entries
-      .map(entry => ({ entry, score: scoreMatch(query, entry.key, entry.content) }))
+      .map(entry => ({ entry, score: scoreMatchPreTokenized(queryTokens, new Set(tokenize(entry.key)), new Set(tokenize(entry.content)), query, `${entry.key} ${entry.content}`) }))
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
       .slice(0, 10);
