@@ -26,7 +26,7 @@ function debouncedTrigger(dir: string) {
   debounceTimer = setTimeout(() => {
     if (callback) callback(dir);
     debounceTimer = null;
-  }, 2000);
+  }, 500);
 }
 
 // ── Public API ───────────────────────────────────────────

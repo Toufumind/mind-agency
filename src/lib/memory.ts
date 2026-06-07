@@ -150,25 +150,29 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
 
   // Try embedding search, fall back to TF-IDF
   try {
-    const { embed, cosineSimilarity } = await import('./embedding');
+    const { embed, cosineSimilarity, tfidfVector, sparseCosine } = await import('./embedding');
     const queryVec = await embed(query);
 
-    // Embed all entries (batch) — single call per entry
-    const texts = entries.map(e => `${e.key} ${e.content}`);
-    const entryVecs = await Promise.all(texts.map(t => embed(t)));
+    // Build IDF from corpus
+    const docFreq = new Map<string, number>();
+    const entryTexts = entries.map(e => `${e.key} ${e.content}`);
+    for (const text of entryTexts) {
+      const tokens = [...new Set(text.toLowerCase().match(/[a-z0-9_]+|[一-鿿]+/g) || [])];
+      for (const t of tokens) docFreq.set(t, (docFreq.get(t) || 0) + 1);
+    }
+    const N = entries.length;
+    const idf = new Map<string, number>();
+    for (const [t, df] of docFreq) idf.set(t, Math.log((N + 1) / (df + 1)) + 1);
 
+    const queryTfIdf = tfidfVector(query, idf);
+    const entryVecs = entryTexts.map(t => embed(t));
+    const entryTfIdfs = entryTexts.map(t => tfidfVector(t, idf));
+
+    // Dual-channel scoring: 60% SimHash (semantic) + 40% TF-IDF (keyword)
     const results = entries.map((entry, i) => ({
       entry,
-      score: cosineSimilarity(queryVec, entryVecs[i]),
+      score: 0.6 * cosineSimilarity(queryVec, entryVecs[i]) + 0.4 * sparseCosine(queryTfIdf, entryTfIdfs[i]),
     }));
-
-    // Also add TF-IDF substring bonus for exact matches
-    const q = query.toLowerCase();
-    for (const r of results) {
-      if (r.entry.key.toLowerCase().includes(q) || r.entry.content.toLowerCase().includes(q)) {
-        r.score += 0.5;
-      }
-    }
 
     const finalResults = results
       .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
@@ -239,19 +243,40 @@ function evictMemoryCache(): void {
   for (const [key] of toDelete) memoryContextCache.delete(key);
 }
 
-/** Get memory context for injection into chat prompt (top 10 most recent) — cached */
-export function getMemoryContext(agentName: string): string {
+/** Estimate token count (1 Chinese char ≈ 1.5 tokens, 1 English word ≈ 1 token) */
+function estimateTokens(text: string): number {
+  const cn = (text.match(/[一-鿿]/g) || []).length * 1.5;
+  const en = (text.match(/[a-zA-Z0-9]+/g) || []).length;
+  return Math.ceil(cn + en);
+}
+
+/** Get memory context for injection into chat prompt — with token budget */
+export function getMemoryContext(agentName: string, maxTokens: number = 800): string {
   const cached = memoryContextCache.get(agentName);
   const now = Date.now();
   if (cached && (now - cached.ts) < MEMORY_CACHE_TTL) return cached.data;
 
   const mems = listMemory(agentName);
-  const result = mems.length === 0 ? '' :
-    '\n[长期记忆]\n' + mems.slice(0, 10).map(m =>
-      `- ${m.key}: ${m.content.slice(0, 200)}`
-    ).join('\n');
+  if (mems.length === 0) {
+    memoryContextCache.set(agentName, { data: '', ts: now });
+    return '';
+  }
 
-  // v0.5: If memory context changed, invalidate baseOptions (system prompt contains memory)
+  // Build context with token budget — most recent first, stop when budget exceeded
+  const lines: string[] = [];
+  let usedTokens = 0;
+  for (const m of mems) {
+    const line = `- ${m.key}: ${m.content.slice(0, 200)}`;
+    const tokens = estimateTokens(line);
+    if (usedTokens + tokens > maxTokens) break;
+    lines.push(line);
+    usedTokens += tokens;
+  }
+
+  const result = lines.length === 0 ? '' :
+    `\n[长期记忆] (共 ${lines.length}/${mems.length} 条，~${Math.round(usedTokens)} tokens)\n` + lines.join('\n');
+
+  // v0.5: If memory context changed, invalidate baseOptions
   const prev = cached?.data;
   if (prev !== undefined && prev !== result) {
     agentCache.invalidate('config', agentName + ':baseOptions');

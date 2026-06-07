@@ -28,8 +28,8 @@ import { agentCache } from './cache';
 // ── Signal debounce: per-agent last-spawn time ─────────
 
 const lastSpawn = new Map<string, number>();
-const DEBOUNCE_URGENT = 15_000;
-const DEBOUNCE_IDLE   = 60_000;
+const DEBOUNCE_URGENT = 5_000;
+const DEBOUNCE_IDLE   = 15_000;
 const sleepMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 // ── v0.4: Request Queue — prevent duplicate spawns per agent ─────────
