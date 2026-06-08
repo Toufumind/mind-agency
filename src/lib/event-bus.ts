@@ -578,7 +578,8 @@ export class WorkflowEngine {
         });
       }
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: err.message }, 'workflow-engine'));
-      this.evictOldRuns();
+      // v0.9: Don't evict on error — let runs persist for status queries
+      // this.evictOldRuns();
     });
     return rec;
   }
