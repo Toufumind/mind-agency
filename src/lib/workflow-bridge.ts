@@ -24,7 +24,7 @@ let engine: WorkflowEngine | null = null;
 /** Module-level AbortController — cancelled on shutdown to stop all polling loops */
 const _shutdownController = new AbortController();
 
-function getEngine(): WorkflowEngine {
+export function getEngine(): WorkflowEngine {
   if (!engine) {
     engine = new WorkflowEngine(undefined, new ChatStepExecutor());
     // Register globally for text-based callback parsing (fallback when MCP tools don't work)

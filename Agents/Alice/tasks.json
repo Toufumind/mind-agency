@@ -71,7 +71,64 @@
       "priority": "normal",
       "status": "pending",
       "createdAt": 1780913123353
+    },
+    {
+      "runId": "7cf1d0e8-d811-4eb0-8119-d6cd5ddebe31",
+      "stepId": "plan",
+      "workflow": "final-test",
+      "prompt": "分析需求。回复中请包含: workflow_callback(runId=你的runId, stepId='plan', status='COMPLETED', summary='计划完成')",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780914483438
+    },
+    {
+      "runId": "a7ee0b9d-52e2-4bd5-80d6-a23a0e38910f",
+      "stepId": "plan",
+      "workflow": "final-test",
+      "prompt": "分析需求。回复中请包含: workflow_callback(runId=你的runId, stepId='plan', status='COMPLETED', summary='计划完成')",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780914588700
+    },
+    {
+      "runId": "27d92346-40dd-44a0-a498-b8f64c40da2a",
+      "stepId": "step1",
+      "workflow": "e2e-test",
+      "prompt": "说'步骤1完成'。然后在回复最后写: workflow_callback(runId=RUNID, stepId='step1', status='COMPLETED', summary='step1 done')",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780914755088
+    },
+    {
+      "runId": "5db772f2-1a3d-4457-94c3-f8e5d46e5856",
+      "stepId": "step1",
+      "workflow": "e2e-test",
+      "prompt": "说'步骤1完成'。然后在回复最后写: workflow_callback(runId=RUNID, stepId='step1', status='COMPLETED', summary='step1 done')",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780914861445
+    },
+    {
+      "runId": "ab506df3-f949-48d6-a3e1-a129bc852f4b",
+      "stepId": "analyze",
+      "workflow": "callback-test-v2",
+      "prompt": "说'分析完成'",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780914929078
     }
   ],
-  "completed": []
+  "completed": [
+    {
+      "runId": "ed3ff81c-7258-4c6a-a6e9-e81a9e9324f6",
+      "stepId": "plan",
+      "workflow": "e2e-v3",
+      "prompt": "说'计划完成'即可",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1780915034958,
+      "completedAt": 1780915054619,
+      "result": "APPROVED: �ƻ����"
+    }
+  ]
 }

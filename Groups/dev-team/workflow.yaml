@@ -1,7 +1,13 @@
-name: callback-test
-description: "回调测试工作流"
+name: e2e-v3
+description: "端到端测试v3"
 steps:
-  - id: greet
+  - id: plan
     agent: Alice
-    action: greet
-    prompt: "用一句话打招呼。然后在回复中包含：workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成')"
+    action: plan
+    prompt: "说'计划完成'即可"
+  - id: execute
+    agent: Bob
+    action: execute
+    prompt: "说'执行完成'即可"
+    depends:
+      - plan

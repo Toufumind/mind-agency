@@ -46,5 +46,17 @@
       "createdAt": 1780911433949
     }
   ],
-  "completed": []
+  "completed": [
+    {
+      "runId": "ed3ff81c-7258-4c6a-a6e9-e81a9e9324f6",
+      "stepId": "execute",
+      "workflow": "e2e-v3",
+      "prompt": "说'执行完成'即可",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1780915054622,
+      "completedAt": 1780915072180,
+      "result": "COMPLETED: ִ�����"
+    }
+  ]
 }

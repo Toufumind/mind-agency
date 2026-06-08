@@ -557,25 +557,10 @@ export class WorkflowEngine {
     }
 
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_CREATED, { taskId: runId, title: `Workflow: ${def.name}`, stepsTotal: def.steps.length }, 'workflow-engine'));
-    this.executeDag(runId, def, triggerStepId).then(() => {
-      const r = this.runs.get(runId);
-      if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); }
-      // v0.4: Complete checkpoint + append history
-      if (group) {
-        completeRunCheckpoint(group, runId, 'completed');
-        const stepsCompleted = [...(r?.steps.values() || [])].filter(s => s === StepStatus.COMPLETED).length;
-        const stepsFailed = [...(r?.steps.values() || [])].filter(s => s === StepStatus.FAILED).length;
-        appendRunHistory(group, {
-          runId, workflowName: def.name, group,
-          startedAt: rec.startedAt, completedAt: Date.now(),
-          status: 'completed', stepsTotal: def.steps.length,
-          stepsCompleted, stepsFailed,
-          compensations: r?.compensations.length || 0,
-        });
-        cleanupCheckpoints(group);
-      }
-      this.evictOldRuns();
-    }).catch((err: Error) => {
+    // v0.5: DO NOT mark run as completed here — schedule() handles completion
+    // when all steps finish via callbacks. The old code immediately marked the
+    // run as COMPLETED after initial scheduling, killing callback processing.
+    this.executeDag(runId, def, triggerStepId).catch((err: Error) => {
       const r = this.runs.get(runId);
       if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); }
       if (group) {
@@ -918,6 +903,21 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
         run.status = failed ? WorkflowStatus.FAILED : WorkflowStatus.COMPLETED;
         run.completedAt = Date.now();
         console.log(`[wf] Run ${runId.slice(0, 8)} ${run.status}`);
+        // Save history and cleanup
+        const grp = (run as any)._group as string | undefined;
+        if (grp) {
+          completeRunCheckpoint(grp, runId, run.status === WorkflowStatus.COMPLETED ? 'completed' : 'failed');
+          const stepsCompleted = [...(run.steps.values())].filter(s => s === StepStatus.COMPLETED).length;
+          const stepsFailed = [...(run.steps.values())].filter(s => s === StepStatus.FAILED).length;
+          appendRunHistory(grp, {
+            runId, workflowName: run.workflowName, group: grp,
+            startedAt: run.startedAt, completedAt: Date.now(),
+            status: run.status === WorkflowStatus.COMPLETED ? 'completed' : 'failed',
+            stepsTotal: nodes.size, stepsCompleted, stepsFailed,
+            compensations: run.compensations.length || 0,
+          });
+          cleanupCheckpoints(grp);
+        }
         this.evictOldRuns();
       }
       return;

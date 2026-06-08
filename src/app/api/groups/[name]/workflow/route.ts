@@ -97,6 +97,16 @@ export async function POST(
     return NextResponse.json({ ok: true, approvalId: body.approvalId, decision });
   }
 
+  // Callback — agent reports step completion
+  if (body.runId && body.stepId) {
+    const { getEngine } = await import('@/lib/workflow-bridge');
+    const engine = getEngine();
+    const output = `${(body.status || 'COMPLETED').toUpperCase()}: ${body.summary || ''}${body.details ? '\n' + body.details : ''}`;
+    const ok = engine.callback(body.runId, body.stepId, output);
+    if (!ok) return NextResponse.json({ error: 'callback failed (run not found or step not waiting)' }, { status: 400 });
+    return NextResponse.json({ ok: true, runId: body.runId, stepId: body.stepId, status: body.status });
+  }
+
   // YAML update via POST
   if (body.yaml || body.steps) {
     return handleUpdate(name, body);
