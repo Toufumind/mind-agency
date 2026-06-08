@@ -44,6 +44,24 @@
       "priority": "normal",
       "status": "pending",
       "createdAt": 1780911433948
+    },
+    {
+      "runId": "efcfb785-b134-42f6-8cf6-cb86d4bfc8b7",
+      "stepId": "greet",
+      "workflow": "simple-test",
+      "prompt": "用一句话打招呼。然后调用 workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成') 回报结果。",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780911709039
+    },
+    {
+      "runId": "37524101-594b-426d-99b8-bdc8db75305e",
+      "stepId": "greet",
+      "workflow": "simple-test",
+      "prompt": "用一句话打招呼。然后调用 workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成') 回报结果。",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780912049567
     }
   ],
   "completed": []

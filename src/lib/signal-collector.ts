@@ -7,7 +7,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { AGENTS_DIR, GROUPS_DIR } from './data-dir';
+import { AGENTS_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
 import { loadState, type AgentState } from './state';
 import { getAgentGroups } from './state';
 import { getAgentConfig } from './chat';
@@ -129,6 +129,26 @@ export function scanAgentSignals(agentName: string): Signal[] {
           type: 'email',
           priority: 'normal',
           snippet: f,
+          timestamp: now,
+        });
+      } catch {}
+    }
+  }
+
+  // Check for workflow notifications
+  const notifDir = path.join(MIND_DIR, 'agents', agentName, '.workflow-notifications');
+  if (fs.existsSync(notifDir)) {
+    const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
+    for (const f of notifFiles) {
+      try {
+        const notif = JSON.parse(fs.readFileSync(path.join(notifDir, f), 'utf-8'));
+        signals.push({
+          agent: agentName,
+          type: 'mention', // Treat workflow tasks as high-priority mentions
+          priority: 'critical',
+          group: 'workflow',
+          from: 'workflow-engine',
+          snippet: `[工作流任务] runId=${notif.runId} stepId=${notif.stepId}\n${notif.prompt || ''}`,
           timestamp: now,
         });
       } catch {}
