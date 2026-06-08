@@ -729,7 +729,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
       if (!fs.existsSync(notifDir)) fs.mkdirSync(notifDir, { recursive: true });
       const notifPath = path.join(notifDir, `${runId}_${sid}.json`);
-      fs.writeFileSync(notifPath, JSON.stringify({ runId, stepId: sid, prompt, createdAt: Date.now() }), 'utf-8');
+      const { atomicWrite } = require('./atomic');
+      atomicWrite(notifPath, JSON.stringify({ runId, stepId: sid, prompt, createdAt: Date.now() }));
     } catch {}
 
     node.status = StepStatus.WAITING;

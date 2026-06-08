@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
       ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
       ...(body.maxTurns ? { maxTurns: body.maxTurns } : {}),
     };
-    fs.writeFileSync(path.join(agentDir, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
+    const { atomicWrite } = require('@/lib/atomic');
+    atomicWrite(path.join(agentDir, 'config.json'), JSON.stringify(config, null, 2));
 
     writeAudit({ agent: name, action: 'agent.create', resource: `agent:${name}`, details: `roles: ${config.roles.join(',')}` });
 

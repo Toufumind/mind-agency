@@ -56,7 +56,8 @@ updated: ${new Date(now).toISOString()}
 
 ${content}
 `;
-  fs.writeFileSync(mp, body, 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(mp, body);
   // Invalidate all caches
   invalidateMemoryCache(agentName);
   invalidateSearchCache(agentName);

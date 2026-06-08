@@ -167,9 +167,8 @@ export async function installSkill(repo: string, repoPath?: string): Promise<Ski
     // Strip repoPath prefix if present
     const relativePath = repoPath ? filePath.replace(repoPath + '/', '') : filePath;
     const fullPath = path.join(skillDir, relativePath);
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(fullPath, content, 'utf-8');
+    const { atomicWrite } = require('./atomic');
+    atomicWrite(fullPath, content);
   }
 
   // Read prompt.md if exists
@@ -287,9 +286,8 @@ export async function updateSkill(id: string): Promise<Skill | null> {
   for (const [filePath, content] of files) {
     const relativePath = skill.repoPath ? filePath.replace(skill.repoPath + '/', '') : filePath;
     const fullPath = path.join(skillDir, relativePath);
-    const dir = path.dirname(fullPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(fullPath, content, 'utf-8');
+    const { atomicWrite } = require('./atomic');
+    atomicWrite(fullPath, content);
   }
 
   // Update record
