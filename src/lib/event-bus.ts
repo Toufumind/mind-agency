@@ -1428,3 +1428,57 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     return recovered;
   }
 }
+
+/**
+ * Parse workflow_callback calls from agent's text response and execute them.
+ * This is a fallback for when MCP tools don't work (SDK binary doesn't register them).
+ *
+ * Handles patterns like:
+ *   workflow_callback(runId="abc", stepId="plan", status="COMPLETED", summary="done")
+ *   workflow_callback(runId='abc', stepId='plan', status='APPROVED', summary='looks good', details='...')
+ */
+export function parseAndExecuteCallbacks(agentName: string, text: string): void {
+  if (!text) return;
+
+  // Match workflow_callback(...) calls in the text
+  const callbackRegex = /workflow_callback\s*\(\s*([^)]+)\)/gi;
+  let match;
+
+  while ((match = callbackRegex.exec(text)) !== null) {
+    try {
+      const argsStr = match[1];
+      const args: Record<string, string> = {};
+
+      // Parse key="value" or key='value' pairs
+      const argRegex = /(\w+)\s*=\s*["']([^"']*)["']/g;
+      let argMatch;
+      while ((argMatch = argRegex.exec(argsStr)) !== null) {
+        args[argMatch[1].toLowerCase()] = argMatch[2];
+      }
+
+      const runId = args.runid || args.runId;
+      const stepId = args.stepid || args.stepId;
+      const status = (args.status || 'COMPLETED').toUpperCase();
+      const summary = args.summary || args.result || text.slice(0, 200);
+      const details = args.details || '';
+
+      if (!runId || !stepId) {
+        console.log(`[wf-text-callback] Missing runId or stepId in: ${match[0].slice(0, 100)}`);
+        continue;
+      }
+
+      console.log(`[wf-text-callback] ${agentName}: ${stepId} ← ${status} (run ${runId.slice(0, 8)})`);
+
+      // Find the engine instance and call callback
+      const engineInstance = (global as any).__workflowEngine as WorkflowEngine | undefined;
+      if (engineInstance) {
+        const output = `${status}: ${summary}${details ? '\n' + details : ''}`;
+        engineInstance.callback(runId, stepId, output);
+      } else {
+        console.log(`[wf-text-callback] No workflow engine instance available`);
+      }
+    } catch (e) {
+      console.log(`[wf-text-callback] Parse error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+}

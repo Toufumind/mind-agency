@@ -398,6 +398,15 @@ export async function autoRespond(
       const { reply } = await chatOnce(agent, prompt, options?.groupName);
       clearActivity(agent);
       saveState(agent, state);
+
+      // v0.5: Parse workflow_callback from text response (SDK MCP tools may not work)
+      // Look for patterns like: workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="...")
+      // Also handle simpler patterns from agent's natural language
+      try {
+        const { parseAndExecuteCallbacks } = await import('./event-bus');
+        parseAndExecuteCallbacks(agent, reply);
+      } catch {}
+
       return { triggered: true, reply };
     } catch (e: any) {
       const isLast = attempt === maxRetries - 1;

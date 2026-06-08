@@ -1,7 +1,7 @@
-name: simple-test
-description: "简单测试工作流"
+name: callback-test
+description: "回调测试工作流"
 steps:
   - id: greet
     agent: Alice
     action: greet
-    prompt: "用一句话打招呼。然后调用 workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成') 回报结果。"
+    prompt: "用一句话打招呼。然后在回复中包含：workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成')"

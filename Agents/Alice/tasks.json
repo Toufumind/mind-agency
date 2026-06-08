@@ -62,6 +62,15 @@
       "priority": "normal",
       "status": "pending",
       "createdAt": 1780912049567
+    },
+    {
+      "runId": "2de7823d-7673-4d00-84b2-e236655faa21",
+      "stepId": "greet",
+      "workflow": "callback-test",
+      "prompt": "用一句话打招呼。然后在回复中包含：workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成')",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1780913123353
     }
   ],
   "completed": []
