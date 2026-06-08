@@ -869,8 +869,14 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     }
   }
 
+  // v0.7: Guard against reentrant schedule() calls
+  private scheduling = new Set<string>();
+
   /** Schedule ready steps in a run (callback model) */
   schedule(runId: string): void {
+    if (this.scheduling.has(runId)) return; // Prevent reentrant scheduling
+    this.scheduling.add(runId);
+    try {
     const run = this.runs.get(runId);
     if (!run || run.status !== WorkflowStatus.RUNNING) return;
     const nodes = this.runNodes.get(runId);
@@ -926,11 +932,16 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       return;
     }
 
-    // Execute ready steps
+    // v0.7: Execute ready steps with concurrency control
     ready.sort((a, b) => (PRIORITY[a.step.priority || 'normal'] ?? 2) - (PRIORITY[b.step.priority || 'normal'] ?? 2));
+    const MAX_CONCURRENT = 5; // Limit concurrent step executions
+    let running = 0;
     for (const node of ready) {
-      this.execNode(runId, node, nodes);
+      if (running >= MAX_CONCURRENT) break; // Respect concurrency limit
+      running++;
+      this.execNode(runId, node, nodes).finally(() => { running--; });
     }
+    } finally { this.scheduling.delete(runId); }
   }
 
   private async execNode(runId: string, node: DagNode, nodes: Map<string, DagNode>): Promise<void> {
