@@ -820,9 +820,16 @@ export async function chatOnce(agentName: string, userMessage: string, groupName
     const reader = stream.getReader();
     let reply = '';
     const events: ChatEvent[] = [];
+    // v0.6: Add overall timeout to prevent infinite hangs
+    const startTime = Date.now();
+    const MAX_CHAT_TIME = 120_000; // 2 minutes max per chat
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      if (Date.now() - startTime > MAX_CHAT_TIME) {
+        console.log(`[chat] ${agentName}: timeout after ${MAX_CHAT_TIME}ms`);
+        break;
+      }
       events.push(value);
       if (value.type === 'text') reply += value.content || '';
       if (value.type === 'done') break;

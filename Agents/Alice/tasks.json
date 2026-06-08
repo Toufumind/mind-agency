@@ -1,154 +1,37 @@
 {
   "pending": [
     {
-      "runId": "f4ccd748-b67e-4c66-935f-9788e75f6e0d",
-      "stepId": "plan",
-      "workflow": "dev-team-default",
-      "prompt": "分析需求并制定计划",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780910298576
-    },
-    {
-      "runId": "f1954341-db06-478b-89ad-ac5a9d2f5e43",
-      "stepId": "plan",
-      "workflow": "dev-team-default",
-      "prompt": "分析需求并制定计划",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780910395061
-    },
-    {
-      "runId": "de440aa7-c98c-4763-949b-fb3f8c96b00e",
-      "stepId": "plan",
-      "workflow": "dev-team-default",
-      "prompt": "分析需求并制定计划",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780910512913
-    },
-    {
-      "runId": "cc378439-aa43-4c36-b8cd-18d7f7010399",
-      "stepId": "plan",
-      "workflow": "dev-team-default",
-      "prompt": "分析需求并制定计划",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780910638426
-    },
-    {
-      "runId": "1cac90ff-23bf-4fb6-93bf-3f75e07ec3e1",
-      "stepId": "plan",
-      "workflow": "dev-team-default",
-      "prompt": "分析需求并制定计划",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780911433948
-    },
-    {
-      "runId": "efcfb785-b134-42f6-8cf6-cb86d4bfc8b7",
+      "runId": "5962be40-bba3-46c8-9197-7a9d27c21e9b",
       "stepId": "greet",
-      "workflow": "simple-test",
-      "prompt": "用一句话打招呼。然后调用 workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成') 回报结果。",
+      "workflow": "quick-test",
+      "prompt": "说'你好世界'即可",
       "priority": "normal",
       "status": "pending",
-      "createdAt": 1780911709039
-    },
-    {
-      "runId": "37524101-594b-426d-99b8-bdc8db75305e",
-      "stepId": "greet",
-      "workflow": "simple-test",
-      "prompt": "用一句话打招呼。然后调用 workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成') 回报结果。",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780912049567
-    },
-    {
-      "runId": "2de7823d-7673-4d00-84b2-e236655faa21",
-      "stepId": "greet",
-      "workflow": "callback-test",
-      "prompt": "用一句话打招呼。然后在回复中包含：workflow_callback(runId=当前runId, stepId='greet', status='COMPLETED', summary='打招呼完成')",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780913123353
-    },
-    {
-      "runId": "7cf1d0e8-d811-4eb0-8119-d6cd5ddebe31",
-      "stepId": "plan",
-      "workflow": "final-test",
-      "prompt": "分析需求。回复中请包含: workflow_callback(runId=你的runId, stepId='plan', status='COMPLETED', summary='计划完成')",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780914483438
-    },
-    {
-      "runId": "a7ee0b9d-52e2-4bd5-80d6-a23a0e38910f",
-      "stepId": "plan",
-      "workflow": "final-test",
-      "prompt": "分析需求。回复中请包含: workflow_callback(runId=你的runId, stepId='plan', status='COMPLETED', summary='计划完成')",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780914588700
-    },
-    {
-      "runId": "27d92346-40dd-44a0-a498-b8f64c40da2a",
-      "stepId": "step1",
-      "workflow": "e2e-test",
-      "prompt": "说'步骤1完成'。然后在回复最后写: workflow_callback(runId=RUNID, stepId='step1', status='COMPLETED', summary='step1 done')",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780914755088
-    },
-    {
-      "runId": "5db772f2-1a3d-4457-94c3-f8e5d46e5856",
-      "stepId": "step1",
-      "workflow": "e2e-test",
-      "prompt": "说'步骤1完成'。然后在回复最后写: workflow_callback(runId=RUNID, stepId='step1', status='COMPLETED', summary='step1 done')",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780914861445
-    },
-    {
-      "runId": "ab506df3-f949-48d6-a3e1-a129bc852f4b",
-      "stepId": "analyze",
-      "workflow": "callback-test-v2",
-      "prompt": "说'分析完成'",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780914929078
-    },
-    {
-      "runId": "dceb0e5c-3285-424d-8c62-474b8182caed",
-      "stepId": "step1",
-      "workflow": "updated-workflow",
-      "prompt": "测试步骤1",
-      "priority": "normal",
-      "status": "pending",
-      "createdAt": 1780915437799
+      "createdAt": 1780921374008
     }
   ],
   "completed": [
     {
-      "runId": "30086d22-250c-4ac2-8d9c-8de0141279fb",
-      "stepId": "research",
-      "workflow": "three-step",
-      "prompt": "调研完成",
+      "runId": "ec2742a6-ecb5-4fc8-bd70-0beed96ba66a",
+      "stepId": "greet",
+      "workflow": "quick-test",
+      "prompt": "说'你好世界'即可",
       "priority": "normal",
       "status": "completed",
-      "createdAt": 1780915199814,
-      "completedAt": 1780915200158,
-      "result": "APPROVED: �������"
+      "createdAt": 1780921728550,
+      "completedAt": 1780921728985,
+      "result": "APPROVED: ���"
     },
     {
-      "runId": "ed3ff81c-7258-4c6a-a6e9-e81a9e9324f6",
-      "stepId": "plan",
-      "workflow": "e2e-v3",
-      "prompt": "说'计划完成'即可",
+      "runId": "3675d390-2fcb-4f36-8610-ad5cc6820c1f",
+      "stepId": "greet",
+      "workflow": "quick-test",
+      "prompt": "说'你好世界'即可",
       "priority": "normal",
       "status": "completed",
-      "createdAt": 1780915034958,
-      "completedAt": 1780915054619,
-      "result": "APPROVED: �ƻ����"
+      "createdAt": 1780920849027,
+      "completedAt": 1780920849377,
+      "result": "APPROVED: �������"
     }
   ]
 }

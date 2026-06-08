@@ -1,12 +1,7 @@
-name: updated-workflow
+name: quick-test
+description: "快速测试"
 steps:
-  - id: step1
+  - id: greet
     agent: Alice
-    action: test
-    prompt: 测试步骤1
-  - id: step2
-    agent: Bob
-    action: test
-    dependsOn:
-      - step1
-    prompt: 测试步骤2
+    action: greet
+    prompt: "说'你好世界'即可"

@@ -239,9 +239,15 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
   const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
   if (fs.existsSync(notifDir)) {
     const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
+    const oneHourAgo = Date.now() - 3600_000;
     for (const f of notifFiles) {
       try {
         const notif = JSON.parse(fs.readFileSync(path.join(notifDir, f), 'utf-8'));
+        // v0.6: Clean up notifications older than 1 hour
+        if (notif.createdAt && notif.createdAt < oneHourAgo) {
+          try { fs.unlinkSync(path.join(notifDir, f)); } catch {}
+          continue;
+        }
         signal.mentions.push({
           group: 'workflow',
           from: 'workflow-engine',
@@ -392,8 +398,14 @@ export async function autoRespond(
   const prompt = signalToPrompt(agent, signal, options?.groupName);
 
   const maxRetries = 3;
+  const startTime = Date.now();
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
+      // v0.6: Check total time budget (5 minutes max for entire auto-respond)
+      if (Date.now() - startTime > 300_000) {
+        console.log(`[autoRespond] ${agent}: time budget exhausted after ${Date.now() - startTime}ms`);
+        break;
+      }
       setActivity(agent, 'processing', signal.urgent ? '处理通知' : '检查更新');
       const { reply } = await chatOnce(agent, prompt, options?.groupName);
       clearActivity(agent);
