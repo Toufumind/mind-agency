@@ -192,7 +192,8 @@ function loadWorkflowState(group: string): GroupWorkflowState | null {
 
 function saveWorkflowState(group: string, state: GroupWorkflowState): void {
   const fp = path.join(GROUPS_DIR, group, 'workflow-state.json');
-  fs.writeFileSync(fp, JSON.stringify(state, null, 2), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(fp, JSON.stringify(state, null, 2));
 }
 
 // ── Completion watcher ────────────────────────────────────

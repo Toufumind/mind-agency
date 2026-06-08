@@ -1302,7 +1302,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       const raw = fs.readFileSync(wfPath, 'utf-8');
       const def = parseWorkflowYaml(raw);
       def.steps.push(step);
-      fs.writeFileSync(wfPath, yaml.dump(def), 'utf-8');
+      const { atomicWrite } = require('./atomic');
+      atomicWrite(wfPath, yaml.dump(def));
       console.log(`[wf] Added step ${step.id} to ${group} workflow`);
       return true;
     } catch { return false; }
@@ -1320,7 +1321,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       const idx = def.steps.findIndex(s => s.id === stepId);
       if (idx === -1) return false;
       def.steps.splice(idx, 1);
-      fs.writeFileSync(wfPath, yaml.dump(def), 'utf-8');
+      const { atomicWrite } = require('./atomic');
+      atomicWrite(wfPath, yaml.dump(def));
       console.log(`[wf] Deleted step ${stepId} from ${group} workflow`);
       return true;
     } catch { return false; }
@@ -1338,7 +1340,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       const step = def.steps.find(s => s.id === stepId);
       if (!step) return false;
       Object.assign(step, changes);
-      fs.writeFileSync(wfPath, yaml.dump(def), 'utf-8');
+      const { atomicWrite } = require('./atomic');
+      atomicWrite(wfPath, yaml.dump(def));
       console.log(`[wf] Modified step ${stepId} in ${group} workflow`);
       return true;
     } catch { return false; }

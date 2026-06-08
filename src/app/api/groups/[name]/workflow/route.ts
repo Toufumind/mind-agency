@@ -189,6 +189,7 @@ async function handleUpdate(group: string, body: any) {
     return NextResponse.json({ error: 'Provide yaml string or {name, steps[]}' }, { status: 400 });
   }
 
-  fs.writeFileSync(wfPath, yaml, 'utf-8');
+  const { atomicWrite } = await import('@/lib/atomic');
+  atomicWrite(wfPath, yaml);
   return NextResponse.json({ success: true, group });
 }

@@ -61,13 +61,15 @@ function ensureDir(dir: string): void {
 export function saveRunMeta(group: string, runId: string, meta: { workflowName: string; startedAt: number; status: string }): void {
   const dir = runDir(group, runId);
   ensureDir(dir);
-  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ ...meta, runId, group }, null, 2), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(path.join(dir, 'meta.json'), JSON.stringify({ ...meta, runId, group }, null, 2));
 }
 
 export function saveStepCheckpoint(group: string, runId: string, step: StepCheckpoint): void {
   const dir = runDir(group, runId);
   ensureDir(dir);
-  fs.writeFileSync(path.join(dir, `${step.stepId}.json`), JSON.stringify(step, null, 2), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(path.join(dir, `${step.stepId}.json`), JSON.stringify(step, null, 2));
 }
 
 export function completeRunCheckpoint(group: string, runId: string, status: string, error?: string): void {
@@ -77,7 +79,8 @@ export function completeRunCheckpoint(group: string, runId: string, status: stri
     meta.status = status;
     meta.completedAt = Date.now();
     if (error) meta.error = error;
-    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+    const { atomicWrite } = require('./atomic');
+    atomicWrite(metaPath, JSON.stringify(meta, null, 2));
   } catch {}
 }
 

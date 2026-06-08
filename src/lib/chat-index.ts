@@ -112,7 +112,8 @@ export function saveIndex(): void {
 
   // Compact: deduplicate message IDs in inverted index arrays
   const compact = JSON.parse(JSON.stringify(index));
-  fs.writeFileSync(INDEX_FILE, JSON.stringify(compact), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(INDEX_FILE, JSON.stringify(compact));
   console.log(`[index] saved to ${INDEX_FILE} (${index.messages.length} msgs)`);
   dirty = false;
 }
