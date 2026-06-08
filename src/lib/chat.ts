@@ -23,6 +23,7 @@ import {
   getTokenUsage,
 } from './sdk-types';
 import { trackQuery, untrackQuery, killAllQueries } from './process-tracker';
+import { enqueueAgent } from './agent-queue';
 import { loadGoalContext, invalidateGoalsCache } from './cli-commands';
 import { setActivity, clearActivity } from './agent-activity';
 import { writeAudit } from './audit';
@@ -808,18 +809,21 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
 }
 
 export async function chatOnce(agentName: string, userMessage: string, groupName?: string): Promise<{ reply: string; events: ChatEvent[] }> {
-  const stream = createChatStream(agentName, userMessage, groupName);
-  const reader = stream.getReader();
-  let reply = '';
-  const events: ChatEvent[] = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    events.push(value);
-    if (value.type === 'text') reply += value.content || '';
-    if (value.type === 'done') break;
-  }
-  return { reply, events };
+  // v0.5: Serialize all session operations per agent to prevent race conditions
+  return enqueueAgent(agentName, async () => {
+    const stream = createChatStream(agentName, userMessage, groupName);
+    const reader = stream.getReader();
+    let reply = '';
+    const events: ChatEvent[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      events.push(value);
+      if (value.type === 'text') reply += value.content || '';
+      if (value.type === 'done') break;
+    }
+    return { reply, events };
+  });
 }
 
 function quickError(msg: string): ReadableStream<ChatEvent> {

@@ -34,20 +34,8 @@ const sleepMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 // ── v0.4: Request Queue — prevent duplicate spawns per agent ─────────
 
-const agentQueues = new Map<string, Promise<void>>();
-
-/** Queue a task for an agent — runs one at a time per agent, no duplicates */
-async function enqueueAgent<T>(agent: string, task: () => Promise<T>): Promise<T> {
-  const prev = agentQueues.get(agent) || Promise.resolve();
-  let result!: T;
-  const wrapped = async () => { result = await task(); };
-  const next = prev.then(wrapped, wrapped);
-  agentQueues.set(agent, next.then(() => {}, () => {}).finally(() => {
-    if (agentQueues.get(agent) === next) agentQueues.delete(agent);
-  }));
-  await next;
-  return result;
-}
+// Use shared agent queue from agent-queue.ts (prevents circular dependency with chat.ts)
+import { enqueueAgent } from './agent-queue';
 
 // ── Types ────────────────────────────────────────────────
 
