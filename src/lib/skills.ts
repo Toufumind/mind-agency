@@ -61,7 +61,8 @@ function loadSkills(): Skill[] {
 
 function saveSkills(skills: Skill[]): void {
   ensureDirs();
-  fs.writeFileSync(SKILLS_FILE, JSON.stringify(skills, null, 2), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(SKILLS_FILE, JSON.stringify(skills, null, 2));
 }
 
 // ── GitHub API ───────────────────────────────────────────

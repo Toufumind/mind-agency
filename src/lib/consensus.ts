@@ -17,6 +17,9 @@ import { loadGroupConfig } from './group-config';
 import { agentCache } from './cache';
 import { getAgentConfig } from './chat';
 
+// ── Timeout timer tracking (prevent memory leak) ──────
+const consensusTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 // ── Types ───────────────────────────────────────────────
 
 export type ApproverType = 'agent' | 'role' | 'group_owner' | 'group_admin' | 'human' | 'step_agent';
@@ -248,7 +251,8 @@ export function createConsensusRequest(
   const chatTmp = chatFile + '.tmp'; fs.writeFileSync(chatTmp, chatContent, 'utf-8'); fs.renameSync(chatTmp, chatFile);
 
   if (request.timeoutMs > 0) {
-    setTimeout(() => { const cur = getRequest(group, id); if (cur && cur.status === 'pending') { cur.status = 'rejected'; saveRequest(group, cur); console.log(`[consensus] ${id}: timed out`); } }, request.timeoutMs);
+    const timer = setTimeout(() => { const cur = getRequest(group, id); if (cur && cur.status === 'pending') { cur.status = 'rejected'; saveRequest(group, cur); console.log(`[consensus] ${id}: timed out`); } consensusTimers.delete(id); }, request.timeoutMs);
+    consensusTimers.set(id, timer);
   }
 
   return request;
@@ -277,7 +281,12 @@ export interface DecisionResult { status: string; request?: ConsensusRequest; ph
 export function submitDecision(group: string, requestId: string, approver: string, decision: 'APPROVED' | 'REJECTED'): DecisionResult {
   const req = getRequest(group, requestId);
   if (!req) return { status: 'not_found' };
-  if (req.status === 'approved' || req.status === 'rejected') return { status: 'already_decided', request: req };
+  if (req.status === 'approved' || req.status === 'rejected') {
+    // Clear timeout timer if still pending
+    const t = consensusTimers.get(requestId);
+    if (t) { clearTimeout(t); consensusTimers.delete(requestId); }
+    return { status: 'already_decided', request: req };
+  }
 
   // v0.4: Multi-round adversary review phase
   if (req.status === 'adversary_review') {
@@ -384,7 +393,7 @@ export function submitDecision(group: string, requestId: string, approver: strin
       break;
   }
 
-  if (isRejected) { req.status = 'rejected'; saveRequest(group, req); postResult(group, req, 'rejected'); return { status: 'rejected', request: req, phase: 'primary' }; }
+  if (isRejected) { req.status = 'rejected'; saveRequest(group, req); postResult(group, req, 'rejected'); const t = consensusTimers.get(requestId); if (t) { clearTimeout(t); consensusTimers.delete(requestId); } return { status: 'rejected', request: req, phase: 'primary' }; }
 
   if (isApproved) {
     if (req.adversary && req.adversaryDecision !== 'APPROVED') {
@@ -406,6 +415,7 @@ export function submitDecision(group: string, requestId: string, approver: strin
     }
     // No adversary or adversary already passed → approved
     req.status = 'approved'; saveRequest(group, req); postResult(group, req, 'approved');
+    const t = consensusTimers.get(requestId); if (t) { clearTimeout(t); consensusTimers.delete(requestId); }
     return { status: 'approved', request: req, phase: 'primary' };
   }
 

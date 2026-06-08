@@ -76,9 +76,8 @@ export function loadGroupConfig(group: string): GroupConfig | null {
 
 export function saveGroupConfig(group: string, config: GroupConfig): void {
   const fp = configFile(group);
-  const dir = path.dirname(fp);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(fp, JSON.stringify(config, null, 2), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(fp, JSON.stringify(config, null, 2));
   // Invalidate cache after write
   groupConfigCache.delete(group);
 }

@@ -45,7 +45,8 @@ function loadProfiles(): ProviderProfile[] {
 
 function saveProfiles(profiles: ProviderProfile[]): void {
   ensureDir();
-  fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(PROFILES_FILE, JSON.stringify(profiles, null, 2));
 }
 
 // ── Settings integration ─────────────────────────────────
@@ -73,7 +74,8 @@ function loadSettings(): MindSettings {
 
 function saveSettings(settings: MindSettings): void {
   ensureDir();
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
 // ── CRUD ─────────────────────────────────────────────────
