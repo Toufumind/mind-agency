@@ -927,7 +927,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
           });
           cleanupCheckpoints(grp);
         }
-        this.evictOldRuns();
+        // v0.8: Don't evict immediately — let runs persist for status queries
+        // this.evictOldRuns();
       }
       return;
     }
