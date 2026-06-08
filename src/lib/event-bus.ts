@@ -81,7 +81,7 @@ const OUTBOX_DIR = path.join(AUDIT_DIR, 'outbox');
 export class EventBus {
   private subs = new Map<string, SubEntry>();
   private clientSubs = new Map<string, Set<string>>();
-  private dedup = new Set<string>(); private dedupHist: string[] = [];
+  private dedup = new Map<string, null>(); // v0.3.1: unified dedup — replaces Set + dedupHist to fix redundant storage and sync bugs
   private invalidCount = 0;
   private orphanT: ReturnType<typeof setInterval> | null = null;
   private dlqT: ReturnType<typeof setInterval> | null = null;
@@ -99,11 +99,19 @@ export class EventBus {
   emit(event: EventMessage): void {
     if (!VALID_EVENT_TYPES.has(event.event)) { this.invalidCount++; if (this.invalidCount >= 5) console.error(`[event-bus] ALERT: ${this.invalidCount} invalid events`); if (this.isDev) throw new Error(`${EventBusError.E_INVALID_FILTER}: "${event.event}"`); return; }
     if (!event.id || event.id.length < 8) event.id = randomUUID();
-    if (this.dedup.has(event.id)) return; this.dedup.add(event.id); this.dedupHist.push(event.id);
-    while (this.dedupHist.length > MAX_DEDUP) { this.dedup.delete(this.dedupHist.shift()!); }
-    // Periodically compact the array to release memory
-    if (this.dedupHist.length > MAX_DEDUP * 0.8 && this.dedupHist.length % 1000 === 0) {
-      this.dedupHist = this.dedupHist.slice(-MAX_DEDUP / 2);
+    // v0.3.1: Map-based dedup — O(1) lookup + FIFO eviction in one structure
+    // Fixes: redundant Set+array storage, stale UUIDs after slice, Set not synced during compact
+    if (this.dedup.has(event.id)) return;
+    this.dedup.set(event.id, null);
+    // v0.3.1: Evict oldest entries when over limit (Map preserves insertion order)
+    if (this.dedup.size > MAX_DEDUP) {
+      const toEvict = this.dedup.size - Math.floor(MAX_DEDUP / 2);
+      let evicted = 0;
+      for (const key of this.dedup.keys()) {
+        if (evicted >= toEvict) break;
+        this.dedup.delete(key);
+        evicted++;
+      }
     }
     if (!event.timestamp) event.timestamp = Date.now();
     if (!event.source) event.source = 'system';
@@ -199,7 +207,7 @@ export class EventBus {
             try {
               const ev = JSON.parse(line) as EventMessage;
               if (!this.dedup.has(ev.id)) {
-                this.dedup.add(ev.id); this.dedupHist.push(ev.id);
+                this.dedup.set(ev.id, null);
                 replayed++;
                 // Re-deliver to matching subscribers (existing subs only)
                 for (const sub of this.subs.values()) {
@@ -233,7 +241,7 @@ export class EventBus {
   getStats(): { subscriptions: number; clients: number; dedupSize: number; dlqSize: number; outboxSize: number } { return { subscriptions: this.subs.size, clients: this.clientSubs.size, dedupSize: this.dedup.size, dlqSize: this.deadLetters.length, outboxSize: this.getOutboxStats().files }; }
   hasClient(cid: string): boolean { return this.clientSubs.has(cid) && (this.clientSubs.get(cid)?.size ?? 0) > 0; }
   getClientScope(cid: string): 'events' | 'messages' | 'all' | undefined { const sids = this.clientSubs.get(cid); if (!sids || sids.size === 0) return undefined; const first = sids.values().next().value as string; return this.subs.get(first)?.options?.scope || 'events'; }
-  destroy(): void { if (this.orphanT) { clearInterval(this.orphanT); this.orphanT = null; } if (this.dlqT) { clearInterval(this.dlqT); this.dlqT = null; } this.subs.clear(); this.clientSubs.clear(); this.dedup.clear(); this.dedupHist = []; this.deadLetters = []; this.outboxEnabled = false; }
+  destroy(): void { if (this.orphanT) { clearInterval(this.orphanT); this.orphanT = null; } if (this.dlqT) { clearInterval(this.dlqT); this.dlqT = null; } this.subs.clear(); this.clientSubs.clear(); this.dedup.clear(); this.deadLetters = []; this.outboxEnabled = false; }
 }
 
 function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }
