@@ -468,7 +468,7 @@ function buildBaseOptions(agentName: string, taskContext?: string) {
     cwd: agentDir,
     systemPrompt: sysPrompt,
     mcpServers,
-    permissionMode: agentConfig.permissionMode || 'bypassPermissions',
+    permissionMode: agentConfig.permissionMode || 'acceptEdits',
     allowedTools: agentConfig.allowedTools?.length ? agentConfig.allowedTools : ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch', 'WebSearch'],
     ...(agentConfig.disallowedTools?.length ? { disallowedTools: agentConfig.disallowedTools } : {}),
     // maxTurns removed — agents can run indefinitely
