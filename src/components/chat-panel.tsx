@@ -514,14 +514,31 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
           }
           return (
             <div key={i} className="space-y-2">
-              {msg.events.map((evt, j) => {
-                if (evt.type === 'thinking') return <Think key={j} text={evt.content || ''} />;
-                if (evt.type === 'tool_use') return <Tool key={j} name={evt.toolName || ''} input={evt.toolInput || ''} />;
-                if (evt.type === 'tool_result') return <Result key={j} output={evt.toolOutput || ''} />;
-                if (evt.type === 'text') return <MdText key={j} text={evt.content || ''} />;
-                if (evt.type === 'error') return <Err key={j} text={evt.content || ''} />;
-                return null;
-              })}
+              {(() => {
+                // Merge consecutive thinking events into one
+                const merged: { type: string; content?: string; key: number; [k: string]: any }[] = [];
+                let thinkBuf = '';
+                let thinkStart = -1;
+                for (let j = 0; j < msg.events.length; j++) {
+                  const evt = msg.events[j];
+                  if (evt.type === 'thinking') {
+                    if (thinkStart === -1) thinkStart = j;
+                    thinkBuf += evt.content || '';
+                  } else {
+                    if (thinkBuf) { merged.push({ type: 'thinking', content: thinkBuf, key: thinkStart }); thinkBuf = ''; thinkStart = -1; }
+                    merged.push({ type: evt.type, content: evt.content, toolName: evt.toolName, toolInput: evt.toolInput, toolOutput: evt.toolOutput, key: j });
+                  }
+                }
+                if (thinkBuf) merged.push({ type: 'thinking', content: thinkBuf, key: thinkStart });
+                return merged.map(evt => {
+                  if (evt.type === 'thinking') return <Think key={evt.key} text={evt.content || ''} />;
+                  if (evt.type === 'tool_use') return <Tool key={evt.key} name={evt.toolName || ''} input={evt.toolInput || ''} />;
+                  if (evt.type === 'tool_result') return <Result key={evt.key} output={evt.toolOutput || ''} />;
+                  if (evt.type === 'text') return <MdText key={evt.key} text={evt.content || ''} />;
+                  if (evt.type === 'error') return <Err key={evt.key} text={evt.content || ''} />;
+                  return null;
+                });
+              })()}
               {!msg.events.some(e => e.type === 'text') && msg.content && <MdText text={msg.content} />}
             </div>
           );

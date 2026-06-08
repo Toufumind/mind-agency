@@ -1225,9 +1225,26 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
             const timeout = node.step.timeout || 300000; // 5min default
             if (elapsed > timeout) {
               console.log(`[wf] Step ${sid} timed out after ${Math.round(elapsed / 1000)}s (run ${rid.slice(0, 8)})`);
-              node.status = StepStatus.FAILED;
-              node.error = `Step timed out after ${Math.round(elapsed / 1000)}s`;
-              run.steps.set(sid, StepStatus.FAILED);
+              // v0.5: Retry on timeout (same as execution failure)
+              if (node.retryCount < node.maxRetries) {
+                node.retryCount++;
+                node.status = StepStatus.PENDING;
+                node.notifiedAt = 0;
+                run.steps.set(sid, StepStatus.PENDING);
+                console.log(`[wf] ${sid} retry ${node.retryCount}/${node.maxRetries} after timeout`);
+              } else {
+                node.status = StepStatus.FAILED;
+                node.error = `Step timed out after ${Math.round(elapsed / 1000)}s`;
+                run.steps.set(sid, StepStatus.FAILED);
+                // Trigger compensation if onFailure is set
+                if (node.onFailure && nodes && nodes.has(node.onFailure)) {
+                  const cn = nodes.get(node.onFailure)!;
+                  run.compensations.push(node.onFailure);
+                  if (cn.status === StepStatus.PENDING) {
+                    this.schedule(rid);
+                  }
+                }
+              }
               // Clean up notification file
               try {
                 const notifPath = path.join(MIND_DIR, 'agents', node.step.agent || 'unknown', '.workflow-notifications', `${rid}_${sid}.json`);

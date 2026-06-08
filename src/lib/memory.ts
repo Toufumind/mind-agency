@@ -274,8 +274,9 @@ export function getMemoryContext(agentName: string, maxTokens: number = 800): st
     `\n[长期记忆] (共 ${lines.length}/${mems.length} 条，~${Math.round(usedTokens)} tokens)\n` + lines.join('\n');
 
   // v0.5: If memory context changed, invalidate baseOptions
+  // Always invalidate baseOptions when memory context is rebuilt (ensures sync)
   const prev = cached?.data;
-  if (prev !== undefined && prev !== result) {
+  if (prev !== result) {
     agentCache.invalidate('config', agentName + ':baseOptions');
   }
 
