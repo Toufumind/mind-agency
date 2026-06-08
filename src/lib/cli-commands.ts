@@ -37,9 +37,8 @@ function loadGoals(agentName: string): string[] {
 }
 
 function saveGoals(agentName: string, goals: string[]): void {
-  const dir = path.join(AGENTS_DIR, agentName, 'chat');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(goalsFile(agentName), JSON.stringify(goals, null, 2));
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(goalsFile(agentName), JSON.stringify(goals, null, 2));
 }
 
 // ── Public API ──────────────────────────────────────

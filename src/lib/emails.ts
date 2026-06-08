@@ -60,7 +60,8 @@ date: ${dateStr}
 ${body}
 `;
 
-  fs.writeFileSync(path.join(emailDir, finalFilename), content, 'utf-8');
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(path.join(emailDir, finalFilename), content);
 
   // Also save sent copy to sender's email dir (so "Me" can see sent mail)
   if (from && from !== to) {
@@ -69,7 +70,7 @@ ${body}
     if (fs.existsSync(senderDir)) {
       if (!fs.existsSync(senderEmailDir)) fs.mkdirSync(senderEmailDir, { recursive: true });
       const sentFile = path.join(senderEmailDir, `sent_${finalFilename}`);
-      fs.writeFileSync(sentFile, content, 'utf-8');
+      atomicWrite(sentFile, content);
     }
   }
 

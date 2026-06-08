@@ -149,7 +149,8 @@ export function createRequest(opts: {
     adversary: opts.adversary, target: opts.target,
   };
 
-  fs.writeFileSync(path.join(dir, `${id}.json`), JSON.stringify(request, null, 2));
+  const { atomicWrite } = require('./atomic');
+  atomicWrite(path.join(dir, `${id}.json`), JSON.stringify(request, null, 2));
   return id;
 }
 
@@ -537,7 +538,8 @@ export function initConsensusHandlers(): void {
     const invDir = path.join(GROUPS_DIR, req.group, '.invitations');
     if (!fs.existsSync(invDir)) fs.mkdirSync(invDir, { recursive: true });
     const invFile = path.join(invDir, `${target}.json`);
-    fs.writeFileSync(invFile, JSON.stringify({ invitedBy: req.requestedBy, invitedAt: Date.now() }), 'utf-8');
+    const { atomicWrite } = require('./atomic');
+    atomicWrite(invFile, JSON.stringify({ invitedBy: req.requestedBy, invitedAt: Date.now() }));
     // Post system message to chat
     const chatDir = path.join(GROUPS_DIR, req.group, 'chat');
     if (fs.existsSync(chatDir)) {
@@ -559,7 +561,8 @@ export function initConsensusHandlers(): void {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     if (!config.admins) config.admins = [];
     if (!config.admins.includes(target)) config.admins.push(target);
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    const { atomicWrite } = require('./atomic');
+    atomicWrite(configPath, JSON.stringify(config, null, 2));
     // Post system message to chat
     const chatDir = path.join(GROUPS_DIR, req.group, 'chat');
     if (fs.existsSync(chatDir)) {

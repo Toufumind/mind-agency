@@ -103,34 +103,3 @@ export function readAgentAuditLogs(agentName: string, limit: number = 50): Audit
   const all = readAuditLogs(limit * 2); // oversample then filter
   return all.filter(e => e.agent === agentName).slice(0, limit);
 }
-
-/**
- * 读取代理配置文件，获取权限信息
- */
-export function loadAgentConfig(agentName: string): {
-  autoRespondToEmail: boolean;
-  autoProcessGroupInvites?: boolean;
-  roles?: string[];
-  permissions?: {
-    canCreateGroup?: boolean;
-    canDeleteGroup?: boolean;
-    canDeploy?: boolean;
-  };
-} | null {
-  const configPath = path.join(AGENTS_DIR, agentName, 'config.json');
-  if (!fs.existsSync(configPath)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 检查 Agent 是否有指定权限
- */
-export function checkPermission(agentName: string, permission: 'canCreateGroup' | 'canDeleteGroup' | 'canDeploy'): boolean {
-  const config = loadAgentConfig(agentName);
-  if (!config?.permissions) return false;
-  return config.permissions[permission] === true;
-}

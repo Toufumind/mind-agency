@@ -41,9 +41,8 @@ function loadSettings(): MindSettings {
 }
 
 function saveSettings(s: MindSettings): void {
-  const dir = path.dirname(SETTINGS_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(s, null, 2), 'utf-8');
+  const { atomicWrite } = require('@/lib/atomic');
+  atomicWrite(SETTINGS_FILE, JSON.stringify(s, null, 2));
 }
 
 export async function GET() {

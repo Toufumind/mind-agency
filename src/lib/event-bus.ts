@@ -89,7 +89,13 @@ export class EventBus {
   private deadLetters: DeadLetterEntry[] = [];
   private outboxEnabled = true;
 
-  constructor() { this.startOrphanScan(); this.startDLQScan(); this.replayOutbox(); }
+  constructor() { this.startOrphanScan(); this.startDLQScan(); this.replayOutbox();
+    // Cleanup timers on process exit
+    const cleanup = () => { this.destroy(); };
+    process.on('exit', cleanup);
+    process.on('SIGINT', () => { cleanup(); process.exit(0); });
+    process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+  }
 
   emit(event: EventMessage): void {
     if (!VALID_EVENT_TYPES.has(event.event)) { this.invalidCount++; if (this.invalidCount >= 5) console.error(`[event-bus] ALERT: ${this.invalidCount} invalid events`); if (this.isDev) throw new Error(`${EventBusError.E_INVALID_FILTER}: "${event.event}"`); return; }

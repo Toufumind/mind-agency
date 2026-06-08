@@ -100,18 +100,6 @@ export function enqueueTask(agentName: string, task: Omit<AgentTask, 'status' | 
   return fullTask;
 }
 
-/** Mark a task as in_progress */
-export function startTask(agentName: string, runId: string, stepId: string): boolean {
-  const queue = loadTaskQueue(agentName);
-  const task = queue.pending.find(t => t.runId === runId && t.stepId === stepId);
-  if (!task) return false;
-
-  task.status = 'in_progress';
-  task.startedAt = Date.now();
-  saveTaskQueue(agentName, queue);
-  return true;
-}
-
 /** Complete a task — move from pending to completed */
 export function completeTask(agentName: string, runId: string, stepId: string, result: string, status: 'completed' | 'failed'): boolean {
   const queue = loadTaskQueue(agentName);
@@ -132,12 +120,6 @@ export function completeTask(agentName: string, runId: string, stepId: string, r
   return true;
 }
 
-/** Get pending tasks count */
-export function pendingCount(agentName: string): number {
-  const queue = loadTaskQueue(agentName);
-  return queue.pending.length;
-}
-
 /** Get next pending task (highest priority) */
 export function nextTask(agentName: string): AgentTask | null {
   const queue = loadTaskQueue(agentName);
@@ -152,16 +134,6 @@ export function getPendingTasks(agentName: string): AgentTask[] {
 /** Get recent completed tasks */
 export function getCompletedTasks(agentName: string, limit = 10): AgentTask[] {
   return loadTaskQueue(agentName).completed.slice(0, limit);
-}
-
-/** Remove a task (e.g., on workflow cancel) */
-export function removeTask(agentName: string, runId: string, stepId: string): boolean {
-  const queue = loadTaskQueue(agentName);
-  const idx = queue.pending.findIndex(t => t.runId === runId && t.stepId === stepId);
-  if (idx === -1) return false;
-  queue.pending.splice(idx, 1);
-  saveTaskQueue(agentName, queue);
-  return true;
 }
 
 /** Format task queue as human-readable string */
