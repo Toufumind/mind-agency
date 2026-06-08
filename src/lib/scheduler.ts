@@ -19,7 +19,8 @@ import { loadTriggers, checkTriggers } from './workflow-trigger';
 import { onFileChange, dequeueSignal, queueSize, getQueueStats, scanAllAgents, type Signal } from './signal-collector';
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+const DEFAULT_HEARTBEAT_MS = 120_000; // 2 minutes default
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let dispatchTimer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -27,7 +28,12 @@ let dispatching = false;
 const STARTUP_DELAY = 3000;
 const FALLBACK_POLL_MS = 300_000; // 5min fallback polling (reduced from 30s)
 const DISPATCH_INTERVAL = 1_000; // Check queue every 1s
-const DEFAULT_HEARTBEAT_MS = 120_000; // 2 min default
+
+// --- Adaptive heartbeat ---
+const HEARTBEAT_ACTIVE_MS = 120_000;  // 2 min — when there's recent activity
+const HEARTBEAT_IDLE_MS = 300_000;    // 5 min — when system is idle
+const IDLE_THRESHOLD_MS = 300_000;    // 5 min no activity → switch to idle mode
+let lastActivityTime = Date.now();     // tracks last signal dispatch
 
 const stats = { triggered: 0, checks: 0, dispatched: 0, lastCheck: 0 };
 
@@ -62,7 +68,7 @@ export function startScheduler(options?: number | {
     pollTimer = setInterval(() => fallbackScan('fallback'), FALLBACK_POLL_MS);
     // Dispatch queue every 1s
     dispatchTimer = setInterval(() => dispatch(), DISPATCH_INTERVAL);
-    // Heartbeat
+    // Heartbeat — adaptive
     heartbeatTimer = setInterval(() => tickHeartbeat(), DEFAULT_HEARTBEAT_MS);
   }, STARTUP_DELAY);
 }
@@ -147,6 +153,13 @@ async function dispatch(): Promise<void> {
   finally { dispatching = false; }
 }
 
+// v0.7: Track agent activity for adaptive heartbeat
+const agentActivity = new Map<string, number>(); // agentName -> lastActivityTimestamp
+
+export function markAgentActive(agentName: string): void {
+  agentActivity.set(agentName, Date.now());
+}
+
 async function tickHeartbeat(): Promise<void> {
   if (!fs.existsSync(AGENTS_DIR)) return;
 
@@ -164,6 +177,14 @@ async function tickHeartbeat(): Promise<void> {
           const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
           if (cfg.heartbeatIntervalMs) interval = cfg.heartbeatIntervalMs;
         } catch (err) { console.error(`[scheduler] heartbeat config(${name}):`, err); }
+      }
+      // v0.7: Adaptive heartbeat — reduce frequency for idle agents
+      const lastActive = agentActivity.get(name) || 0;
+      const idleTime = Date.now() - lastActive;
+      if (idleTime > 300_000) { // 5 minutes idle
+        interval = Math.min(interval * 2, 600_000); // Double interval, max 10 min
+      } else if (idleTime < 60_000) { // Active within 1 minute
+        interval = Math.max(interval / 2, 30_000); // Halve interval, min 30s
       }
       await agentHeartbeat(name, interval);
     } catch (err) { console.error(`[scheduler] heartbeat(${name}):`, err); }

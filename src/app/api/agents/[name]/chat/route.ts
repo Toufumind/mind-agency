@@ -94,6 +94,12 @@ export async function POST(
     details: message.slice(0, 200),
   });
 
+  // v0.7: Mark agent as active for adaptive heartbeat
+  try {
+    const { markAgentActive } = require('@/lib/scheduler');
+    markAgentActive(name);
+  } catch {}
+
   // SSE stream — pass group/model/overrides/fresh
   const stream = createChatStream(name, message, group || undefined, model || undefined, cliResult.optsOverrides, fresh);
 
