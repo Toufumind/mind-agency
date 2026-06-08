@@ -382,7 +382,14 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
     }
 
     // ── Execution with model fallback ──
-    const models = ['deepseek-v4-flash', 'deepseek-v4-pro'];
+    let models = ['mimo-v2.5'];
+    try {
+      const settingsPath = path.join(MIND_DIR, 'settings.json');
+      if (fs.existsSync(settingsPath)) {
+        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        if (settings.model) models = [settings.model];
+      }
+    } catch {}
     let lastError: unknown;
 
     for (let i = 0; i < models.length; i++) {
@@ -428,7 +435,7 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
   }
 }
 
-export function createStepExecutor(): StepExecutor { return process.env.WORKFLOW_EXECUTOR === 'chat' ? new ChatStepExecutor() : new SimulatedStepExecutor(); }
+export function createStepExecutor(): StepExecutor { return process.env.WORKFLOW_EXECUTOR === 'simulated' ? new SimulatedStepExecutor() : new ChatStepExecutor(); }
 
 /** Parse workflow YAML — supports snake_case aliases */
 export function parseWorkflowYaml(raw: string): WorkflowDefinition {
@@ -467,7 +474,7 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
       prompt: s.prompt || '',
       trigger,
       notify: s.notify, condition: s.condition,
-      dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined),
+      dependsOn: s.dependsOn || (s.depends_on ? (Array.isArray(s.depends_on) ? s.depends_on : [s.depends_on]) : undefined) || (s.depends ? (Array.isArray(s.depends) ? s.depends : [s.depends]) : undefined),
       timeout: s.timeout || 300000, onFailure: s.on_failure || s.onFailure || undefined,
       onReject: s.on_reject || s.onReject || undefined,
       onApprove: s.on_approve || s.onApprove || undefined,

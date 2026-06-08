@@ -28,11 +28,16 @@ export function sendEmail(params: SendEmailParams): { success: boolean; filename
   // 生成文件名
   const date = new Date();
   const dateStr = date.toISOString().split('T')[0];
+  const timeStr = date.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  // Keep CJK, ASCII, digits, spaces, hyphens, underscores; strip everything else (incl. U+FFFD)
   const safeSubject = subject
-    .replace(/[^a-zA-Z0-9一-鿿\s\-_]/g, '')
+    .replace(/[^\w\s一-鿿-]/g, '')
     .replace(/\s+/g, '_')
     .slice(0, 50);
-  const filename = `${dateStr}_${safeSubject || 'no_subject'}.md`;
+  // Use subject if valid, otherwise fall back to timestamp (handles encoding corruption)
+  const filename = safeSubject
+    ? `${dateStr}_${safeSubject}.md`
+    : `${dateStr}_${timeStr}_${from}_to_${to}.md`;
   const filePath = path.join(emailDir, filename);
 
   // 检查文件名冲突

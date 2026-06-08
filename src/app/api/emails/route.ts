@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { from, to, subject, body: emailBody } = body;
-    if (!from || !to || !subject) return NextResponse.json({ error: '缺少必填字段' }, { status: 400 });
-    const result = sendEmail({ from, to, subject, body: emailBody || '' });
+    const { from, to, subject, body: emailBody, content } = body;
+    if (!from || !to) return NextResponse.json({ error: '缺少必填字段 from/to' }, { status: 400 });
+    const result = sendEmail({ from, to, subject: subject || '(no subject)', body: emailBody || content || '' });
     if (!result.success) return NextResponse.json({ error: result.error }, { status: 400 });
     // Fire-and-forget: trigger auto-respond immediately, don't block response
     pollAllAgents().catch(() => {});

@@ -15,7 +15,7 @@
 
 import path from 'path';
 
-const DATA_DIR = process.env.MIND_DATA_DIR || process.cwd();
+export const DATA_DIR = process.env.MIND_DATA_DIR || process.cwd();
 const APP_DIR  = process.env.MIND_APP_DIR  || DATA_DIR;
 
 export const AGENTS_DIR = path.join(DATA_DIR, 'Agents');

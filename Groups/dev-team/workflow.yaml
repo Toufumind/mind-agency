@@ -1,0 +1,17 @@
+name: dev-team-default
+description: "开发团队默认工作流"
+steps:
+  - id: plan
+    agent: Alice
+    action: plan
+    prompt: "分析需求并制定计划"
+  - id: review
+    agent: Bob
+    action: review
+    prompt: "审查Alice的计划"
+  - id: execute
+    agent: Charlie
+    action: execute
+    prompt: "执行计划"
+    depends:
+      - plan

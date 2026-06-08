@@ -271,6 +271,8 @@ interface AgentFullConfig {
   disallowedTools?: string[];
   permissionMode?: string;
   maxTurns?: number;
+  autoRespondToEmail?: boolean;
+  autoProcessGroupInvites?: boolean;
   /** Behavior profile — injected into system prompt */
   behavior?: {
     style?: string;        // e.g. "直接、简洁" or "温和、细致"
@@ -294,6 +296,8 @@ export function getAgentConfig(agentName: string): AgentFullConfig {
         permissionMode: data.permissionMode,
         maxTurns: data.maxTurns,
         behavior: data.behavior,
+        autoRespondToEmail: data.autoRespondToEmail,
+        autoProcessGroupInvites: data.autoProcessGroupInvites,
       };
       agentCache.set('config', agentName, cfg);
       return cfg;
@@ -379,6 +383,7 @@ function buildMcpConfig(agentName: string) {
   const electronExe = process.env.MIND_ELECTRON_EXE;
   const envBase: Record<string, string> = {
     MIND_DATA_DIR: DATA_DIR, MIND_API_URL: 'http://127.0.0.1:3000',
+    WS_BASE_URL: 'http://127.0.0.1:3001',
   };
 
   // Prefer bundled .mjs, fallback to .ts
