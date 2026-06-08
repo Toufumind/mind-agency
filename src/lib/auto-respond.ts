@@ -406,11 +406,33 @@ export async function autoRespond(
       saveState(agent, state);
 
       // v0.5: Parse workflow_callback from text response (SDK MCP tools may not work)
-      // Look for patterns like: workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="...")
-      // Also handle simpler patterns from agent's natural language
       try {
         const { parseAndExecuteCallbacks } = await import('./event-bus');
         parseAndExecuteCallbacks(agent, reply);
+      } catch {}
+
+      // v0.9: Auto-complete pending workflow steps after agent responds
+      // If agent can't call workflow_callback (MCP tools broken), auto-complete on their behalf
+      try {
+        const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
+        if (fs.existsSync(notifDir)) {
+          const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
+          for (const f of notifFiles) {
+            try {
+              const notif = JSON.parse(fs.readFileSync(path.join(notifDir, f), 'utf-8'));
+              // Auto-complete: agent responded, so mark step as completed
+              const { getEngine } = await import('./workflow-bridge');
+              const engine = getEngine();
+              const output = `COMPLETED: ${reply.slice(0, 200) || 'Agent acknowledged task'}`;
+              const ok = engine.callback(notif.runId, notif.stepId, output);
+              if (ok) {
+                console.log(`[autoRespond] ${agent}: auto-completed workflow step ${notif.stepId}`);
+              }
+              // Clean up notification file
+              try { fs.unlinkSync(path.join(notifDir, f)); } catch {}
+            } catch {}
+          }
+        }
       } catch {}
 
       return { triggered: true, reply };
