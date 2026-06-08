@@ -19,14 +19,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'content and type required' }, { status: 400 });
     }
 
-    // 模拟评分 (6个维度, 每项10分, 总分60)
+    // 基于内容特征的真实评分 (6个维度, 每项10分, 总分60)
+    const len = content.length;
+    const hasTitle = /^#/.test(content);
+    const hasEmoji = /[\u{1F600}-\u{1F64F}]/u.test(content);
+    const hasList = /^[-*]\s/m.test(content) || /^\d+\.\s/m.test(content);
+    const hasDialogue = /["「」]/.test(content);
+    const paragraphCount = content.split(/\n\n/).length;
+
     const scores = {
-      quality: Math.floor(Math.random() * 4) + 6,
-      expression: Math.floor(Math.random() * 4) + 6,
-      structure: Math.floor(Math.random() * 4) + 6,
-      audience: Math.floor(Math.random() * 4) + 6,
-      originality: Math.floor(Math.random() * 4) + 5,
-      virality: Math.floor(Math.random() * 4) + 5,
+      quality: Math.min(10, Math.max(5, Math.floor(len / 200) + (hasTitle ? 2 : 0) + (paragraphCount > 3 ? 1 : 0))),
+      expression: Math.min(10, Math.max(5, Math.floor(len / 150) + (hasDialogue ? 2 : 0) + (hasEmoji ? 1 : 0))),
+      structure: Math.min(10, Math.max(5, (hasTitle ? 3 : 0) + (hasList ? 2 : 0) + (paragraphCount > 2 ? 2 : 0) + 3)),
+      audience: Math.min(10, Math.max(5, Math.floor(len / 200) + (hasEmoji ? 2 : 0) + (hasList ? 1 : 0))),
+      originality: Math.min(10, Math.max(5, Math.floor(len / 300) + (hasDialogue ? 2 : 0) + 3)),
+      virality: Math.min(10, Math.max(5, (hasEmoji ? 2 : 0) + (hasList ? 1 : 0) + Math.floor(len / 250) + 2)),
     };
     
     const total = Object.values(scores).reduce((a, b) => a + b, 0);
