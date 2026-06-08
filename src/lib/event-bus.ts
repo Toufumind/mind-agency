@@ -47,7 +47,7 @@ export enum WorkflowPhase {
 }
 
 /** Map step action to workflow phase */
-export function phaseForAction(action?: string): WorkflowPhase {
+function phaseForAction(action?: string): WorkflowPhase {
   const a = (action || '').toLowerCase();
   if (a.includes('review')) return WorkflowPhase.REVIEW;
   if (a.includes('approve')) return WorkflowPhase.APPROVAL;
@@ -102,6 +102,10 @@ export class EventBus {
     if (!event.id || event.id.length < 8) event.id = randomUUID();
     if (this.dedup.has(event.id)) return; this.dedup.add(event.id); this.dedupHist.push(event.id);
     while (this.dedupHist.length > MAX_DEDUP) { this.dedup.delete(this.dedupHist.shift()!); }
+    // Periodically compact the array to release memory
+    if (this.dedupHist.length > MAX_DEDUP * 0.8 && this.dedupHist.length % 1000 === 0) {
+      this.dedupHist = this.dedupHist.slice(-MAX_DEDUP / 2);
+    }
     if (!event.timestamp) event.timestamp = Date.now();
     if (!event.source) event.source = 'system';
     this.persistToOutbox(event);
@@ -233,8 +237,7 @@ export class EventBus {
   destroy(): void { if (this.orphanT) { clearInterval(this.orphanT); this.orphanT = null; } if (this.dlqT) { clearInterval(this.dlqT); this.dlqT = null; } this.subs.clear(); this.clientSubs.clear(); this.dedup.clear(); this.dedupHist = []; this.deadLetters = []; this.outboxEnabled = false; }
 }
 
-export function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }
-export function isValidEventType(t: string): t is EventType { return VALID_EVENT_TYPES.has(t); }
+function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }
 
 // ── v0.4: Singleton EventBus + in-process Pub/Sub ─────────────────────
 
@@ -246,14 +249,11 @@ export function getEventBus(): EventBus {
   return _singleton;
 }
 
-/** Set the singleton (called from server.ts after creation) */
-export function setEventBus(bus: EventBus): void { _singleton = bus; }
-
 type EventHandler = (event: EventMessage) => void;
 const _handlers = new Map<EventType, Set<EventHandler>>();
 
 /** Subscribe to an event type in-process (no HTTP overhead) */
-export function onEvent(type: EventType, handler: EventHandler): () => void {
+function onEvent(type: EventType, handler: EventHandler): () => void {
   if (!_handlers.has(type)) _handlers.set(type, new Set());
   _handlers.get(type)!.add(handler);
   // Auto-route via the singleton's subscribe
@@ -268,7 +268,7 @@ export function onEvent(type: EventType, handler: EventHandler): () => void {
 }
 
 /** Emit an event via the singleton (in-process, no HTTP) */
-export function emitEvent(type: EventType, payload: Record<string, unknown>, source: string): void {
+function emitEvent(type: EventType, payload: Record<string, unknown>, source: string): void {
   getEventBus().emit(createEvent(type, payload, source));
 }
 
@@ -298,14 +298,6 @@ export interface WorkflowRunRecord { runId: string; workflowName: string; starte
 
 export interface StepExecutor { execute(step: WorkflowStep, context: Record<string, string>): Promise<string>; }
 
-/** ChatDev-style review instructions — role-flip anti-hallucination prompt */
-export function reviewInstructions(target: string): string {
-  return `[ChatDev 审查模式] 你是一名代码审查者。请精确指出${target}中存在的问题：
-1. 每个问题必须标注 文件路径:行号 位置
-2. 每个问题给出具体的修改指令（不要笼统描述）
-3. 如果无问题，回复 NO_ISSUES
-格式：ISSUE|file:line|description|fix_instruction`;
-}
 
 /** Parse ChatDev-style review output into structured findings */
 export function parseReviewFindings(output: string): Array<{ file: string; line: number; desc: string; fix: string }> {
