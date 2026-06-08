@@ -103,3 +103,13 @@ export function readAgentAuditLogs(agentName: string, limit: number = 50): Audit
   const all = readAuditLogs(limit * 2); // oversample then filter
   return all.filter(e => e.agent === agentName).slice(0, limit);
 }
+
+/** Check if agent has a specific permission */
+export function checkPermission(agentName: string, permission: string): boolean {
+  try {
+    const configPath = path.join(AGENTS_DIR, agentName, 'config.json');
+    if (!fs.existsSync(configPath)) return false;
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    return config.permissions?.[permission] === true;
+  } catch { return false; }
+}

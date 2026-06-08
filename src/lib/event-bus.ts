@@ -244,11 +244,12 @@ export class EventBus {
   destroy(): void { if (this.orphanT) { clearInterval(this.orphanT); this.orphanT = null; } if (this.dlqT) { clearInterval(this.dlqT); this.dlqT = null; } this.subs.clear(); this.clientSubs.clear(); this.dedup.clear(); this.deadLetters = []; this.outboxEnabled = false; }
 }
 
-function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }
+export function createEvent(ev: EventType, payload: Record<string, unknown>, source: string): EventMessage { return { event: ev, payload, timestamp: Date.now(), source, id: randomUUID() }; }
 
 // ── v0.4: Singleton EventBus + in-process Pub/Sub ─────────────────────
 
 let _singleton: EventBus | null = null;
+export function setEventBus(bus: EventBus): void { _singleton = bus; }
 
 /** Get or create the global EventBus singleton */
 export function getEventBus(): EventBus {

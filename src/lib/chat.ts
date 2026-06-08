@@ -412,10 +412,10 @@ function buildMcpConfig(agentName: string) {
   if (isWin) {
     if (useTsx) {
       // Fallback: no .mjs yet
-      return { 'group-chat': { command: 'cmd.exe', args: ['/c', 'npx.cmd', 'tsx', serverPath, agentName], cwd: DATA_DIR, env: envBase } };
+      return { 'group-chat': { command: 'cmd.exe', args: ['/c', 'npx.cmd', 'tsx', serverPath, agentName], env: { ...envBase, PATH: process.env.PATH } } };
     }
     // Direct node — no tsx overhead (~30ms vs ~300ms)
-    return { 'group-chat': { command: 'node', args: [serverPath, agentName], cwd: DATA_DIR, env: envBase } };
+    return { 'group-chat': { command: 'node', args: [serverPath, agentName], env: envBase } };
   }
 
   // macOS / Linux
@@ -476,7 +476,7 @@ function buildBaseOptions(agentName: string, taskContext?: string) {
     cwd: agentDir,
     systemPrompt: sysPrompt,
     mcpServers,
-    permissionMode: agentConfig.permissionMode || 'acceptEdits',
+    permissionMode: agentConfig.permissionMode || 'bypassPermissions',
     allowedTools: agentConfig.allowedTools?.length ? agentConfig.allowedTools : ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch', 'WebSearch'],
     ...(agentConfig.disallowedTools?.length ? { disallowedTools: agentConfig.disallowedTools } : {}),
     // maxTurns removed — agents can run indefinitely
