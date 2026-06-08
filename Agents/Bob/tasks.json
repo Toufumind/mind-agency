@@ -48,6 +48,17 @@
   ],
   "completed": [
     {
+      "runId": "4fb43824-04a5-44e9-bbdc-869eb2744cae",
+      "stepId": "bob-review",
+      "workflow": "daily-report",
+      "prompt": "审查报告并给出反馈",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1780924107718,
+      "completedAt": 1780924107963,
+      "result": "APPROVED: ���������ܺ�"
+    },
+    {
       "runId": "30086d22-250c-4ac2-8d9c-8de0141279fb",
       "stepId": "design",
       "workflow": "three-step",

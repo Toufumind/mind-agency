@@ -63,7 +63,7 @@ export function readAuditLogs(limit: number = 100): AuditEntry[] {
   if (!fs.existsSync(AUDIT_DIR)) return [];
 
   const files = fs.readdirSync(AUDIT_DIR)
-    .filter(f => f.endsWith('.jsonl') || f.endsWith('.json'))
+    .filter(f => (f.endsWith('.jsonl') || f.endsWith('.json')) && !f.startsWith('tokens'))
     .sort()
     .reverse(); // newest first
 

@@ -1,7 +1,13 @@
-name: quick-test
-description: "快速测试"
+name: daily-report
+description: "每日报告"
 steps:
-  - id: greet
+  - id: alice-report
     agent: Alice
-    action: greet
-    prompt: "说'你好世界'即可"
+    action: report
+    prompt: "用一句话汇报今天的工作"
+  - id: bob-review
+    agent: Bob
+    action: review
+    prompt: "审查报告并给出反馈"
+    depends:
+      - alice-report

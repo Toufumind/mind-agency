@@ -12,6 +12,17 @@
   ],
   "completed": [
     {
+      "runId": "4fb43824-04a5-44e9-bbdc-869eb2744cae",
+      "stepId": "alice-report",
+      "workflow": "daily-report",
+      "prompt": "用一句话汇报今天的工作",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1780924107188,
+      "completedAt": 1780924107703,
+      "result": "APPROVED: ��������˴�������bug�޸�"
+    },
+    {
       "runId": "ec2742a6-ecb5-4fc8-bd70-0beed96ba66a",
       "stepId": "greet",
       "workflow": "quick-test",
