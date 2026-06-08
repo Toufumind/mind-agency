@@ -49,12 +49,13 @@ export async function GET(
       const def = yaml.load(raw) as any;
       if (!def?.steps) continue;
 
-      for (const step of def.steps) {
+      for (let i = 0; i < def.steps.length; i++) {
+        const step = def.steps[i];
         if (step.agent === name) {
           tasks.push({
             workflowName: def.name || 'unnamed',
             group: g.name,
-            stepId: step.id || `step_${Math.random().toString(36).slice(2, 6)}`,
+            stepId: step.id || `step_${i}`,
             action: step.action || 'execute',
             prompt: step.prompt || '',
             status: 'pending',

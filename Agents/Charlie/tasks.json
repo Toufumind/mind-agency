@@ -1,0 +1,16 @@
+{
+  "pending": [],
+  "completed": [
+    {
+      "runId": "30086d22-250c-4ac2-8d9c-8de0141279fb",
+      "stepId": "implement",
+      "workflow": "three-step",
+      "prompt": "实现完成",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1780915200412,
+      "completedAt": 1780915200504,
+      "result": "COMPLETED: ʵ�����"
+    }
+  ]
+}

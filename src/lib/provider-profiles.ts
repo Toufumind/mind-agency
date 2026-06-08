@@ -214,6 +214,6 @@ export function importFromSettings(): ProviderProfile | null {
     provider: (settings.provider as 'claude' | 'codex') || 'claude',
     apiKey: settings.apiKey,
     baseUrl: settings.baseUrl || 'https://api.anthropic.com',
-    model: settings.model || 'claude-sonnet-4-20250514',
+    model: settings.model || 'mimo-v2.5',
   });
 }

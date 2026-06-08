@@ -27,7 +27,15 @@ class ClaudeProvider implements AgentProvider {
   }
 
   getDefaultModel(): string {
-    return process.env.ANTHROPIC_MODEL || 'deepseek-v4-flash';
+    // Read from settings.json instead of hardcoded default
+    try {
+      const settingsPath = path.join(process.env.MIND_DATA_DIR || process.cwd(), '.mind', 'settings.json');
+      if (fs.existsSync(settingsPath)) {
+        const s = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        if (s.model) return s.model;
+      }
+    } catch {}
+    return process.env.ANTHROPIC_MODEL || 'mimo-v2.5';
   }
 
   async *execute(spawnOpts: SpawnOptions): AsyncGenerator<ChatEvent> {

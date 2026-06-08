@@ -45,8 +45,7 @@ export async function GET() {
 
 function getDefaultModels() {
   return [
-    { id: 'deepseek-v4-pro', label: 'V4 Pro' },
-    { id: 'deepseek-v4-flash', label: 'V4 Flash' },
+    { id: 'mimo-v2.5', label: 'MiMo V2.5' },
     { id: 'claude-sonnet-4-20250514', label: 'Sonnet 4' },
     { id: 'claude-opus-4-20250514', label: 'Opus 4' },
   ];

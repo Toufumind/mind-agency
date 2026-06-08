@@ -20,16 +20,25 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+function maskKey(key: string): string {
+  if (!key || key.length < 8) return '••••••••';
+  return '••••••••' + key.slice(-4);
+}
+
+function maskProfile(p: any) {
+  return { ...p, apiKey: maskKey(p.apiKey || '') };
+}
+
 export async function GET() {
   // Auto-import from existing settings if no profiles exist
   const profiles = listProfiles();
   if (profiles.length === 0) {
     const imported = importFromSettings();
     if (imported) {
-      return NextResponse.json({ profiles: listProfiles(), active: imported });
+      return NextResponse.json({ profiles: listProfiles().map(maskProfile), active: maskProfile(imported) });
     }
   }
-  return NextResponse.json({ profiles, active: getActiveProfile() });
+  return NextResponse.json({ profiles: profiles.map(maskProfile), active: maskProfile(getActiveProfile()) });
 }
 
 export async function POST(request: NextRequest) {
@@ -45,10 +54,10 @@ export async function POST(request: NextRequest) {
     provider: provider || 'claude',
     apiKey,
     baseUrl,
-    model: model || 'claude-sonnet-4-20250514',
+    model: model || 'mimo-v2.5',
   });
 
-  return NextResponse.json({ profile }, { status: 201 });
+  return NextResponse.json({ profile: maskProfile(profile) }, { status: 201 });
 }
 
 export async function PUT(request: NextRequest) {
@@ -60,7 +69,7 @@ export async function PUT(request: NextRequest) {
   if (action === 'activate' && id) {
     const ok = activateProfile(id);
     if (!ok) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    return NextResponse.json({ success: true, active: getActiveProfile() });
+    return NextResponse.json({ success: true, active: maskProfile(getActiveProfile()) });
   }
 
   // Update profile
@@ -71,7 +80,7 @@ export async function PUT(request: NextRequest) {
   const body = await request.json();
   const profile = updateProfile(id, body);
   if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-  return NextResponse.json({ profile });
+  return NextResponse.json({ profile: maskProfile(profile) });
 }
 
 export async function DELETE(request: NextRequest) {

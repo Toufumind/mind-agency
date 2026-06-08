@@ -7,23 +7,31 @@ import { AGENTS_DIR } from '@/lib/data-dir';
 import { broadcastWs } from '@/lib/ws-embedded';
 
 export async function GET() {
-  const agents = getAgents();
-  const stats = getStats();
-  const agentList = agents.map(a => ({ name: a.name, emailCount: a.emailCount, config: a.config }));
-  return NextResponse.json({ agents: agentList, stats });
+  try {
+    const agents = getAgents();
+    const stats = getStats();
+    const agentList = agents.map(a => ({ name: a.name, emailCount: a.emailCount, config: a.config }));
+    return NextResponse.json({ agents: agentList, stats });
+  } catch (e) {
+    return NextResponse.json({ error: 'Failed to load agents' }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const name = searchParams.get('name');
-  if (!name) return NextResponse.json({ error: 'Agent name required' }, { status: 400 });
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) return NextResponse.json({ error: 'Invalid name' }, { status: 400 });
-  const agentDir = path.join(AGENTS_DIR, name);
-  if (!fs.existsSync(agentDir)) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+  try {
+    const { searchParams } = new URL(request.url);
+    const name = searchParams.get('name');
+    if (!name) return NextResponse.json({ error: 'Agent name required' }, { status: 400 });
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) return NextResponse.json({ error: 'Invalid name' }, { status: 400 });
+    const agentDir = path.join(AGENTS_DIR, name);
+    if (!fs.existsSync(agentDir)) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
 
-  writeAudit({ agent: name, action: 'agent.delete', resource: `agent:${name}`, details: 'Agent directory removed' });
-  fs.rmSync(agentDir, { recursive: true, force: true });
-  return NextResponse.json({ success: true });
+    writeAudit({ agent: name, action: 'agent.delete', resource: `agent:${name}`, details: 'Agent directory removed' });
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: 'Failed to delete agent' }, { status: 500 });
+  }
 }
 
 // Create new agent

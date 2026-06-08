@@ -1,13 +1,12 @@
-name: e2e-v3
-description: "端到端测试v3"
+name: updated-workflow
 steps:
-  - id: plan
+  - id: step1
     agent: Alice
-    action: plan
-    prompt: "说'计划完成'即可"
-  - id: execute
+    action: test
+    prompt: 测试步骤1
+  - id: step2
     agent: Bob
-    action: execute
-    prompt: "说'执行完成'即可"
-    depends:
-      - plan
+    action: test
+    dependsOn:
+      - step1
+    prompt: 测试步骤2
