@@ -676,6 +676,10 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
           if (optsOverrides.permissionMode === 'plan') {
             console.log(`[chat] plan mode: ${optsOverrides.planModeInstructions || '(no topic)'}`);
           }
+          // v0.7: Debug log for MCP disable
+          if (optsOverrides.mcpServers && Object.keys(optsOverrides.mcpServers).length === 0) {
+            console.log(`[chat] ${agentName}: MCP tools disabled`);
+          }
         }
 
         // SDK binary path: use dynamic path resolution instead of require.resolve()
@@ -821,26 +825,36 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   });
 }
 
-export async function chatOnce(agentName: string, userMessage: string, groupName?: string): Promise<{ reply: string; events: ChatEvent[] }> {
+export async function chatOnce(agentName: string, userMessage: string, groupName?: string, opts?: { noMcp?: boolean }): Promise<{ reply: string; events: ChatEvent[] }> {
   // v0.5: Serialize all session operations per agent to prevent race conditions
   return enqueueAgent(agentName, async () => {
-    const stream = createChatStream(agentName, userMessage, groupName);
+    const overrides = opts?.noMcp ? { mcpServers: {}, permissionMode: 'bypassPermissions', allowedTools: [] } : undefined;
+    const forceFresh = opts?.noMcp; // v0.7: Force fresh session when MCP disabled
+    const stream = createChatStream(agentName, userMessage, groupName, undefined, overrides, forceFresh);
+    // v0.7: Add overall timeout to prevent infinite hangs
+    const MAX_CHAT_TIME = 60_000; // 60 seconds max per chat
     const reader = stream.getReader();
     let reply = '';
     const events: ChatEvent[] = [];
-    // v0.6: Add overall timeout to prevent infinite hangs
-    const startTime = Date.now();
-    const MAX_CHAT_TIME = 120_000; // 2 minutes max per chat
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (Date.now() - startTime > MAX_CHAT_TIME) {
-        console.log(`[chat] ${agentName}: timeout after ${MAX_CHAT_TIME}ms`);
-        break;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Chat timeout after ${MAX_CHAT_TIME}ms`)), MAX_CHAT_TIME);
+    });
+    const readPromise = (async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        events.push(value);
+        if (value.type === 'text') reply += value.content || '';
+        if (value.type === 'done') break;
       }
-      events.push(value);
-      if (value.type === 'text') reply += value.content || '';
-      if (value.type === 'done') break;
+    })();
+    try {
+      await Promise.race([readPromise, timeoutPromise]);
+    } catch (e: any) {
+      if (e.message?.includes('timeout')) {
+        console.log(`[chat] ${agentName}: ${e.message}`);
+        reader.cancel().catch(() => {});
+      } else { throw e; }
     }
     return { reply, events };
   });

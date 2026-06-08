@@ -407,7 +407,7 @@ export async function autoRespond(
         break;
       }
       setActivity(agent, 'processing', signal.urgent ? '处理通知' : '检查更新');
-      const { reply } = await chatOnce(agent, prompt, options?.groupName);
+      const { reply } = await chatOnce(agent, prompt, options?.groupName, { noMcp: true });
       clearActivity(agent);
       saveState(agent, state);
 
