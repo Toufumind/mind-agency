@@ -14,7 +14,11 @@ const queues = new Map<string, Promise<void>>();
 export async function enqueueAgent<T>(agent: string, task: () => Promise<T>): Promise<T> {
   const prev = queues.get(agent) || Promise.resolve();
   let result!: T;
-  const wrapped = async () => { result = await task(); };
+  const wrapped = async () => {
+    // v0.8: Set current agent flag to prevent nested enqueueAgent calls
+    (global as any).__currentAgent = agent;
+    try { result = await task(); } finally { (global as any).__currentAgent = null; }
+  };
   const next = prev.then(wrapped, wrapped);
   queues.set(agent, next.then(() => {}, () => {}).finally(() => {
     if (queues.get(agent) === next) queues.delete(agent);

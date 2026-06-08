@@ -826,10 +826,11 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
 }
 
 export async function chatOnce(agentName: string, userMessage: string, groupName?: string, opts?: { noMcp?: boolean }): Promise<{ reply: string; events: ChatEvent[] }> {
-  // v0.5: Serialize all session operations per agent to prevent race conditions
-  return enqueueAgent(agentName, async () => {
+  // v0.8: Skip enqueueAgent if already inside one (prevent deadlock)
+  const inAgentQueue = (global as any).__currentAgent === agentName;
+  const doWork = async () => {
     const overrides = opts?.noMcp ? { mcpServers: {}, permissionMode: 'bypassPermissions', allowedTools: [] } : undefined;
-    const forceFresh = opts?.noMcp; // v0.7: Force fresh session when MCP disabled
+    const forceFresh = opts?.noMcp;
     const stream = createChatStream(agentName, userMessage, groupName, undefined, overrides, forceFresh);
     // v0.7: Add overall timeout to prevent infinite hangs
     const MAX_CHAT_TIME = 60_000; // 60 seconds max per chat
@@ -857,7 +858,10 @@ export async function chatOnce(agentName: string, userMessage: string, groupName
       } else { throw e; }
     }
     return { reply, events };
-  });
+  };
+  // v0.8: Skip enqueueAgent if already inside one (prevent deadlock)
+  if (inAgentQueue) return doWork();
+  return enqueueAgent(agentName, doWork);
 }
 
 function quickError(msg: string): ReadableStream<ChatEvent> {

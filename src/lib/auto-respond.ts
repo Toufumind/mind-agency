@@ -317,13 +317,7 @@ function signalToPrompt(agent: string, sig: Signal, groupName?: string): string 
   }
 
   lines.push('');
-  lines.push('步骤:');
-  lines.push('1. group_read 查看上下文 → 检查邮箱');
-  lines.push('2. 如果是需要你投票/审批 → decide(group, decision, reason) 结构化回复');
-  lines.push('3. 如果是普通讨论 → group_send 回复');
-  lines.push('4. 重要信息记到 agent_memory(action="write")');
-  lines.push('5. 如果是工作流任务（包含 runId= 和 stepId=）→ 完成任务后调用 workflow_callback(runId, stepId, status, summary) 报告结果');
-  lines.push('自主决定是否回复。中文。');
+  lines.push('请用中文简短回复。如果有工作流任务，在回复中包含: workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="...")');
 
   return lines.join('\n');
 }
