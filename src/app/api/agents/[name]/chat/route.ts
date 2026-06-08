@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createChatStream, getChatHistory, clearChat } from '@/lib/chat';
+import { createChatStream, getChatHistory, clearChat, savePartialState } from '@/lib/chat';
 import { writeAudit } from '@/lib/audit';
 import { handleCliCommand } from '@/lib/cli-commands';
 
@@ -99,6 +99,9 @@ export async function POST(
 
   // Buffer SSE chunks for caching (lazily, only if the stream completes)
   const chunks: string[] = [];
+  let fullReply = '';
+  let allEvents: any[] = [];
+  let chatSessionId = sessionId || '';
 
   const sseStream = new ReadableStream({
     async start(controller) {
@@ -107,6 +110,10 @@ export async function POST(
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          // v0.6: Collect events and reply for session save
+          if (value.type === 'text') fullReply += value.content || '';
+          if (value.type === 'tool_use' || value.type === 'tool_result') allEvents.push(value);
+          if ('session_id' in value) chatSessionId = (value as any).session_id || chatSessionId;
           const line = `data: ${JSON.stringify(value)}\n\n`;
           chunks.push(line);
           controller.enqueue(new TextEncoder().encode(line));
@@ -116,6 +123,10 @@ export async function POST(
         chunks.push(`data: ${errEvt}\n\n`);
         controller.enqueue(new TextEncoder().encode(`data: ${errEvt}\n\n`));
       }
+      // v0.6: Save session after stream completes — ensures session is always saved
+      try {
+        savePartialState(name, { userMessage: message, fullReply, allEvents, sessionId: chatSessionId });
+      } catch (e) { console.error(`[chat] route saveSession failed:`, e); }
       const doneLine = `data: [DONE]\n\n`;
       chunks.push(doneLine);
       controller.enqueue(new TextEncoder().encode(doneLine));

@@ -204,13 +204,17 @@ function saveChatHistory(agentName: string, data: ChatHistory, expectedVersion?:
   }
 
   const dir = path.join(AGENTS_DIR, agentName, 'chat');
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const file = sessionFile(agentName);
-  const tmp = file + '.tmp';
-  data._version = (data._version || 0) + 1;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
-  fs.renameSync(tmp, file);
-  agentCache.set('session', agentName, data);
+  try {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const file = sessionFile(agentName);
+    const tmp = file + '.tmp';
+    data._version = (data._version || 0) + 1;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmp, file);
+    agentCache.set('session', agentName, data);
+  } catch (err) {
+    console.error(`[chat] saveChatHistory failed for ${agentName}:`, err);
+  }
 }
 
 export function clearChat(agentName: string) {
@@ -485,7 +489,7 @@ function buildBaseOptions(agentName: string, taskContext?: string) {
  *
  * This eliminates the old `userMessageSaved` flag and 3× inline duplicates.
  */
-function savePartialState(agentName: string, opts: {
+export function savePartialState(agentName: string, opts: {
   userMessage: string;
   fullReply: string;
   allEvents: ChatEvent[];
@@ -517,7 +521,13 @@ function savePartialState(agentName: string, opts: {
   }
 
   ih.sessionId = opts.sessionId || ih.sessionId;
-  saveChatHistory(agentName, ih, expectedVersion);
+  try {
+    console.log(`[chat] savePartialState: ${agentName}, msgs=${ih.messages.length}, version=${ih._version}`);
+    saveChatHistory(agentName, ih, expectedVersion);
+    console.log(`[chat] savePartialState: ${agentName} saved successfully`);
+  } catch (err) {
+    console.error(`[chat] savePartialState failed for ${agentName}:`, err);
+  }
 }
 
 // ── Main stream ──────────────────────────────────────────
@@ -801,10 +811,8 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
       } catch (err: any) {
         clearActivity(agentName);
         untrackQuery(abortController);
-        // Save partial history before error — prevents message loss on crash
-        if (hasContent || sessionId) {
-          try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {}
-        }
+        // v0.6: Always save session on error — prevents message loss
+        try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {}
         ctrl.enqueue({ type: 'error', content: err.message || String(err), timestamp: ts() });
         ctrl.enqueue({ type: 'done', content: '', timestamp: ts() });
       }
