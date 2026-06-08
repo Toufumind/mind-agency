@@ -106,6 +106,10 @@ export class EventBus {
     if (this.dedupHist.length > MAX_DEDUP * 0.8 && this.dedupHist.length % 1000 === 0) {
       this.dedupHist = this.dedupHist.slice(-MAX_DEDUP / 2);
     }
+    // Periodically compact the array to release memory
+    if (this.dedupHist.length > MAX_DEDUP * 0.8 && this.dedupHist.length % 1000 === 0) {
+      this.dedupHist = this.dedupHist.slice(-MAX_DEDUP / 2);
+    }
     if (!event.timestamp) event.timestamp = Date.now();
     if (!event.source) event.source = 'system';
     this.persistToOutbox(event);
@@ -252,7 +256,6 @@ export function getEventBus(): EventBus {
 type EventHandler = (event: EventMessage) => void;
 const _handlers = new Map<EventType, Set<EventHandler>>();
 
-/** Subscribe to an event type in-process (no HTTP overhead) */
 function onEvent(type: EventType, handler: EventHandler): () => void {
   if (!_handlers.has(type)) _handlers.set(type, new Set());
   _handlers.get(type)!.add(handler);
@@ -267,9 +270,8 @@ function onEvent(type: EventType, handler: EventHandler): () => void {
   };
 }
 
-/** Emit an event via the singleton (in-process, no HTTP) */
 function emitEvent(type: EventType, payload: Record<string, unknown>, source: string): void {
-  getEventBus().emit(createEvent(type, payload, source));
+  getEventBus().emit({ event: type, payload, timestamp: Date.now(), source, id: randomUUID() });
 }
 
 // ═══════════════════════════════════════════════════ Workflow Engine ═══
@@ -299,8 +301,7 @@ export interface WorkflowRunRecord { runId: string; workflowName: string; starte
 export interface StepExecutor { execute(step: WorkflowStep, context: Record<string, string>): Promise<string>; }
 
 
-/** Parse ChatDev-style review output into structured findings */
-export function parseReviewFindings(output: string): Array<{ file: string; line: number; desc: string; fix: string }> {
+function parseReviewFindings(output: string): Array<{ file: string; line: number; desc: string; fix: string }> {
   if (output.includes('NO_ISSUES')) return [];
   const findings: Array<{ file: string; line: number; desc: string; fix: string }> = [];
   const lines = output.split('\n');
