@@ -452,9 +452,8 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
   // ── Everything else ────────────────────────────────────────────────
-
-  res.writeHead(404);
-  res.end();
+  res.writeHead(404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ ok: false, error: 'Not Found', path: req.url, method: req.method }));
 });
 
 // ── WebSocket server ─────────────────────────────────────────────────────
