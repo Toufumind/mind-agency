@@ -1,13 +1,32 @@
-name: daily-report
-description: "每日报告"
+name: novel-writing
+description: "短篇小说创作工作流"
 steps:
-  - id: alice-report
+  - id: outline
     agent: Alice
-    action: report
-    prompt: "用一句话汇报今天的工作"
-  - id: bob-review
+    action: outline
+    prompt: "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折"
+  - id: chapter1
     agent: Bob
-    action: review
-    prompt: "审查报告并给出反馈"
+    action: write
+    prompt: "根据大纲写第一章（800字），要求：有对话、有冲突、有悬念"
     depends:
-      - alice-report
+      - outline
+  - id: chapter2
+    agent: Charlie
+    action: write
+    prompt: "根据大纲写第二章（800字），要求：推进剧情、加深角色关系"
+    depends:
+      - outline
+  - id: review
+    agent: Alice
+    action: review
+    prompt: "审阅两章内容，给出修改建议，确保风格一致"
+    depends:
+      - chapter1
+      - chapter2
+  - id: final
+    agent: Bob
+    action: finalize
+    prompt: "根据审查意见修改，输出最终版本的小说"
+    depends:
+      - review
