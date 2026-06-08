@@ -93,8 +93,7 @@ export class EventBus {
     // Cleanup timers on process exit
     const cleanup = () => { this.destroy(); };
     process.on('exit', cleanup);
-    process.on('SIGINT', () => { cleanup(); process.exit(0); });
-    process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+    // Note: SIGINT/SIGTERM handled by server.ts entry point — not here to avoid double-handler conflict
   }
 
   emit(event: EventMessage): void {
@@ -102,10 +101,6 @@ export class EventBus {
     if (!event.id || event.id.length < 8) event.id = randomUUID();
     if (this.dedup.has(event.id)) return; this.dedup.add(event.id); this.dedupHist.push(event.id);
     while (this.dedupHist.length > MAX_DEDUP) { this.dedup.delete(this.dedupHist.shift()!); }
-    // Periodically compact the array to release memory
-    if (this.dedupHist.length > MAX_DEDUP * 0.8 && this.dedupHist.length % 1000 === 0) {
-      this.dedupHist = this.dedupHist.slice(-MAX_DEDUP / 2);
-    }
     // Periodically compact the array to release memory
     if (this.dedupHist.length > MAX_DEDUP * 0.8 && this.dedupHist.length % 1000 === 0) {
       this.dedupHist = this.dedupHist.slice(-MAX_DEDUP / 2);
@@ -1149,10 +1144,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     const steps = [...nodes.values()].map(n => n.step);
     if (steps.length > 0) {
       const def: WorkflowDefinition = { name: run.workflowName, steps };
-      this.executeDag(runId, def).then(() => {
-        const r = this.runs.get(runId);
-        if (r && r.status === WorkflowStatus.RUNNING) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); }
-      }).catch((err: Error) => {
+      // v0.6: removed .then() that prematurely marked COMPLETED — schedule() handles completion via callbacks
+      this.executeDag(runId, def).catch((err: Error) => {
         const r = this.runs.get(runId);
         if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); }
         if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: err.message }, 'workflow-engine'));
@@ -1408,14 +1401,8 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
         this.latestRuns.set(def.name, newRunId);
 
         // Resume DAG execution
-        this.executeDag(newRunId, def).then(() => {
-          const r = this.runs.get(newRunId);
-          if (r && r.status === WorkflowStatus.RUNNING) {
-            r.status = WorkflowStatus.COMPLETED;
-            r.completedAt = Date.now();
-          }
-          completeRunCheckpoint(group, newRunId, 'completed');
-        }).catch((err: Error) => {
+        // v0.6: removed .then() that prematurely marked COMPLETED — schedule() handles completion via callbacks
+        this.executeDag(newRunId, def).catch((err: Error) => {
           const r = this.runs.get(newRunId);
           if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); }
           completeRunCheckpoint(group, newRunId, 'failed');
