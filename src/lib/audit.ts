@@ -1,7 +1,8 @@
-import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { AUDIT_DIR, AGENTS_DIR } from './data-dir';
+import { getAuditProxy } from './audit-proxy';
+import { AgentProxy } from './agent-proxy';
 
 export interface AuditEntry {
   id: string;
@@ -11,19 +12,6 @@ export interface AuditEntry {
   resource: string;
   details?: string;
   status: 'success' | 'error';
-}
-
-
-
-function ensureAuditDir() {
-  if (!fs.existsSync(AUDIT_DIR)) {
-    fs.mkdirSync(AUDIT_DIR, { recursive: true });
-  }
-}
-
-function getAuditDateFile(): string {
-  const today = new Date().toISOString().split('T')[0];
-  return path.join(AUDIT_DIR, `${today}.jsonl`);
 }
 
 /**
@@ -36,8 +24,6 @@ export function writeAudit(params: {
   details?: string;
   status?: 'success' | 'error';
 }): AuditEntry {
-  ensureAuditDir();
-
   const entry: AuditEntry = {
     id: randomUUID(),
     timestamp: new Date().toISOString(),
@@ -48,9 +34,8 @@ export function writeAudit(params: {
     status: params.status || 'success',
   };
 
-  const file = getAuditDateFile();
-  const line = JSON.stringify(entry) + '\n';
-  fs.appendFileSync(file, line, 'utf-8');
+  const proxy = getAuditProxy();
+  proxy.addAuditEntry(entry);
 
   return entry;
 }
@@ -59,38 +44,23 @@ export function writeAudit(params: {
  * 读取最近的 N 条审计日志
  * 从最新的日期文件向前扫描（支持 .jsonl 和旧版 .json）
  */
-export function readAuditLogs(limit: number = 100): AuditEntry[] {
-  if (!fs.existsSync(AUDIT_DIR)) return [];
-
-  const files = fs.readdirSync(AUDIT_DIR)
-    .filter(f => (f.endsWith('.jsonl') || f.endsWith('.json')) && !f.startsWith('tokens'))
-    .sort()
-    .reverse(); // newest first
-
+export async function readAuditLogs(limit: number = 100): Promise<AuditEntry[]> {
+  const proxy = getAuditProxy();
   const results: AuditEntry[] = [];
 
-  for (const file of files) {
-    if (results.length >= limit) break;
-    try {
-      const raw = fs.readFileSync(path.join(AUDIT_DIR, file), 'utf-8');
-      if (file.endsWith('.jsonl')) {
-        // JSONL: each line is one entry, newest at bottom — read from bottom
-        const lines = raw.split('\n').filter(Boolean);
-        for (let i = lines.length - 1; i >= 0; i--) {
-          results.push(JSON.parse(lines[i]));
-          if (results.length >= limit) break;
-        }
-      } else {
-        // Legacy JSON array format
-        const entries: AuditEntry[] = JSON.parse(raw);
-        if (Array.isArray(entries)) {
-          for (let i = entries.length - 1; i >= 0; i--) {
-            results.push(entries[i]);
-            if (results.length >= limit) break;
-          }
-        }
-      }
-    } catch { /* skip corrupted files */ }
+  // Scan dates from today backwards
+  const today = new Date();
+  for (let d = 0; d < 30 && results.length < limit; d++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - d);
+    const dateStr = date.toISOString().slice(0, 10);
+
+    // Use proxy to get logs for this date
+    const logs = await proxy.getAuditLogs(dateStr);
+    // Logs are in forward order — reverse to get newest first
+    for (let i = logs.length - 1; i >= 0 && results.length < limit; i--) {
+      results.push(logs[i] as AuditEntry);
+    }
   }
 
   return results;
@@ -99,17 +69,17 @@ export function readAuditLogs(limit: number = 100): AuditEntry[] {
 /**
  * 获取指定 Agent 的审计日志
  */
-export function readAgentAuditLogs(agentName: string, limit: number = 50): AuditEntry[] {
-  const all = readAuditLogs(limit * 2); // oversample then filter
+export async function readAgentAuditLogs(agentName: string, limit: number = 50): Promise<AuditEntry[]> {
+  const all = await readAuditLogs(limit * 2); // oversample then filter
   return all.filter(e => e.agent === agentName).slice(0, limit);
 }
 
 /** Check if agent has a specific permission */
 export function checkPermission(agentName: string, permission: string): boolean {
   try {
-    const configPath = path.join(AGENTS_DIR, agentName, 'config.json');
-    if (!fs.existsSync(configPath)) return false;
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    return config.permissions?.[permission] === true;
+    const agent = new AgentProxy(agentName);
+    // Use cached config (already loaded via agentCache)
+    const config = agent.config;
+    return (config as any).permissions?.[permission] === true;
   } catch { return false; }
 }

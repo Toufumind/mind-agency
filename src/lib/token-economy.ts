@@ -10,17 +10,11 @@
  *   - Tasks can have rewards (quality-dependent)
  *   - Agent-to-agent transfers allowed
  *   - High quality = bonus, low quality = penalty
+ *
+ * Uses SystemProxy for file system access.
  */
 
-import fs from 'fs';
-import path from 'path';
-import { MIND_DIR, AGENTS_DIR } from './data-dir';
-
-const ACCOUNTS_DIR = path.join(MIND_DIR, 'agent-accounts');
-
-function ensureDir() {
-  if (!fs.existsSync(ACCOUNTS_DIR)) fs.mkdirSync(ACCOUNTS_DIR, { recursive: true });
-}
+import { getSystemProxy } from './system-proxy';
 
 export interface Transaction {
   type: 'deposit' | 'withdraw' | 'transfer_in' | 'transfer_out' | 'reward' | 'penalty' | 'bonus';
@@ -40,43 +34,34 @@ export interface AgentAccount {
   transactions: Transaction[];
 }
 
-function accountPath(agent: string): string {
-  return path.join(ACCOUNTS_DIR, `${agent}.json`);
+async function loadAccount(agent: string): Promise<AgentAccount> {
+  const proxy = getSystemProxy();
+  return proxy.loadAgentAccount(agent);
 }
 
-function loadAccount(agent: string): AgentAccount {
-  ensureDir();
-  const fp = accountPath(agent);
-  if (fs.existsSync(fp)) {
-    try { return JSON.parse(fs.readFileSync(fp, 'utf-8')); } catch {}
-  }
-  return { agent, balance: 0, earned: 0, spent: 0, transactions: [] };
-}
-
-function saveAccount(account: AgentAccount): void {
-  ensureDir();
-  const fp = accountPath(account.agent);
-  fs.writeFileSync(fp, JSON.stringify(account, null, 2), 'utf-8');
+async function saveAccount(account: AgentAccount): Promise<void> {
+  const proxy = getSystemProxy();
+  await proxy.saveAgentAccount(account);
 }
 
 /** Deposit tokens to an agent (from user or group owner) */
-export function deposit(agent: string, amount: number, from: string, reason?: string): AgentAccount {
+export async function deposit(agent: string, amount: number, from: string, reason?: string): Promise<AgentAccount> {
   if (amount <= 0) throw new Error('Amount must be positive');
-  const account = loadAccount(agent);
+  const account = await loadAccount(agent);
   account.balance += amount;
   account.earned += amount;
   account.transactions.push({
     type: 'deposit', amount, from, reason,
     timestamp: Date.now(),
   });
-  saveAccount(account);
+  await saveAccount(account);
   return account;
 }
 
 /** Withdraw tokens (agent spends on a task) */
-export function withdraw(agent: string, amount: number, task: string): boolean {
+export async function withdraw(agent: string, amount: number, task: string): Promise<boolean> {
   if (amount <= 0) return false;
-  const account = loadAccount(agent);
+  const account = await loadAccount(agent);
   if (account.balance < amount) return false;
   account.balance -= amount;
   account.spent += amount;
@@ -84,17 +69,17 @@ export function withdraw(agent: string, amount: number, task: string): boolean {
     type: 'withdraw', amount, task,
     timestamp: Date.now(),
   });
-  saveAccount(account);
+  await saveAccount(account);
   return true;
 }
 
 /** Transfer tokens between agents */
-export function transfer(from: string, to: string, amount: number, reason?: string): boolean {
+export async function transfer(from: string, to: string, amount: number, reason?: string): Promise<boolean> {
   if (amount <= 0 || from === to) return false;
-  const fromAccount = loadAccount(from);
+  const fromAccount = await loadAccount(from);
   if (fromAccount.balance < amount) return false;
 
-  const toAccount = loadAccount(to);
+  const toAccount = await loadAccount(to);
 
   fromAccount.balance -= amount;
   fromAccount.spent += amount;
@@ -110,15 +95,15 @@ export function transfer(from: string, to: string, amount: number, reason?: stri
     timestamp: Date.now(),
   });
 
-  saveAccount(fromAccount);
-  saveAccount(toAccount);
+  await saveAccount(fromAccount);
+  await saveAccount(toAccount);
   return true;
 }
 
 /** Reward agent for task completion (quality-dependent) */
-export function reward(agent: string, amount: number, task: string, quality: 'normal' | 'bonus' = 'normal'): AgentAccount {
+export async function reward(agent: string, amount: number, task: string, quality: 'normal' | 'bonus' = 'normal'): Promise<AgentAccount> {
   if (amount <= 0) return loadAccount(agent);
-  const account = loadAccount(agent);
+  const account = await loadAccount(agent);
   account.balance += amount;
   account.earned += amount;
   account.transactions.push({
@@ -126,46 +111,44 @@ export function reward(agent: string, amount: number, task: string, quality: 'no
     reason: quality === 'bonus' ? '高质量完成' : '完成任务',
     timestamp: Date.now(),
   });
-  saveAccount(account);
+  await saveAccount(account);
   return account;
 }
 
 /** Penalize agent for poor quality */
-export function penalize(agent: string, amount: number, task: string, reason: string): AgentAccount {
-  const account = loadAccount(agent);
+export async function penalize(agent: string, amount: number, task: string, reason: string): Promise<AgentAccount> {
+  const account = await loadAccount(agent);
   const penalty = Math.min(amount, account.balance); // Can't go negative
   account.balance -= penalty;
   account.transactions.push({
     type: 'penalty', amount: penalty, task, reason,
     timestamp: Date.now(),
   });
-  saveAccount(account);
+  await saveAccount(account);
   return account;
 }
 
 /** Get agent's current balance */
-export function getBalance(agent: string): number {
-  return loadAccount(agent).balance;
+export async function getBalance(agent: string): Promise<number> {
+  const account = await loadAccount(agent);
+  return account.balance;
 }
 
 /** Get full account info */
-export function getAccount(agent: string): AgentAccount {
+export async function getAccount(agent: string): Promise<AgentAccount> {
   return loadAccount(agent);
 }
 
 /** Get all accounts (for leaderboard) */
-export function getAllAccounts(): AgentAccount[] {
-  ensureDir();
-  const files = fs.readdirSync(ACCOUNTS_DIR).filter(f => f.endsWith('.json'));
-  return files.map(f => {
-    try { return JSON.parse(fs.readFileSync(path.join(ACCOUNTS_DIR, f), 'utf-8')); }
-    catch { return null; }
-  }).filter(Boolean);
+export async function getAllAccounts(): Promise<AgentAccount[]> {
+  const proxy = getSystemProxy();
+  return proxy.listAgentAccounts();
 }
 
 /** Get leaderboard sorted by balance */
-export function getLeaderboard(): Array<{ agent: string; balance: number; earned: number; tasks: number }> {
-  return getAllAccounts()
+export async function getLeaderboard(): Promise<Array<{ agent: string; balance: number; earned: number; tasks: number }>> {
+  const accounts = await getAllAccounts();
+  return accounts
     .map(a => ({
       agent: a.agent,
       balance: a.balance,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAgency } from '@/lib/agency';
 import fs from 'fs';
 import path from 'path';
 import { MIND_DIR, GROUPS_DIR } from '@/lib/data-dir';
@@ -25,18 +26,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'goal, group, and coordinator required' }, { status: 400 });
     }
 
+    const agency = getAgency();
+    const groupProxy = agency.getGroup(group);
+
+    if (!groupProxy.exists()) {
+      return NextResponse.json({ error: `Group "${group}" not found` }, { status: 404 });
+    }
+
     // Get group members if not provided
     let teamMembers = members || [];
     if (teamMembers.length === 0) {
-      const agentsDir = path.join(GROUPS_DIR, group, 'Agents');
-      if (fs.existsSync(agentsDir)) {
-        teamMembers = fs.readdirSync(agentsDir)
-          .filter(e => {
-            try { return fs.statSync(path.join(agentsDir, e)).isDirectory(); }
-            catch { return false; }
-          })
-          .filter(name => name.toLowerCase() !== coordinator.toLowerCase());
-      }
+      await groupProxy.loadMembers();
+      teamMembers = groupProxy.members
+        .map(m => m.name)
+        .filter(name => name.toLowerCase() !== coordinator.toLowerCase());
     }
 
     if (teamMembers.length === 0) {

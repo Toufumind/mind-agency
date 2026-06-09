@@ -5,21 +5,20 @@
  *   1. fs.watch(recursive) — catches new files, renames, deletes in Groups/ + Agents/
  *   2. fs.watchFile — stat-polling on individual chat/*.md files, catches appends
  *
- * On any trigger: debounce 2s → callback.
+ * On any trigger: debounce 2s → emit EventBus 'file.changed' event.
  * File watch list refreshed on every scheduler tick (so newly created chat files
  * get watched immediately).
+ *
+ * v1.3: Uses EventBus instead of direct callback.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { GROUPS_DIR, AGENTS_DIR } from './data-dir';
 
-type Callback = (dir: string) => void;
-
 let directoryWatchers: fs.FSWatcher[] = [];
 let fileWatchers: { watcher: fs.StatWatcher; path: string }[] = [];
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let callback: Callback | null = null;
 let dirtyDirs = new Set<string>();
 
 function debouncedTrigger(dir: string) {
@@ -29,14 +28,27 @@ function debouncedTrigger(dir: string) {
     const dirs = [...dirtyDirs];
     dirtyDirs.clear();
     debounceTimer = null;
-    for (const d of dirs) { if (callback) callback(d); }
+    // Emit EventBus event instead of direct callback
+    emitFileChanged(dirs);
   }, 500);
+}
+
+function emitFileChanged(dirs: string[]): void {
+  try {
+    const { getEventBus, EventType, createEvent } = require('./event-bus');
+    const bus = getEventBus();
+    // Emit event for each changed directory
+    for (const dir of dirs) {
+      bus.emit(createEvent('file.changed' as any, { path: dir }, 'watcher'));
+    }
+  } catch {
+    // EventBus not ready yet, ignore
+  }
 }
 
 // ── Public API ───────────────────────────────────────────
 
-export function startWatcher(onChange: Callback): void {
-  callback = onChange;
+export function startWatcher(): void {
 
   // Layer 1 — directory watchers (new files / renames / deletes)
   for (const baseDir of [GROUPS_DIR, AGENTS_DIR]) {
@@ -69,7 +81,6 @@ export function stopWatcher(): void {
   directoryWatchers = [];
   fileWatchers = [];
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
-  callback = null;
   console.log('[watcher] stopped');
 }
 

@@ -2,37 +2,24 @@
  * GET /api/system/pending — aggregate pending approvals (consensus + workflow)
  */
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { GROUPS_DIR } from '@/lib/data-dir';
+import { getAgency } from '@/lib/agency';
 import http from 'http';
 
 export async function GET() {
+  const agency = getAgency();
   const items: { type: string; id: string; group: string; requestedBy: string; description: string; createdAt: number }[] = [];
 
-  // Scan consensus requests
-  if (fs.existsSync(GROUPS_DIR)) {
-    for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
-      if (!g.isDirectory() || g.name.startsWith('.')) continue;
-      const dir = path.join(GROUPS_DIR, g.name, '.consensus');
-      if (!fs.existsSync(dir)) continue;
-      for (const f of fs.readdirSync(dir)) {
-        if (!f.endsWith('.json')) continue;
-        try {
-          const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8'));
-          if (d.status === 'pending') {
-            items.push({
-              type: 'consensus',
-              id: d.id,
-              group: g.name,
-              requestedBy: d.requestedBy,
-              description: d.description,
-              createdAt: d.createdAt,
-            });
-          }
-        } catch {}
-      }
-    }
+  // Get pending approvals via SystemProxy
+  const pendingApprovals = await agency.system.getPendingApprovals();
+  for (const approval of pendingApprovals) {
+    items.push({
+      type: 'workflow',
+      id: approval.approvalId,
+      group: approval.group,
+      requestedBy: approval.agent,
+      description: approval.prompt,
+      createdAt: Date.now(),
+    });
   }
 
   // Fetch workflow approvals via HTTP (to WS server)

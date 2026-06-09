@@ -17,6 +17,10 @@ import './providers/codex';
 import './providers/claude-proxy';
 import { AGENTS_DIR, GROUPS_DIR, MCP_DIR, MIND_DIR, default as DATA_DIR } from './data-dir';
 import { getMemoryContext, invalidateMemoryCache } from './memory';
+import { AgentProxy } from './agent-proxy';
+import { getSkillProxy } from './skill-proxy';
+import { getMemoryProxy } from './memory-proxy';
+import { getSystemProxy } from './system-proxy';
 import {
   isAssistantMsg, isUserMsg, isResultSuccess,
   isThinkingBlock, isTextBlock, isToolUseBlock, isToolResultBlock,
@@ -218,9 +222,9 @@ function saveChatHistory(agentName: string, data: ChatHistory, expectedVersion?:
 }
 
 export function clearChat(agentName: string) {
-  const file = sessionFile(agentName);
-  if (fs.existsSync(file)) fs.unlinkSync(file);
-  agentCache.invalidateAgent(agentName);
+  // Delegate to AgentProxy for session clearing
+  const proxy = new AgentProxy(agentName);
+  proxy.clearSession();
 }
 
 // ── Builders ──────────────────────────────────────────────
@@ -324,23 +328,10 @@ function getGroupMembership(agentName: string): string {
   const cached = agentCache.get<string>('membership', agentName);
   if (cached !== null) return cached;
 
-  let result = '';
-  if (fs.existsSync(GROUPS_DIR)) {
-    const parts: string[] = [];
-    for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
-      if (!g.isDirectory() || g.name.startsWith('.')) continue;
-      const agD = path.join(GROUPS_DIR, g.name, 'Agents');
-      if (!fs.existsSync(agD)) continue;
-      const members = fs.readdirSync(agD, { withFileTypes: true })
-        .filter(e => e.isDirectory())
-        .map(e => e.name);
-      if (!members.some(m => m.toLowerCase() === agentName.toLowerCase())) continue;
-      const others = members.filter(m => m !== agentName);
-      const spec = fs.existsSync(path.join(GROUPS_DIR, g.name, 'TASK_SPEC.md')) ? ' [有任务规则]' : '';
-      parts.push(`- ${g}: 成员 ${others.join(', ') || '无'}${spec}`);
-    }
-    if (parts.length > 0) result = '\n[所在群组]\n' + parts.join('\n');
-  }
+  // Delegate to AgentProxy for group membership scanning
+  const proxy = new AgentProxy(agentName);
+  const result = proxy.getGroupMembership();
+
   agentCache.set('membership', agentName, result);
   return result;
 }
@@ -352,30 +343,9 @@ function buildGroupChatContext(_agentName: string, groupName?: string): string {
   const cached = agentCache.get<string>('groupChat', groupName, 30_000);
   if (cached !== null) return cached;
 
-  const chatDir = path.join(GROUPS_DIR, groupName, 'chat');
-  let result: string;
-  if (!fs.existsSync(chatDir)) {
-    result = `\n群聊${groupName}:暂无消息,用group_send发言.`;
-  } else {
-    try {
-      const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort();
-      if (files.length === 0) {
-        result = `\n群聊${groupName}:暂无消息,用group_send发言.`;
-      } else {
-        // v0.4: Read last 10 files for richer context
-        const recentFiles = files.slice(-10);
-        const msgs: string[] = [];
-        for (const f of recentFiles) {
-          try {
-            const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-            const truncated = raw.length > 1500 ? raw.slice(-1500) : raw;
-            msgs.push(`[${f.replace('.md','')}]\n${truncated}`);
-          } catch {}
-        }
-        result = `\n群聊${groupName}最近消息:\n${msgs.join('\n---\n')}`;
-      }
-    } catch { result = `\n群聊${groupName}:读取失败.`; }
-  }
+  // Delegate to AgentProxy for group chat context building
+  const proxy = new AgentProxy(_agentName);
+  const result = proxy.buildGroupChatContext(groupName);
 
   agentCache.set('groupChat', groupName, result);
   return result;
@@ -383,46 +353,12 @@ function buildGroupChatContext(_agentName: string, groupName?: string): string {
 
 /**
  * Build MCP server config for the SDK.
- *
- * Strategy: always prefer the pre-bundled `.mjs` (compiled from group-server.ts
- * via `scripts/build-mcp.mjs`). In dev, `npm run build:mcp` ensures it's fresh.
- * Fallback to `.ts` + `tsx` if `.mjs` doesn't exist (fresh checkout, Docker, CI).
- *
- * This eliminates ~200-500ms of `npx tsx` cold start per query.
+ * Delegates to AgentProxy for the actual config building.
  */
 function buildMcpConfig(agentName: string) {
-  const isWin = process.platform === 'win32';
-  const electronExe = process.env.MIND_ELECTRON_EXE;
-  const envBase: Record<string, string> = {
-    MIND_DATA_DIR: DATA_DIR, MIND_API_URL: 'http://127.0.0.1:3000',
-    WS_BASE_URL: 'http://127.0.0.1:3001',
-  };
-
-  // Prefer bundled .mjs, fallback to .ts
-  const bundledPath = path.resolve(MCP_DIR, 'group-server.mjs');
-  const sourcePath = path.resolve(MCP_DIR, 'group-server.ts');
-  const serverPath = fs.existsSync(bundledPath) ? bundledPath : sourcePath;
-  const useTsx = serverPath.endsWith('.ts');
-
-  if (electronExe) {
-    // Electron mode: run the MCP server inside Electron's Node.js
-    return { 'group-chat': { command: electronExe, args: [serverPath, agentName], cwd: DATA_DIR, env: { ELECTRON_RUN_AS_NODE: '1', ...envBase } } };
-  }
-
-  if (isWin) {
-    if (useTsx) {
-      // Fallback: no .mjs yet
-      return { 'group-chat': { command: 'cmd.exe', args: ['/c', 'npx.cmd', 'tsx', serverPath, agentName], env: { ...envBase, PATH: process.env.PATH } } };
-    }
-    // Direct node — no tsx overhead (~30ms vs ~300ms)
-    return { 'group-chat': { command: 'node', args: [serverPath, agentName], env: envBase } };
-  }
-
-  // macOS / Linux
-  if (useTsx) {
-    return { 'group-chat': { command: 'npx', args: ['tsx', serverPath, agentName], cwd: DATA_DIR, env: envBase } };
-  }
-  return { 'group-chat': { command: 'node', args: [serverPath, agentName], cwd: DATA_DIR, env: envBase } };
+  // Delegate to AgentProxy for MCP config building
+  const proxy = new AgentProxy(agentName);
+  return proxy.buildMcpConfig();
 }
 
 // ── Shared options (stable across calls → cache hit) ──────
@@ -435,11 +371,9 @@ function readClaudeMd(agentName: string): string {
   const cached = agentCache.get<string>('identity', agentName);
   if (cached !== null) return cached;
 
-  const claudeMdPath = path.join(AGENTS_DIR, agentName, 'CLAUDE.md');
-  let content = '';
-  try {
-    if (fs.existsSync(claudeMdPath)) content = fs.readFileSync(claudeMdPath, 'utf-8').trim();
-  } catch {}
+  // Delegate to AgentProxy for file reading
+  const proxy = new AgentProxy(agentName);
+  const content = proxy.readClaudeMd();
 
   agentCache.set('identity', agentName, content);
   return content;
@@ -614,7 +548,7 @@ function createProviderStream(
   });
 }
 
-export function createChatStream(agentName: string, userMessage: string, groupName?: string, modelOverride?: string, optsOverrides?: Record<string, unknown>, fresh?: boolean): ReadableStream<ChatEvent> {
+export async function createChatStream(agentName: string, userMessage: string, groupName?: string, modelOverride?: string, optsOverrides?: Record<string, unknown>, fresh?: boolean): Promise<ReadableStream<ChatEvent>> {
   const agentDir = path.join(AGENTS_DIR, agentName);
   if (!fs.existsSync(agentDir)) return quickError(`Agent "${agentName}" not found`);
 
@@ -636,14 +570,15 @@ export function createChatStream(agentName: string, userMessage: string, groupNa
   // Skills: RAG uses full accumulated context
   let skillsCtx = '';
   try {
-    const skillsMod = require('./skills');
+    // Delegate to SkillProxy for skill context loading
+    const skillProxy = getSkillProxy();
     // Build RAG context: full conversation history + user message
     const history = getChatHistory(agentName);
     const fullContext = history.messages
       .map(m => `[${m.role}] ${m.content.slice(0, 300)}`)
       .join('\n');
     const ragContext = fullContext ? fullContext + '\n[user] ' + userMessage : userMessage;
-    skillsCtx = skillsMod.loadSkillsContext(agentName, ragContext);
+    skillsCtx = await skillProxy.loadSkillsContext(agentName, ragContext);
   } catch {}
 
   const fullPrompt = groupChatCtx
@@ -840,7 +775,7 @@ export async function chatOnce(agentName: string, userMessage: string, groupName
   const doWork = async () => {
     const overrides = opts?.noMcp ? { mcpServers: undefined, permissionMode: 'bypassPermissions', allowedTools: [] } : undefined;
     const forceFresh = opts?.noMcp;
-    const stream = createChatStream(agentName, userMessage, groupName, undefined, overrides, forceFresh);
+    const stream = await createChatStream(agentName, userMessage, groupName, undefined, overrides, forceFresh);
     // v0.7: Add overall timeout to prevent infinite hangs
     const MAX_CHAT_TIME = 60_000; // 60 seconds max per chat
     const reader = stream.getReader();

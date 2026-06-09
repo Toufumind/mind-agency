@@ -1,26 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { GROUPS_DIR } from '@/lib/data-dir';
-
-const FILES_DIR = (group: string) => path.join(GROUPS_DIR, group, 'files');
+import { getAgency } from '@/lib/agency';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const dir = FILES_DIR(name);
-  if (!fs.existsSync(dir)) return NextResponse.json({ files: [] });
 
-  const files = fs.readdirSync(dir).map(f => {
-    const fp = path.join(dir, f);
-    try {
-      const st = fs.statSync(fp);
-      return { name: f, size: st.size, mtime: st.mtimeMs };
-    } catch { return null; }
-  }).filter(Boolean);
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
 
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+
+  const files = await proxy.getFiles();
   return NextResponse.json({ files });
 }
 
@@ -29,8 +23,13 @@ export async function POST(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const dir = FILES_DIR(name);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
+
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
 
   try {
     const formData = await request.formData();
@@ -39,7 +38,7 @@ export async function POST(
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const filename = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-    fs.writeFileSync(path.join(dir, filename), buffer);
+    await proxy.uploadFile(filename, buffer);
     return NextResponse.json({ success: true, filename, size: buffer.length });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -54,9 +53,25 @@ export async function DELETE(
   const { filename } = await request.json();
   if (!filename) return NextResponse.json({ error: 'filename required' }, { status: 400 });
 
-  const fp = path.join(FILES_DIR(name), filename);
-  if (!fs.existsSync(fp)) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
 
-  fs.unlinkSync(fp);
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+
+  const files = await proxy.getFiles();
+  if (!files.includes(filename)) {
+    return NextResponse.json({ error: 'File not found' }, { status: 404 });
+  }
+
+  // Delete file by uploading empty buffer (workaround since GroupProxy doesn't have deleteFile)
+  // TODO: Add deleteFile method to GroupProxy
+  const fs = require('fs');
+  const path = require('path');
+  const { GROUPS_DIR } = require('@/lib/data-dir');
+  const fp = path.join(GROUPS_DIR, name, 'files', filename);
+  if (fs.existsSync(fp)) fs.unlinkSync(fp);
+
   return NextResponse.json({ success: true });
 }

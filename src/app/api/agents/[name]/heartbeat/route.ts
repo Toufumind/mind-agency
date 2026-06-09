@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { AGENTS_DIR, GROUPS_DIR } from '@/lib/data-dir';
-import { getActivity } from '@/lib/agent-activity';
+import { getAgency } from '@/lib/agency';
 
 export async function GET(
   _request: NextRequest,
@@ -13,62 +10,28 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid agent name' }, { status: 400 });
   }
 
-  const agentDir = path.join(AGENTS_DIR, name);
-  let latestTs = 0;
+  const agency = getAgency();
+  const proxy = agency.getAgent(name);
 
-  // Check .auto-respond-cache.json
-  const cacheFile = path.join(agentDir, '.auto-respond-cache.json');
-  if (fs.existsSync(cacheFile)) {
-    try {
-      const d = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
-      if (d.updated) latestTs = Math.max(latestTs, new Date(d.updated).getTime());
-    } catch {}
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
   }
 
-  // Check chat session mtime
-  const sessionFile = path.join(agentDir, 'chat', 'session.json');
-  if (fs.existsSync(sessionFile)) {
-    try { latestTs = Math.max(latestTs, fs.statSync(sessionFile).mtimeMs); } catch {}
-  }
+  // Get activity from proxy
+  const activity = proxy.activity;
 
-  // Check pending invitations
-  if (fs.existsSync(GROUPS_DIR)) {
-    for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
-      if (!g.isDirectory() || g.name.startsWith('.')) continue;
-      const invFile = path.join(GROUPS_DIR, g.name, '.invitations', `${name.toLowerCase()}.json`);
-      if (fs.existsSync(invFile)) {
-        try { latestTs = Math.max(latestTs, fs.statSync(invFile).mtimeMs); } catch {}
-      }
-    }
-  }
+  // Check if agent has pending tasks
+  const pendingTasks = await agency.getPendingTasks(name);
 
-  // Check pending consensus/workflow approvals
-  // (agent has pending decide calls)
-  if (fs.existsSync(GROUPS_DIR)) {
-    for (const g of fs.readdirSync(GROUPS_DIR, { withFileTypes: true })) {
-      if (!g.isDirectory() || g.name.startsWith('.')) continue;
-      const decisionsDir = path.join(GROUPS_DIR, g.name, '.decisions');
-      if (!fs.existsSync(decisionsDir)) continue;
-      for (const f of fs.readdirSync(decisionsDir)) {
-        try {
-          const d = JSON.parse(fs.readFileSync(path.join(decisionsDir, f), 'utf-8'));
-          if (d.agent?.toLowerCase() === name.toLowerCase()) {
-            latestTs = Math.max(latestTs, fs.statSync(path.join(decisionsDir, f)).mtimeMs);
-          }
-        } catch {}
-      }
-    }
-  }
-
-  const isActive = Date.now() - latestTs < 120000; // 2 min window
-
-  // Include in-memory activity state (what the agent is currently doing)
-  const activity = getActivity(name);
+  // Check last activity time
+  const lastActivity = activity.updatedAt || 0;
+  const isActive = Date.now() - lastActivity < 120000; // 2 min window
 
   return NextResponse.json({
-    active: isActive,
-    lastAction: latestTs > 0 ? new Date(latestTs).toISOString() : null,
+    active: isActive || pendingTasks.length > 0,
+    lastAction: lastActivity > 0 ? new Date(lastActivity).toISOString() : null,
     status: activity.status,
     detail: activity.detail,
+    pendingTasks: pendingTasks.length,
   });
 }

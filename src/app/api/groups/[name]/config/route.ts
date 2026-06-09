@@ -7,14 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { GROUPS_DIR } from '@/lib/data-dir';
-import {
-  loadGroupConfig, saveGroupConfig, ensureGroupConfig,
-  isGroupAdmin, isGroupOwner, addMember, kickMember,
-  type GroupConfig,
-} from '@/lib/group-config';
+import { getAgency } from '@/lib/agency';
 
 // ── GET ──────────────────────────────────────────────────
 
@@ -23,15 +16,21 @@ export async function GET(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const groupDir = path.join(GROUPS_DIR, name);
-  if (!fs.existsSync(groupDir)) {
+
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
+
+  if (!proxy.exists()) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
 
-  const config = loadGroupConfig(name) || ensureGroupConfig(name, 'unknown');
-  const members = getGroupMembers(name);
+  await proxy.loadConfig();
+  await proxy.loadMembers();
 
-  return NextResponse.json({ ...config, members });
+  return NextResponse.json({
+    ...proxy.config,
+    members: proxy.members.map(m => m.name),
+  });
 }
 
 // ── PUT — update group settings (owner/admins) ──────────
@@ -41,8 +40,11 @@ export async function PUT(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const groupDir = path.join(GROUPS_DIR, name);
-  if (!fs.existsSync(groupDir)) {
+
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
+
+  if (!proxy.exists()) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
 
@@ -53,29 +55,29 @@ export async function PUT(
 
   const actor = (body.by || 'system').trim();
 
-  const config = loadGroupConfig(name) || ensureGroupConfig(name, actor);
+  await proxy.loadConfig();
 
   // Update simple fields
-  if (body.admins !== undefined) config.admins = body.admins;
-  if (body.name !== undefined) config.name = body.name;
-  if (body.description !== undefined) config.description = body.description;
+  if (body.admins !== undefined) proxy.config.admins = body.admins;
+  if (body.name !== undefined) proxy.config.name = body.name;
+  if (body.description !== undefined) proxy.config.description = body.description;
 
   // Announcement: null = remove, object = set
   if (body.announcement !== undefined) {
     if (body.announcement === null) {
-      delete config.announcement;
+      delete proxy.config.announcement;
     } else {
-      config.announcement = {
+      proxy.config.announcement = {
         title: body.announcement.title || '',
         content: body.announcement.content || '',
-        pinnedBy: body.announcement.pinnedBy || actor,
-        pinnedAt: body.announcement.pinnedAt || Date.now(),
+        author: body.announcement.pinnedBy || actor,
+        timestamp: body.announcement.pinnedAt || Date.now(),
       };
     }
   }
 
-  saveGroupConfig(name, config);
-  return NextResponse.json({ success: true, config });
+  await proxy.saveConfig();
+  return NextResponse.json({ success: true, config: proxy.config });
 }
 
 // ── POST — membership management (invite/kick/set_admin) ──
@@ -98,60 +100,60 @@ export async function POST(
     return NextResponse.json({ error: 'agent required' }, { status: 400 });
   }
 
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
+
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+
+  await proxy.loadConfig();
+  await proxy.loadMembers();
+
   if (action === 'invite') {
-    if (!isGroupAdmin(name, actor)) {
+    // Check if actor is admin
+    if (!proxy.config.admins.includes(actor) && proxy.config.owner !== actor) {
       return NextResponse.json({ error: 'Not an admin of this group' }, { status: 403 });
     }
-    const ok = addMember(name, target!);
+    const ok = await proxy.addMember(target!);
     if (!ok) return NextResponse.json({ error: 'Already a member or missing' }, { status: 409 });
     return NextResponse.json({ success: true, action: 'invite', agent: target });
   }
 
   if (action === 'kick') {
-    if (!isGroupAdmin(name, actor)) {
+    // Check if actor is admin
+    if (!proxy.config.admins.includes(actor) && proxy.config.owner !== actor) {
       return NextResponse.json({ error: 'Not an admin of this group' }, { status: 403 });
     }
-    const ok = kickMember(name, target!);
+    const ok = await proxy.removeMember(target!);
     if (!ok) return NextResponse.json({ error: 'Not a member' }, { status: 404 });
     return NextResponse.json({ success: true, action: 'kick', agent: target });
   }
 
   if (action === 'set_admin') {
-    if (!isGroupOwner(name, actor)) {
+    // Check if actor is owner
+    if (proxy.config.owner !== actor) {
       return NextResponse.json({ error: 'Only the group owner can set admins' }, { status: 403 });
     }
-    const config = loadGroupConfig(name);
-    if (!config) return NextResponse.json({ error: 'Group config not found' }, { status: 404 });
     if (body.admin) {
-      if (!config.admins.includes(target!)) config.admins.push(target!);
+      if (!proxy.config.admins.includes(target!)) proxy.config.admins.push(target!);
     } else {
-      config.admins = config.admins.filter(a => a !== target);
+      proxy.config.admins = proxy.config.admins.filter(a => a !== target);
     }
-    saveGroupConfig(name, config);
+    await proxy.saveConfig();
     return NextResponse.json({ success: true, action: 'set_admin', agent: target, admin: body.admin });
   }
 
   if (action === 'transfer') {
-    if (!isGroupOwner(name, actor)) {
+    // Check if actor is owner
+    if (proxy.config.owner !== actor) {
       return NextResponse.json({ error: 'Only the group owner can transfer ownership' }, { status: 403 });
     }
-    const config = loadGroupConfig(name);
-    if (!config) return NextResponse.json({ error: 'Group config not found' }, { status: 404 });
-    config.owner = target!;
-    config.admins = config.admins.filter(a => a !== target); // remove from admins if was admin
-    saveGroupConfig(name, config);
+    proxy.config.owner = target!;
+    proxy.config.admins = proxy.config.admins.filter(a => a !== target); // remove from admins if was admin
+    await proxy.saveConfig();
     return NextResponse.json({ success: true, action: 'transfer', newOwner: target });
   }
 
   return NextResponse.json({ error: 'Unknown action. Use: invite, kick, set_admin, transfer' }, { status: 400 });
-}
-
-// ── Helpers ──────────────────────────────────────────────
-
-function getGroupMembers(group: string): string[] {
-  const agentsDir = path.join(GROUPS_DIR, group, 'Agents');
-  if (!fs.existsSync(agentsDir)) return [];
-  return fs.readdirSync(agentsDir, { withFileTypes: true })
-    .filter(e => e.isDirectory())
-    .map(e => e.name);
 }

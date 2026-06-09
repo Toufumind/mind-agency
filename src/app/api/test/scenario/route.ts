@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
       if (step.emailTo) {
         // Send email
-        const result = sendEmail({
+        const result = await sendEmail({
           from: step.agent,
           to: step.emailTo,
           subject: step.emailSubject || 'No subject',

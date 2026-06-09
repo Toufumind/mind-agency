@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { from, to, subject, body: emailBody, content } = body;
     if (!from || !to) return NextResponse.json({ error: '缺少必填字段 from/to' }, { status: 400 });
-    const result = sendEmail({ from, to, subject: subject || '(no subject)', body: emailBody || content || '' });
+    const result = await sendEmail({ from, to, subject: subject || '(no subject)', body: emailBody || content || '' });
     if (!result.success) return NextResponse.json({ error: result.error }, { status: 400 });
     // Fire-and-forget: trigger auto-respond immediately, don't block response
     pollAllAgents().catch(() => {});
@@ -43,7 +43,7 @@ export async function DELETE(request: NextRequest) {
     const agent = searchParams.get('agent');
     const file = searchParams.get('file');
     if (!agent || !file) return NextResponse.json({ error: '缺少参数' }, { status: 400 });
-    const result = deleteEmail(agent, file);
+    const result = await deleteEmail(agent, file);
     if (!result.success) return NextResponse.json({ error: result.error }, { status: 400 });
     return NextResponse.json({ success: true, message: '已删除' });
   } catch {

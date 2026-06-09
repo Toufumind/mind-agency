@@ -5,65 +5,53 @@
  * Used to determine "what's new since last time" without hashing every message.
  *
  * State file: Agents/<name>/chat/mind-state.json
+ *
+ * v1.3: Uses AgentProxy for unified state management.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { AGENTS_DIR, GROUPS_DIR } from './data-dir';
+import { getAgentRegistry } from './agent-registry';
+import { GroupState, AgentState } from './agent-proxy';
 
-export interface GroupState {
-  /** Chat last-check timestamp (ms) */
-  chatCheck: number;
-  /** Group email last-check timestamp (ms) */
-  emailCheck: number;
-  /** Hash of last @mention that triggered (dedup) */
-  lastMention?: string;
-}
-
-export interface AgentState {
-  /** Personal email last-check timestamp (ms) */
-  emailCheck: number;
-  /** Per-group state */
-  groups: Record<string, GroupState>;
-}
+// Re-export types for backward compatibility
+export type { GroupState, AgentState };
 
 const DEFAULT_STATE: AgentState = { emailCheck: 0, groups: {} };
 
-// ── State cache ──────────────────────────────────────────
-const stateCache = new Map<string, { data: AgentState; ts: number }>();
-const STATE_CACHE_TTL = 30_000; // 30s — aligned with autoRespond polling interval
-
 export function loadState(agent: string): AgentState {
-  // Check cache first
-  const cached = stateCache.get(agent);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < STATE_CACHE_TTL) return cached.data;
-
-  const file = stateFile(agent);
-  let data: AgentState;
-  try {
-    if (fs.existsSync(file)) {
-      data = { ...DEFAULT_STATE, ...JSON.parse(fs.readFileSync(file, 'utf-8')) };
-    } else {
-      data = { ...DEFAULT_STATE };
-    }
-  } catch {
-    data = { ...DEFAULT_STATE };
+  const proxy = getAgentRegistry().getOrCreate(agent);
+  // Synchronous wrapper — proxy.loadState() is async but we need sync for backward compat
+  // In practice, state is loaded once and cached
+  const cached = proxy.state;
+  if (cached && (cached.emailCheck > 0 || Object.keys(cached.groups).length > 0)) {
+    return cached;
   }
-
-  stateCache.set(agent, { data, ts: now });
-  return data;
+  // Force load (sync fallback)
+  try {
+    const file = stateFile(agent);
+    if (fs.existsSync(file)) {
+      const data = { ...DEFAULT_STATE, ...JSON.parse(fs.readFileSync(file, 'utf-8')) };
+      (proxy as any)._state = data;
+      (proxy as any)._stateLoaded = true;
+      return data;
+    }
+  } catch {}
+  return { ...DEFAULT_STATE };
 }
 
 export function saveState(agent: string, state: AgentState): void {
+  const proxy = getAgentRegistry().getOrCreate(agent);
+  (proxy as any)._state = state;
+  (proxy as any)._stateLoaded = true;
+
   const file = stateFile(agent);
   const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf-8');
   fs.renameSync(tmp, file);
-  // Update cache with the new data
-  stateCache.set(agent, { data: state, ts: Date.now() });
 }
 
 function stateFile(agent: string): string {

@@ -13,13 +13,20 @@
 import { createInterface } from 'readline';
 import fs from 'fs';
 import path from 'path';
-import http from 'http';
 import { writeAudit, checkPermission } from '../src/lib/audit.js';
 import { writeMemory, readMemory, searchMemory, listMemory, deleteMemory } from '../src/lib/memory.js';
 import { ensureGroupConfig, loadGroupConfig, saveGroupConfig, isGroupAdmin, isGroupOwner, addMember, kickMember, getGroupInfo, setGroupInfo, setGroupAnnouncement, removeGroupAnnouncement, setMemberRole } from '../src/lib/group-config.js';
 import { submitDecision, listPendingRequests } from '../src/lib/consensus.js';
 import { checkToolPermission } from '../src/lib/permission-engine.js';
 import { randomUUID } from 'crypto';
+
+// v0.4: Import shared utilities from tools/shared.ts
+import {
+  WS_BASE_URL, WS_BROADCAST_URL, WS_EVENTS_URL, API_BASE_URL, PROJECT_ROOT,
+  groupsDir, exists, readDir, getAgentGroups,
+  httpPost, fetchJSON, triggerPoll, broadcast, emitBusEvent,
+  readGroupChat, appendToChat,
+} from './tools/shared.js';
 
 // v0.4: Import modular tool handlers
 import { groupTools, handleGroupTool } from './tools/group.js';
@@ -30,128 +37,6 @@ import { consensusTools, handleConsensusTool } from './tools/consensus.js';
 import { memoryTools, handleMemoryTool } from './tools/memory.js';
 import { taskTools, handleTaskTool } from './tools/task.js';
 import { economyTools, handleEconomyTool } from './tools/economy.js';
-
-const WS_BASE_URL = process.env.WS_BASE_URL || `http://localhost:${process.env.WS_PORT || '3003'}`;
-const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || `${WS_BASE_URL}/broadcast`;
-const WS_EVENTS_URL = process.env.WS_EVENTS_URL || `${WS_BASE_URL}/events`;
-const API_BASE_URL = process.env.MIND_API_URL || 'http://127.0.0.1:3000';
-
-/** 触发 auto-respond 立即检查（不等 30s 轮询） */
-function triggerPoll(agent?: string, group?: string) {
-  if (agent) {
-    // v0.4: 定向触发单个 Agent，比 pollAllAgents 快 10x
-    httpPost(`${API_BASE_URL}/api/poll/agent`, { agent, group, trigger: 'mcp' });
-  } else {
-    httpPost(`${API_BASE_URL}/api/poll`, { trigger: 'mcp' });
-  }
-}
-
-/** Fire-and-forget HTTP POST */
-function httpPost(urlStr: string, body: Record<string, unknown>) {
-  try {
-    const data = JSON.stringify(body);
-    const u = new URL(urlStr);
-    const req = http.request({
-      hostname: u.hostname, port: u.port, path: u.pathname,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-    }, (res) => { res.resume(); });
-    req.on('error', () => { /* WS server may not be running */ });
-    req.write(data);
-    req.end();
-  } catch { /* ignore */ }
-}
-
-/** Simple JSON fetch with timeout */
-function fetchJSON(urlStr: string): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const u = new URL(urlStr);
-    const req = http.get(u, (res) => {
-      let body = '';
-      res.on('data', (c: string) => body += c);
-      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
-    });
-    req.on('error', reject);
-    req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')); });
-  });
-}
-
-/** Fire-and-forget broadcast to WebSocket clients (legacy group chat) */
-function broadcast(msg: Record<string, unknown>) {
-  httpPost(WS_BROADCAST_URL, { ...msg, timestamp: new Date().toISOString() });
-}
-
-/** Emit an Event Bus event via HTTP POST to :3001/events */
-function emitBusEvent(
-  event: string,
-  payload: Record<string, unknown>,
-  source?: string
-) {
-  httpPost(WS_EVENTS_URL, {
-    event,
-    payload,
-    timestamp: Date.now(),
-    source: source || agentName,
-    id: randomUUID(),
-  });
-}
-
-const PROJECT_ROOT = process.env.MIND_DATA_DIR || process.cwd();
-
-function groupsDir() { return path.join(PROJECT_ROOT, 'Groups'); }
-function exists(p: string) { return fs.existsSync(p); }
-function readDir(p: string) { return exists(p) ? fs.readdirSync(p, { withFileTypes: true }) : []; }
-
-function getAgentGroups(agentName: string): string[] {
-  const gd = groupsDir();
-  if (!exists(gd)) return [];
-  return readDir(gd)
-    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-    .filter(e => {
-      const agDir = path.join(gd, e.name, 'Agents');
-      if (!exists(agDir)) return false;
-      return readDir(agDir).some(d => d.isDirectory() && d.name.toLowerCase() === agentName.toLowerCase());
-    })
-    .map(e => e.name);
-}
-
-interface ChatMsg { from: string; date: string; body: string; }
-
-function readGroupChat(groupName: string, limit = 20): ChatMsg[] {
-  const chatDir = path.join(groupsDir(), groupName, 'chat');
-  if (!exists(chatDir)) return [];
-  // Read .md files sorted by date, take last 3 days
-  const files = readDir(chatDir)
-    .filter(f => f.name.endsWith('.md'))
-    .map(f => f.name)
-    .sort()
-    .slice(-20);
-  const msgs: ChatMsg[] = [];
-  for (const f of files) {
-    try {
-      const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-      const blocks = raw.split(/\n(?=---\nfrom:)/);
-      for (const block of blocks) {
-        const fmMatch = block.trim().match(/^---\nfrom:\s*(.+?)\ndate:\s*(.+?)\n---\n\n([\s\S]*)/);
-        if (fmMatch) msgs.push({ from: fmMatch[1].trim(), date: fmMatch[2].trim(), body: fmMatch[3].trim() });
-      }
-    } catch { /* skip */ }
-  }
-  return msgs.slice(-limit);
-}
-
-function appendToChat(group: string, from: string, message: string) {
-  const chatDir = path.join(groupsDir(), group, 'chat');
-  if (!exists(chatDir)) fs.mkdirSync(chatDir, { recursive: true });
-  // Per-message file: atomic, no append concurrency
-  const ts = Date.now();
-  const safe = from.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
-  const fpath = path.join(chatDir, `${ts}_${safe}.md`);
-  const content = `---\nfrom: ${from}\ndate: ${new Date().toISOString()}\n---\n\n${message}\n`;
-  const tmp = fpath + '.tmp';
-  fs.writeFileSync(tmp, content, 'utf-8');
-  fs.renameSync(tmp, fpath);
-}
 
 let agentName = '';
 
@@ -261,7 +146,7 @@ rl.on('line', async (line: string) => {
           group,
           mentions,
           length: message.length, // UTF-16 字符数
-        });
+        }, agentName);
 
         // ── EventBus: message.mention (if mentions present) ──
         if (mentions.length > 0) {
@@ -269,7 +154,7 @@ rl.on('line', async (line: string) => {
             sender: agentName,
             group,
             mentioned: mentions,
-          });
+          }, agentName);
         }
 
         respond(id, { content: [{ type: 'text', text: `sent to ${group}` }] });
@@ -332,7 +217,7 @@ rl.on('line', async (line: string) => {
           taskId: `group:${group}`,
           by: agentName,
           duration: 0,
-        });
+        }, agentName);
 
         respond(id, { content: [{ type: 'text', text: `left ${group}` }] });
         return;
@@ -393,14 +278,14 @@ rl.on('line', async (line: string) => {
           title: `Agent ${newName} onboarded (${roles.join(', ')})`,
           createdBy: agentName,
           priority: 'high',
-        });
+        }, agentName);
 
         // ── EventBus: agent.status.changed (new agent online) ───────────
         emitBusEvent('agent.status.changed', {
           agent: newName,
           status: 'idle',
           since: Date.now(),
-        });
+        }, agentName);
 
         respond(id, { content: [{ type: 'text', text: `created ${newName} (${roles.join(', ')}). Tell them to use group_join if they need to join a group.` }] });
         return;
@@ -561,7 +446,7 @@ rl.on('line', async (line: string) => {
         if (!exists(gDir)) { respond(id, { content: [{ type: 'text', text: `group "${group}" not found` }], isError: true }); return; }
         fs.rmSync(gDir, { recursive: true, force: true });
         writeAudit({ agent: agentName, action: 'group.delete', resource: `group:${group}` });
-        emitBusEvent('task.completed', { taskId: `group:${group}`, by: agentName, action: 'group_delete' });
+        emitBusEvent('task.completed', { taskId: `group:${group}`, by: agentName, action: 'group_delete' }, agentName);
         respond(id, { content: [{ type: 'text', text: `deleted group "${group}"` }] });
         return;
       }
@@ -573,7 +458,7 @@ rl.on('line', async (line: string) => {
         const wfPath = path.join(groupsDir(), group, 'workflow.yaml');
         if (!exists(wfPath)) { respond(id, { content: [{ type: 'text', text: `no workflow.yaml in ${group}` }], isError: true }); return; }
         httpPost(`${WS_BASE_URL}/workflows/run`, { yaml: fs.readFileSync(wfPath, 'utf-8'), group });
-        emitBusEvent('task.created', { title: `Workflow triggered for ${group}`, agent: agentName, group });
+        emitBusEvent('task.created', { title: `Workflow triggered for ${group}`, agent: agentName, group }, agentName);
         respond(id, { content: [{ type: 'text', text: `workflow triggered for group "${group}"` }] });
         return;
       }
@@ -601,7 +486,7 @@ rl.on('line', async (line: string) => {
         const { group, approvalId, decision } = a;
         if (!group || !approvalId || !decision) { respond(id, { content: [{ type: 'text', text: 'group, approvalId, decision required' }], isError: true }); return; }
         httpPost(`${WS_BASE_URL}/workflows/approve`, { approvalId, decision });
-        emitBusEvent('task.completed', { taskId: `workflow:${group}`, by: agentName, decision, approvalId });
+        emitBusEvent('task.completed', { taskId: `workflow:${group}`, by: agentName, decision, approvalId }, agentName);
         respond(id, { content: [{ type: 'text', text: `approval ${decision} submitted for ${approvalId}` }] });
         return;
       }

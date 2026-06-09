@@ -4,7 +4,7 @@ import { startScheduler } from '@/lib/scheduler';
 export const dynamic = 'force-dynamic';
 let started = false;
 export async function POST() {
-  if (!started) { started = true; startScheduler(30000); }
+  if (!started) { started = true; startScheduler(); }
   const r = await pollAllAgents();
   const triggered = r.filter(t => t.triggered);
   return NextResponse.json({

@@ -4,11 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { MIND_DIR } from '@/lib/data-dir';
-
-const SETTINGS_FILE = path.join(MIND_DIR, 'settings.json');
+import { getAgency } from '@/lib/agency';
 
 interface MindSettings {
   apiKey?: string;
@@ -19,34 +15,11 @@ interface MindSettings {
   heartbeatIntervalMs?: number;
 }
 
-function loadSettings(): MindSettings {
-  // Start from file, fallback to env, then merge file wins
-  const s: MindSettings = {
-    apiKey: process.env.ANTHROPIC_AUTH_TOKEN || '',
-    baseUrl: process.env.ANTHROPIC_BASE_URL || '',
-    model: process.env.ANTHROPIC_MODEL || '',
-  };
-  try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const file = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
-      if (file.apiKey) s.apiKey = file.apiKey;
-      if (file.baseUrl) s.baseUrl = file.baseUrl;
-      if (file.model) s.model = file.model;
-      if (file.port) s.port = file.port;
-      if (file.wsPort) s.wsPort = file.wsPort;
-      if (file.heartbeatIntervalMs !== undefined) s.heartbeatIntervalMs = file.heartbeatIntervalMs;
-    }
-  } catch {}
-  return s;
-}
-
-function saveSettings(s: MindSettings): void {
-  const { atomicWrite } = require('@/lib/atomic');
-  atomicWrite(SETTINGS_FILE, JSON.stringify(s, null, 2));
-}
-
 export async function GET() {
-  const s = loadSettings();
+  const agency = getAgency();
+  await agency.system.loadSettings();
+
+  const s = agency.system.settings;
   // Mask API key
   const masked = { ...s, apiKey: s.apiKey ? '••••••••' + s.apiKey.slice(-4) : undefined };
   return NextResponse.json(masked);
@@ -55,7 +28,10 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body: MindSettings = await request.json();
-    const current = loadSettings();
+    const agency = getAgency();
+    await agency.system.loadSettings();
+
+    const current = agency.system.settings;
 
     // Only update non-undefined fields. API key: only update if not masked.
     if (body.apiKey && !body.apiKey.startsWith('••••')) current.apiKey = body.apiKey;
@@ -75,7 +51,7 @@ export async function PUT(request: NextRequest) {
     if (body.wsPort !== undefined) current.wsPort = body.wsPort;
     if (body.heartbeatIntervalMs !== undefined) current.heartbeatIntervalMs = body.heartbeatIntervalMs;
 
-    saveSettings(current);
+    await agency.system.saveSettings();
     return NextResponse.json({ success: true, settings: { ...current, apiKey: current.apiKey ? '••••••••' + current.apiKey.slice(-4) : undefined } });
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });

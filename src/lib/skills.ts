@@ -435,13 +435,12 @@ export function searchRelevantSkills(task: string, topK = 3): SkillEntry[] {
  * Load skills context using RAG — only injects relevant skills.
  * Falls back to full injection if no task context available.
  */
-export function loadSkillsContext(agentName: string, taskContext?: string): string {
+export async function loadSkillsContext(agentName: string, taskContext?: string): Promise<string> {
   const agentDir = path.join(AGENTS_DIR, agentName, 'skills');
-  if (!fs.existsSync(agentDir)) return '';
+  try { await fs.promises.access(agentDir); } catch { return ''; }
 
-  const installedSkills = fs.readdirSync(agentDir, { withFileTypes: true })
-    .filter(e => e.isDirectory())
-    .map(e => e.name);
+  const entries = await fs.promises.readdir(agentDir, { withFileTypes: true });
+  const installedSkills = entries.filter(e => e.isDirectory()).map(e => e.name);
 
   if (installedSkills.length === 0) return '';
 
@@ -450,12 +449,10 @@ export function loadSkillsContext(agentName: string, taskContext?: string): stri
     const parts: string[] = [];
     for (const skillName of installedSkills) {
       const promptPath = path.join(agentDir, skillName, 'prompt.md');
-      if (fs.existsSync(promptPath)) {
-        try {
-          const content = fs.readFileSync(promptPath, 'utf-8').trim();
-          if (content) parts.push(`### Skill: ${skillName}\n${content}`);
-        } catch {}
-      }
+      try {
+        const content = (await fs.promises.readFile(promptPath, 'utf-8')).trim();
+        if (content) parts.push(`### Skill: ${skillName}\n${content}`);
+      } catch {}
     }
     return parts.length > 0 ? '\n\n[启用的 Skills]\n' + parts.join('\n\n') : '';
   }

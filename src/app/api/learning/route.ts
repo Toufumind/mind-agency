@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { MIND_DIR } from '@/lib/data-dir';
-
-const LEARNING_DIR = path.join(MIND_DIR, 'learning');
-
-function ensureDir() {
-  if (!fs.existsSync(LEARNING_DIR)) fs.mkdirSync(LEARNING_DIR, { recursive: true });
-}
+import { getLearningProxy } from '@/lib/learning-proxy';
 
 // GET /api/learning?group=<name>&limit=N — get learning records for a group
 export async function GET(request: NextRequest) {
@@ -17,40 +9,34 @@ export async function GET(request: NextRequest) {
   const agent = searchParams.get('agent');
   const workflow = searchParams.get('workflow');
 
-  ensureDir();
+  const learningProxy = getLearningProxy();
 
   if (!group) {
     // List all groups with learning records
-    const files = fs.readdirSync(LEARNING_DIR).filter(f => f.startsWith('learning-') && f.endsWith('.jsonl'));
-    const groups = files.map(f => f.replace('learning-', '').replace('.jsonl', ''));
+    const allRecords = await learningProxy.getAllRecords();
+    const groups = [...new Set(allRecords.map(r => r.group).filter(Boolean))];
     return NextResponse.json({ groups });
   }
 
-  const logFile = path.join(LEARNING_DIR, `learning-${group}.jsonl`);
-  if (!fs.existsSync(logFile)) {
-    return NextResponse.json({ records: [], summary: { avgTotal: 0, count: 0, approved: 0, needsRevision: 0 } });
-  }
-
-  let lines = fs.readFileSync(logFile, 'utf-8').split('\n').filter(Boolean);
-  let records = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  let records = await learningProxy.getGroupRecords(group);
 
   // Filter by agent if specified
   if (agent) {
-    records = records.filter((r: any) => r.agent === agent);
+    records = records.filter(r => r.agent === agent);
   }
   // Filter by workflow if specified
   if (workflow) {
-    records = records.filter((r: any) => r.workflow === workflow);
+    records = records.filter(r => r.workflow === workflow);
   }
 
   records = records.slice(-limit);
 
   // Compute summary
-  const totals = records.map((r: any) => r.evaluation?.total || 0);
-  const approved = records.filter((r: any) => r.evaluation?.verdict === 'APPROVED').length;
-  const needsRevision = records.filter((r: any) => r.evaluation?.verdict === 'NEEDS_REVISION').length;
+  const totals = records.map(r => r.evaluation?.score || 0);
+  const approved = records.filter(r => r.evaluation?.verdict === 'APPROVED').length;
+  const needsRevision = records.filter(r => r.evaluation?.verdict === 'NEEDS_REVISION').length;
   const summary = {
-    avgTotal: totals.length > 0 ? Math.round(totals.reduce((a: number, b: number) => a + b, 0) / totals.length) : 0,
+    avgTotal: totals.length > 0 ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0,
     count: records.length,
     approved,
     needsRevision,
@@ -59,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   // Extract common feedback themes
   const feedbacks = records
-    .map((r: any) => r.evaluation?.feedback)
+    .map(r => r.evaluation?.feedback)
     .filter(Boolean);
   const commonFeedback = feedbacks.slice(-5); // Last 5 feedback items
 
@@ -76,22 +62,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'group and evaluation required' }, { status: 400 });
     }
 
-    ensureDir();
+    const learningProxy = getLearningProxy();
 
     const record = {
-      id: Date.now().toString(36),
+      timestamp: Date.now(),
       group,
       workflow: workflow || 'manual',
       stepId: stepId || 'manual',
       action: action || 'evaluate',
       agent: agent || 'user',
       evaluation,
-      outputSnippet: (outputSnippet || '').slice(0, 500),
-      timestamp: new Date().toISOString(),
     };
 
-    const logFile = path.join(LEARNING_DIR, `learning-${group}.jsonl`);
-    fs.appendFileSync(logFile, JSON.stringify(record) + '\n', 'utf-8');
+    await learningProxy.addRecord(group, record);
 
     return NextResponse.json({ success: true, record });
   } catch (e: any) {

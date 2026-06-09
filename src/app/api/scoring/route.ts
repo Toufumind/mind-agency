@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { MIND_DIR } from '@/lib/data-dir';
-
-const SCORING_DIR = path.join(MIND_DIR, 'scoring');
-const LEARNING_DIR = path.join(MIND_DIR, 'learning');
-
-function ensureDir(dir: string) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
+import { getScoringProxy } from '@/lib/scoring-proxy';
+import { getLearningProxy } from '@/lib/learning-proxy';
 
 /** Heuristic evaluation — fast, free, no AI call */
 function heuristicEvaluate(content: string, type: string) {
@@ -89,40 +81,34 @@ ${content.slice(0, 5000)}
       result = heuristicEvaluate(content, type);
     }
 
-    // Store scoring record
-    ensureDir(SCORING_DIR);
-    const record = {
-      id: Date.now().toString(),
-      type,
-      group,
-      reviewer: reviewer || 'heuristic',
-      scores: result.scores,
-      total: result.total,
-      percentage: result.percentage,
-      feedback: result.feedback,
-      verdict: result.verdict,
-      timestamp: new Date().toISOString(),
-    };
+    const scoringProxy = getScoringProxy();
 
-    const logFile = path.join(SCORING_DIR, `scoring-${type}.jsonl`);
-    fs.appendFileSync(logFile, JSON.stringify(record) + '\n', 'utf-8');
+    // Store scoring record
+    await scoringProxy.addRecord({
+      timestamp: Date.now(),
+      agent: reviewer || 'heuristic',
+      group: group || 'default',
+      score: result.total,
+      maxScore: 40,
+      reason: result.feedback,
+    });
 
     // Also store in learning records if group is provided
     if (group) {
-      ensureDir(LEARNING_DIR);
-      const learningRecord = {
-        id: record.id,
+      const learningProxy = getLearningProxy();
+      await learningProxy.addRecord(group, {
+        timestamp: Date.now(),
+        agent: reviewer || 'heuristic',
         group,
         workflow: type,
         stepId: 'direct-eval',
         action: type,
-        agent: reviewer || 'heuristic',
-        evaluation: { ...result.scores, total: result.total, feedback: result.feedback, verdict: result.verdict },
-        outputSnippet: content.slice(0, 500),
-        timestamp: new Date().toISOString(),
-      };
-      const learningFile = path.join(LEARNING_DIR, `learning-${group}.jsonl`);
-      fs.appendFileSync(learningFile, JSON.stringify(learningRecord) + '\n', 'utf-8');
+        evaluation: {
+          verdict: result.verdict as 'APPROVED' | 'NEEDS_REVISION' | 'REJECTED',
+          feedback: result.feedback,
+          score: result.total,
+        },
+      });
     }
 
     return NextResponse.json({ success: true, ...result });
@@ -140,36 +126,27 @@ export async function GET(request: NextRequest) {
 
   // If group is specified, return learning records
   if (group) {
-    const learningFile = path.join(LEARNING_DIR, `learning-${group}.jsonl`);
-    if (!fs.existsSync(learningFile)) {
-      return NextResponse.json({ records: [], summary: { avgTotal: 0, count: 0, approved: 0, needsRevision: 0 } });
-    }
-    const lines = fs.readFileSync(learningFile, 'utf-8').split('\n').filter(Boolean);
-    const records = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean).slice(-50);
+    const learningProxy = getLearningProxy();
+    const records = await learningProxy.getGroupRecords(group);
+    const recentRecords = records.slice(-50);
 
-    const totals = records.map((r: any) => r.evaluation?.total || 0);
-    const approved = records.filter((r: any) => r.evaluation?.verdict === 'APPROVED').length;
-    const needsRevision = records.filter((r: any) => r.evaluation?.verdict === 'NEEDS_REVISION').length;
+    const totals = records.map(r => r.evaluation?.score || 0);
+    const approved = records.filter(r => r.evaluation?.verdict === 'APPROVED').length;
+    const needsRevision = records.filter(r => r.evaluation?.verdict === 'NEEDS_REVISION').length;
     const summary = {
-      avgTotal: totals.length > 0 ? Math.round(totals.reduce((a: number, b: number) => a + b, 0) / totals.length) : 0,
+      avgTotal: totals.length > 0 ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0,
       count: records.length,
       approved,
       needsRevision,
     };
 
-    return NextResponse.json({ records, summary });
+    return NextResponse.json({ records: recentRecords, summary });
   }
 
   // Default: return scoring history
-  ensureDir(SCORING_DIR);
-  const logFile = path.join(SCORING_DIR, `scoring-${type}.jsonl`);
-
-  if (!fs.existsSync(logFile)) {
-    return NextResponse.json({ history: [] });
-  }
-
-  const lines = fs.readFileSync(logFile, 'utf-8').split('\n').filter(Boolean);
-  const history = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean).slice(-20);
+  const scoringProxy = getScoringProxy();
+  const records = await scoringProxy.getGroupRecords(type === 'all' ? 'default' : type);
+  const history = records.slice(-20);
 
   return NextResponse.json({ history });
 }

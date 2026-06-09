@@ -1,11 +1,11 @@
 /**
- * Agent auto-respond — Signal-based notification protocol.
+ * Agent auto-respond -- Signal-based notification protocol.
  *
  * Design:
  *   1. Check WHAT happened (counts, not content).
- *   2. Build a SIGNAL prompt — tell the Agent "you have N new things, go look".
+ *   2. Build a SIGNAL prompt -- tell the Agent "you have N new things, go look".
  *   3. Agent uses MCP tools (group_read, email) to pull content itself.
- *   4. Agent decides whether to respond — system does NOT auto-post replies.
+ *   4. Agent decides whether to respond -- system does NOT auto-post replies.
  *
  * Channels checked:
  *   - Personal email:  Agents/<name>/email/
@@ -14,6 +14,8 @@
  *   - @mentions:       Group chat messages containing @AgentName
  *
  * Real-time: fs.watch (new files) + 30s polling fallback (content append).
+ *
+ * Uses AgentProxy for agent operations and EmailProxy for email operations.
  */
 
 import fs from 'fs';
@@ -24,6 +26,8 @@ import { AGENTS_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
 import { loadState, saveState, ensureGroup, getAgentGroups, invalidateGroupsCache, type AgentState } from './state';
 import { setActivity, clearActivity } from './agent-activity';
 import { agentCache } from './cache';
+import { AgentProxy } from './agent-proxy';
+import { getEmailProxy } from './email-proxy';
 
 // ── Signal debounce: per-agent last-spawn time ─────────
 
@@ -32,7 +36,7 @@ const DEBOUNCE_URGENT = 5_000;
 const DEBOUNCE_IDLE   = 15_000;
 const sleepMs = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-// ── v0.4: Request Queue — prevent duplicate spawns per agent ─────────
+// ── v0.4: Request Queue -- prevent duplicate spawns per agent ─────────
 
 // Use shared agent queue from agent-queue.ts (prevents circular dependency with chat.ts)
 import { enqueueAgent } from './agent-queue';
@@ -179,7 +183,7 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
       dirty = true;
     }
 
-    // 2b. Group chat — new messages since lastCheck
+    // 2b. Group chat -- new messages since lastCheck
     const chatDir = path.join(GROUPS_DIR, g, 'chat');
     if (fs.existsSync(chatDir)) {
       let newCount = 0;
@@ -191,7 +195,7 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
         const fp = path.join(chatDir, cf);
         try {
           const st = fs.statSync(fp);
-          // File modified since last check → may contain new messages
+          // File modified since last check -> may contain new messages
           if (st.mtimeMs <= gs.chatCheck) continue;
         } catch { continue; }
 
@@ -222,7 +226,7 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
 
       if (newCount > 0) {
         signal.newMessages[g] = newCount;
-        // Advance chatCheck even if no @mention — prevents re-scanning same files.
+        // Advance chatCheck even if no @mention -- prevents re-scanning same files.
         // The agent won't be spawned, but we won't re-detect these messages next tick.
         gs.chatCheck = now;
         dirty = true;
@@ -269,14 +273,14 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
 
   if (totalNew === 0) return null;
 
-  // DON'T save state here — emailCheck will advance only after the agent
+  // DON'T save state here -- emailCheck will advance only after the agent
   // successfully processes the email. If the software is closed before
   // autoRespond completes, the email stays "unseen" and gets re-detected
   // on next startup (mtime > old emailCheck).
   return { signal, state, dirty };
 }
 
-// ── Signal → Prompt ─────────────────────────────────────
+// ── Signal -> Prompt ─────────────────────────────────────
 
 function signalToPrompt(agent: string, sig: Signal, groupName?: string): string {
   const lines: string[] = [];
@@ -376,7 +380,7 @@ export async function autoRespond(
     return { triggered: false, reason: 'autoRespond disabled' };
   }
 
-  // Invalidate stale caches — new agent may have joined since last scan
+  // Invalidate stale caches -- new agent may have joined since last scan
   // First get current groups (before invalidation), then invalidate all related caches
   const agentGroups = getAgentGroups(agent);
   for (const g of agentGroups) {
@@ -387,7 +391,7 @@ export async function autoRespond(
   // v0.5: Move buildSignal inside enqueueAgent to prevent race condition
   // where two concurrent calls read the same state and overwrite each other
   return enqueueAgent(agent, async () => {
-    // Build signal (reads state — now serialized per agent)
+    // Build signal (reads state -- now serialized per agent)
     const result = buildSignal(agent);
 
     // Nothing to do
@@ -407,17 +411,17 @@ export async function autoRespond(
     signal.priority = 'low';
   }
 
-  // Chat-only messages → advance chatCheck (not emailCheck)
+  // Chat-only messages -> advance chatCheck (not emailCheck)
   if (!signal.urgent && signal.personalEmails === 0 &&
       Object.values(signal.groupEmails).every(n => n === 0) &&
       !options?.force) {
-    // chatCheck was already advanced in buildSignal — persist that
+    // chatCheck was already advanced in buildSignal -- persist that
     saveState(agent, state);
     return { triggered: false, reason: 'chat-only, state updated' };
   }
 
-  // ── Debounce — prevent duplicate spawns from watcher+poll overlap ──
-  // v0.4: Priority-based debounce — critical bypasses, low has longer window
+  // ── Debounce -- prevent duplicate spawns from watcher+poll overlap ──
+  // v0.4: Priority-based debounce -- critical bypasses, low has longer window
   const now = Date.now();
   const last = lastSpawn.get(agent) || 0;
   const window = signal.priority === 'critical' ? DEBOUNCE_URGENT : signal.priority === 'low' ? 120_000 : DEBOUNCE_IDLE;
@@ -473,7 +477,7 @@ export async function autoRespond(
 
 // ── Heartbeat ────────────────────────────────────────────
 // Periodic wake-up. Enabling autoRespondToEmail fires heartbeat every N seconds.
-// No signal scanning, no task injection — just a gentle "you've been woken" nudge.
+// No signal scanning, no task injection -- just a gentle "you've been woken" nudge.
 
 const lastHeartbeat = new Map<string, number>();
 
@@ -507,11 +511,18 @@ export async function agentHeartbeat(agent: string, intervalMs: number): Promise
 // ── Batch poll ──────────────────────────────────────────
 
 export async function pollAllAgents(groupName?: string): Promise<{ agent: string; triggered: boolean; reason?: string }[]> {
-  if (!fs.existsSync(AGENTS_DIR)) return [];
-
-  const agents = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
-    .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-    .map(e => e.name);
+  // Use AgentProxy for listing agents
+  const agents: string[] = [];
+  if (fs.existsSync(AGENTS_DIR)) {
+    for (const entry of fs.readdirSync(AGENTS_DIR, { withFileTypes: true })) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        const agentProxy = new AgentProxy(entry.name);
+        if (agentProxy.exists()) {
+          agents.push(entry.name);
+        }
+      }
+    }
+  }
 
   return Promise.all(
     agents.map(async (a) => {
@@ -527,7 +538,7 @@ export async function pollAllAgents(groupName?: string): Promise<{ agent: string
 
 // ── Targeted single-agent poll (v0.4: MCP direct notify) ──
 
-/** Poll a single agent — 10x faster than pollAllAgents when you know which agent changed */
+/** Poll a single agent -- 10x faster than pollAllAgents when you know which agent changed */
 export async function pollAgent(agent: string, groupName?: string): Promise<{ agent: string; triggered: boolean; reason?: string }> {
   try {
     const result = await autoRespond(agent, { groupName });

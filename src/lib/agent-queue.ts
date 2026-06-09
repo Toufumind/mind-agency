@@ -7,6 +7,8 @@
  * Usage:
  *   import { enqueueAgent } from './agent-queue';
  *   const result = await enqueueAgent('Alice', () => doSomething());
+ *
+ * v1.3: Uses AgentProxy for unified state management.
  */
 
 const queues = new Map<string, Promise<void>>();
@@ -25,4 +27,11 @@ export async function enqueueAgent<T>(agent: string, task: () => Promise<T>): Pr
   }));
   await next;
   return result;
+}
+
+/**
+ * Get the current agent being processed (for deadlock prevention).
+ */
+export function getCurrentAgent(): string | null {
+  return (global as any).__currentAgent || null;
 }

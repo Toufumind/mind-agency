@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getGroupRegistry } from '@/lib/group-registry';
+import { getAgentRegistry } from '@/lib/agent-registry';
 import fs from 'fs';
 import path from 'path';
-import { GROUPS_DIR, AGENTS_DIR } from '@/lib/data-dir';
+import { GROUPS_DIR } from '@/lib/data-dir';
 
 // ── POST /api/groups — create a new group ────────────────
 
@@ -13,33 +15,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid group name' }, { status: 400 });
     }
 
-    const gDir = path.join(GROUPS_DIR, name);
-    if (fs.existsSync(gDir)) {
+    const registry = getGroupRegistry();
+    const existingProxy = registry.get(name);
+    if (existingProxy && existingProxy.exists()) {
       return NextResponse.json({ error: 'Group already exists' }, { status: 409 });
     }
 
-    // Create group structure
-    fs.mkdirSync(path.join(gDir, 'Agents'), { recursive: true });
-    fs.mkdirSync(path.join(gDir, 'chat'), { recursive: true });
+    // Create group via proxy
+    const proxy = registry.getOrCreate(name);
+
+    // Set config
+    proxy.config.name = name;
+    proxy.config.owner = body.owner || '';
+    proxy.config.admins = body.admins || [];
+    await proxy.saveConfig();
 
     // Add initial members if provided
+    const agentRegistry = getAgentRegistry();
     const members: string[] = body.members || [];
     for (const member of members) {
       const memberName = (member || '').trim();
       if (!memberName) continue;
-      const agentDir = path.join(AGENTS_DIR, memberName);
-      if (!fs.existsSync(agentDir)) continue; // skip non-existent agents
-      const memberLink = path.join(gDir, 'Agents', memberName);
-      if (!fs.existsSync(memberLink)) {
-        fs.mkdirSync(memberLink, { recursive: true });
-      }
+      const agentProxy = agentRegistry.getOrCreate(memberName);
+      if (!agentProxy.exists()) continue;
+      await proxy.addMember(memberName);
     }
 
     // Default TASK_SPEC
-    fs.writeFileSync(path.join(gDir, 'TASK_SPEC.md'), `# ${name} 任务规则\n\n群组已创建，暂无任务规则。`, 'utf-8');
+    const groupDir = path.join(GROUPS_DIR, name);
+    if (!fs.existsSync(groupDir)) fs.mkdirSync(groupDir, { recursive: true });
+    fs.writeFileSync(path.join(groupDir, 'TASK_SPEC.md'), `# ${name} 任务规则\n\n群组已创建，暂无任务规则。`, 'utf-8');
 
     // Default workflow.yaml
-    fs.writeFileSync(path.join(gDir, 'workflow.yaml'), `name: ${name}-default\ndescription: "Default workflow for ${name}"\nsteps: []\n`, 'utf-8');
+    await proxy.saveWorkflow(`name: ${name}-default\ndescription: "Default workflow for ${name}"\nsteps: []\n`);
 
     return NextResponse.json({ success: true, name });
   } catch {

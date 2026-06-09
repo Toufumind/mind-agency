@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
     const agent = searchParams.get('agent');
 
     const logs = agent
-      ? readAgentAuditLogs(agent, limit)
-      : readAuditLogs(limit);
+      ? await readAgentAuditLogs(agent, limit)
+      : await readAuditLogs(limit);
 
     return NextResponse.json({ logs, count: logs.length });
   } catch {

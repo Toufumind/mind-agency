@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
-import { GROUPS_DIR } from '@/lib/data-dir';
+import { getGroupRegistry } from '@/lib/group-registry';
 import { broadcastWs } from '@/lib/ws-embedded';
 
 // Simple cache for group API responses (10s TTL for fresh chat data)
@@ -20,45 +18,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
   }
 
-  const groupDir = path.join(GROUPS_DIR, name);
+  const registry = getGroupRegistry();
+  const proxy = registry.getOrCreate(name);
 
-  if (!fs.existsSync(groupDir)) {
+  if (!proxy.exists()) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
 
   // Parse limit from query params (default: 20)
   const limit = Math.min(Math.max(parseInt(request.nextUrl.searchParams.get('limit') || '20', 10) || 20, 1), 200);
 
-  // Members
-  const agentsDir = path.join(groupDir, 'Agents');
-  const members: string[] = [];
-  if (fs.existsSync(agentsDir)) {
-    for (const e of fs.readdirSync(agentsDir, { withFileTypes: true })) {
-      if (e.isDirectory()) members.push(e.name);
-    }
-  }
-
-  // Chat messages
-  interface ChatEntry { from: string; date: string; body: string; file: string; }
-  const messages: ChatEntry[] = [];
-  const chatDir = path.join(groupDir, 'chat');
-  if (fs.existsSync(chatDir)) {
-    const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort().slice(-limit);
-    for (const f of files) {
-      try {
-        const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
-        const blocks = raw.split(/\n(?=---\nfrom:)/);
-        for (const block of blocks) {
-          const m = block.trim().match(/^---\nfrom:\s*(.+?)\ndate:\s*(.+?)\n---\n\n([\s\S]*)/);
-          if (m) messages.push({ from: m[1].trim(), date: m[2].trim(), body: m[3].trim(), file: f });
-        }
-      } catch {}
-    }
-  }
+  // Load members and messages via proxy
+  await proxy.loadMembers();
+  const members = proxy.members.map(m => m.name);
+  const messages = await proxy.getMessages(limit);
 
   // Group info from config
-  const { getGroupInfo } = await import('@/lib/group-config');
-  const info = getGroupInfo(name);
+  await proxy.loadConfig();
+  const info = {
+    name: proxy.config.name,
+    description: proxy.config.description,
+    owner: proxy.config.owner,
+    admins: proxy.config.admins,
+    announcement: proxy.config.announcement,
+  };
 
   const result = { group: name, members, messages, messageCount: messages.length, info };
 
@@ -75,8 +58,11 @@ export async function POST(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const groupDir = path.join(GROUPS_DIR, name);
-  if (!fs.existsSync(groupDir)) {
+
+  const registry = getGroupRegistry();
+  const proxy = registry.getOrCreate(name);
+
+  if (!proxy.exists()) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
 
@@ -94,8 +80,8 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid sender name' }, { status: 400 });
   }
 
-  const { writeChatMessage } = await import('@/lib/atomic');
-  writeChatMessage(groupDir, from, message);
+  // Send message via proxy
+  await proxy.sendMessage(from, message);
 
   // Push to all connected clients in real time
   broadcastWs('group_message', { group: name, from, message, date: new Date().toISOString() });
@@ -108,10 +94,25 @@ export async function DELETE(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const groupDir = path.join(GROUPS_DIR, name);
-  if (!fs.existsSync(groupDir)) {
+
+  const registry = getGroupRegistry();
+  const proxy = registry.getOrCreate(name);
+
+  if (!proxy.exists()) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
-  fs.rmSync(groupDir, { recursive: true, force: true });
+
+  // Remove group via registry (this will clean up the proxy)
+  registry.remove(name);
+
+  // Also remove the directory
+  const fs = require('fs');
+  const path = require('path');
+  const { GROUPS_DIR } = require('@/lib/data-dir');
+  const groupDir = path.join(GROUPS_DIR, name);
+  if (fs.existsSync(groupDir)) {
+    fs.rmSync(groupDir, { recursive: true, force: true });
+  }
+
   return NextResponse.json({ success: true });
 }

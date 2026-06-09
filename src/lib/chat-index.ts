@@ -1,30 +1,33 @@
 /**
  * Chat Message Index — in-memory with JSON persistence.
  *
- * Scans all Groups/<name>/chat/*.md → builds structured index.
+ * Scans all Groups/<name>/chat/*.md -> builds structured index.
  * Incremental on subsequent loads (only re-scans files with newer mtime).
  *
  * Index structures:
- *   messages[]      — all messages, newest first
- *   byGroup[g][d]   — group→date→message IDs
- *   byAgent[from]   — agent→message IDs (who said it)
- *   byMention[name] — mentioned agent→message IDs
- *   inverted[word]  — word→message ID set (lowercase, min 2 chars)
+ *   messages[]      -- all messages, newest first
+ *   byGroup[g][d]   -- group->date->message IDs
+ *   byAgent[from]   -- agent->message IDs (who said it)
+ *   byMention[name] -- mentioned agent->message IDs
+ *   inverted[word]  -- word->message ID set (lowercase, min 2 chars)
  *
  * Query API:
- *   search(q)          → keyword search
- *   getByGroup(g, n)  → recent N from group
- *   getByAgent(a, n)  → recent N by agent
- *   getMentionsOf(a)  → messages mentioning a
- *   getUnread(g, a)   → messages since last check
+ *   search(q)          -> keyword search
+ *   getByGroup(g, n)  -> recent N from group
+ *   getByAgent(a, n)  -> recent N by agent
+ *   getMentionsOf(a)  -> messages mentioning a
+ *   getUnread(g, a)   -> messages since last check
  *
  * Serialized to: .mind/chat-index.json
+ *
+ * Uses AgentProxy for agent-related operations.
  */
 
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { GROUPS_DIR, MIND_DIR } from './data-dir';
+import { AgentProxy } from './agent-proxy';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -44,15 +47,15 @@ export interface ChatIndex {
   version: 1;
   builtAt: number;
   messages: IndexedMessage[];
-  /** file path → last mtime seen */
+  /** file path -> last mtime seen */
   fileMtimes: Record<string, number>;
-  /** group → date → message IDs */
+  /** group -> date -> message IDs */
   byGroup: Record<string, Record<string, string[]>>;
-  /** agent name (lowercase) → message IDs */
+  /** agent name (lowercase) -> message IDs */
   byAgent: Record<string, string[]>;
-  /** mentioned name (lowercase) → message IDs */
+  /** mentioned name (lowercase) -> message IDs */
   byMention: Record<string, string[]>;
-  /** word (lowercase) → Set of message IDs */
+  /** word (lowercase) -> Set of message IDs */
   inverted: Record<string, string[]>;
 }
 
@@ -263,7 +266,7 @@ export function refreshIndex(): number {
   if (newCount > 0) {
     dirty = true;
     console.log(`[index] +${newCount} new messages (total: ${idx.messages.length})`);
-    saveIndex(); // persist immediately — no need to wait for scheduler to stop
+    saveIndex(); // persist immediately -- no need to wait for scheduler to stop
   }
   return newCount;
 }

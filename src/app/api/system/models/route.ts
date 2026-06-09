@@ -3,25 +3,17 @@
  */
 
 import { NextResponse } from 'next/server';
-import { MIND_DIR } from '@/lib/data-dir';
+import { getAgency } from '@/lib/agency';
 import http from 'http';
-import fs from 'fs';
-import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  // Read API config from settings
-  const settingsPath = path.join(MIND_DIR, 'settings.json');
-  let settings: any = {};
-  try {
-    if (fs.existsSync(settingsPath)) {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-    }
-  } catch {}
+  const agency = getAgency();
+  await agency.system.loadSettings();
 
-  const baseUrl = settings.baseUrl || '';
-  const apiKey = settings.apiKey || '';
+  const baseUrl = agency.system.settings.baseUrl || '';
+  const apiKey = agency.system.settings.apiKey || '';
 
   if (!baseUrl || !apiKey) {
     return NextResponse.json({ models: getDefaultModels(), source: 'default' });
@@ -36,7 +28,7 @@ export async function GET() {
   } catch {}
 
   // API query failed — use the configured model from settings
-  const configuredModel = settings.model || '';
+  const configuredModel = agency.system.settings.model || '';
   if (configuredModel) {
     return NextResponse.json({ models: [{ id: configuredModel, label: configuredModel }], source: 'configured' });
   }

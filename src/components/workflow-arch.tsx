@@ -91,18 +91,18 @@ function buildLayers(steps: Step[]): Step[][] {
 export default function WorkflowArch({ steps, run }: Props) {
   const layers = useMemo(() => buildLayers(steps), [steps]);
 
-  // Fixed SVG dimensions — match Transformer diagram proportions exactly
-  const svgW = 620;
-  const svgH = layers.length * 95 + 70;
+  // Fixed SVG dimensions — elegant proportions
+  const svgW = 420;
+  const svgH = layers.length * 85 + 60;
 
-  // Calculate block positions — match Transformer proportions exactly
+  // Calculate block positions — elegant, compact
   const positions = useMemo(() => {
     const pos = new Map<string, { x: number; y: number; w: number; h: number }>();
-    const blockW = 380; // Transformer blocks are about 380px wide
-    const blockH = 60;  // Transformer blocks are about 60px tall
-    const gapY = 35;
+    const blockW = 200; // Elegant width
+    const blockH = 45;  // Elegant height
+    const gapY = 40;
     const startX = (svgW - blockW) / 2;
-    const startY = 30;
+    const startY = 25;
 
     for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
       const layer = layers[layerIdx];
@@ -111,7 +111,7 @@ export default function WorkflowArch({ steps, run }: Props) {
       if (layer.length === 1) {
         pos.set(layer[0].id, { x: startX, y, w: blockW, h: blockH });
       } else {
-        const gap = 12;
+        const gap = 10;
         const singleW = (blockW - gap * (layer.length - 1)) / layer.length;
         for (let i = 0; i < layer.length; i++) {
           pos.set(layer[i].id, { x: startX + i * (singleW + gap), y, w: singleW, h: blockH });
@@ -155,10 +155,14 @@ export default function WorkflowArch({ steps, run }: Props) {
               const x2 = to.x + to.w / 2;
               const y2 = to.y + to.h;
 
+              // Curved arrow like Transformer diagram
+              const midY = (y1 + y2) / 2;
+              const path = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+
               return (
-                <line key={`${step.id}-${target.id}`}
-                  x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke="#333" strokeWidth="2.5" markerEnd="url(#arrowhead)" />
+                <path key={`${step.id}-${target.id}`}
+                  d={path}
+                  fill="none" stroke="#333" strokeWidth="1.5" markerEnd="url(#arrowhead)" />
               );
             });
           });
@@ -173,11 +177,11 @@ export default function WorkflowArch({ steps, run }: Props) {
           return (
             <g key={stepId}>
               <rect x={pos.x} y={pos.y} width={pos.w} height={pos.h}
-                fill={colors.fill} stroke={colors.stroke} strokeWidth="2" rx="4" />
-              <text x={pos.x + pos.w / 2} y={pos.y + 25} fontSize="14" fontWeight="bold" fill="#333" textAnchor="middle" fontFamily="monospace">
+                fill={colors.fill} stroke={colors.stroke} strokeWidth="1" rx="2" />
+              <text x={pos.x + pos.w / 2} y={pos.y + 18} fontSize="11" fontWeight="bold" fill="#333" textAnchor="middle" fontFamily="monospace">
                 {step.id}
               </text>
-              <text x={pos.x + pos.w / 2} y={pos.y + 42} fontSize="11" fill="#555" textAnchor="middle" fontFamily="monospace">
+              <text x={pos.x + pos.w / 2} y={pos.y + 30} fontSize="9" fill="#555" textAnchor="middle" fontFamily="monospace">
                 {step.agent || '?'} · {step.action || 'execute'}
               </text>
             </g>
@@ -191,7 +195,7 @@ export default function WorkflowArch({ steps, run }: Props) {
           </text>
         )}
 
-        {/* Skip connections — like Transformer diagram */}
+        {/* Skip connections — curved like Transformer diagram */}
         {layers.length > 1 && layers[0].map(step => {
           const from = positions.get(step.id);
           if (!from) return null;
@@ -201,10 +205,14 @@ export default function WorkflowArch({ steps, run }: Props) {
             const to = positions.get(target.id);
             if (!to) return null;
             const skipX = from.x - 15;
+            const y1 = from.y + from.h / 2;
+            const y2 = to.y + to.h / 2;
+            const midY = (y1 + y2) / 2;
+            // Curved skip connection
+            const path = `M ${from.x + from.w / 2} ${from.y} C ${skipX} ${y1}, ${skipX} ${y2}, ${to.x + to.w / 2} ${to.y + to.h}`;
             return (
               <g key={`skip-${step.id}-${target.id}`}>
-                <line x1={skipX} y1={from.y + from.h / 2} x2={skipX} y2={to.y + to.h / 2}
-                  stroke="#333" strokeWidth="1.5" markerEnd="url(#arrowhead)" />
+                <path d={path} fill="none" stroke="#333" strokeWidth="1" strokeDasharray="4,2" />
               </g>
             );
           });

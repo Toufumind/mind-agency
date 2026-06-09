@@ -410,7 +410,7 @@ class ClaudeProxyProvider implements AgentProvider {
           let ragContext = '';
           if (!RAG_SKIP_TOOLS.has(toolName)) {
             try {
-              ragContext = loadSkillsContext(spawnOpts.agentName, result.content);
+              ragContext = await loadSkillsContext(spawnOpts.agentName, result.content);
             } catch {}
           }
 

@@ -101,7 +101,7 @@ export async function POST(
   } catch {}
 
   // SSE stream — pass group/model/overrides/fresh
-  const stream = createChatStream(name, message, group || undefined, model || undefined, cliResult.optsOverrides, fresh);
+  const stream = await createChatStream(name, message, group || undefined, model || undefined, cliResult.optsOverrides, fresh);
 
   // Buffer SSE chunks for caching (lazily, only if the stream completes)
   const chunks: string[] = [];

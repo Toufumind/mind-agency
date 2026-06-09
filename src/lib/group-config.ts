@@ -6,11 +6,15 @@
  *
  * Anyone can send messages. Admin actions (kick, set_admin, edit workflow,
  * delete group) require owner or admin role.
+ *
+ * Uses GroupProxy for cached access where possible.
+ * Keeps sync fs operations for backward compatibility with sync callers.
  */
 
 import fs from 'fs';
 import path from 'path';
 import { GROUPS_DIR } from './data-dir';
+import { GroupProxy } from './group-proxy';
 
 export interface GroupAnnouncement {
   title: string;

@@ -7,42 +7,45 @@
  *   - workflow engine → sets 'working' during workflow step execution
  *
  * Exposed via heartbeat API so the frontend sidebar can show real-time status.
+ *
+ * v1.3: Uses AgentProxy for unified state management.
  */
 
-export type AgentStatus = 'idle' | 'processing' | 'chatting' | 'working';
+import { getAgentRegistry } from './agent-registry';
+import { AgentStatus, AgentActivity } from './agent-proxy';
 
-export interface AgentActivity {
-  status: AgentStatus;
-  /** Human-readable one-liner, e.g. "Replying to Bob's email" */
-  detail: string;
-  /** Timestamp when this activity was last updated (epoch ms) */
-  updatedAt: number;
-}
-
-const activities = new Map<string, AgentActivity>();
+// Re-export types for backward compatibility
+export type { AgentStatus, AgentActivity };
 
 /** Set or update an agent's current activity. */
 export function setActivity(agent: string, status: AgentStatus, detail: string): void {
-  activities.set(agent, { status, detail, updatedAt: Date.now() });
+  const proxy = getAgentRegistry().getOrCreate(agent);
+  proxy.setStatus(status, detail);
 }
 
 /** Reset an agent to idle (e.g. after auto-respond finishes). */
 export function clearActivity(agent: string): void {
-  activities.set(agent, { status: 'idle', detail: '', updatedAt: Date.now() });
+  const proxy = getAgentRegistry().getOrCreate(agent);
+  proxy.clearStatus();
 }
 
 /** Get a snapshot of all agent activities. */
 export function getAllActivities(): Record<string, AgentActivity> {
   const result: Record<string, AgentActivity> = {};
-  for (const [agent, act] of activities) {
-    result[agent] = act;
+  const registry = getAgentRegistry();
+
+  // Include agents from registry
+  for (const proxy of registry.getAll()) {
+    result[proxy.name] = proxy.activity;
   }
+
   return result;
 }
 
 /** Get a single agent's activity (defaults to idle if unknown). */
 export function getActivity(agent: string): AgentActivity {
-  return activities.get(agent) || { status: 'idle', detail: '', updatedAt: 0 };
+  const proxy = getAgentRegistry().getOrCreate(agent);
+  return proxy.activity;
 }
 
 /**
@@ -51,9 +54,11 @@ export function getActivity(agent: string): AgentActivity {
  */
 export function pruneStaleActivities(): void {
   const cutoff = Date.now() - 300_000;
-  for (const [agent, act] of activities) {
-    if (act.updatedAt < cutoff && act.status !== 'idle') {
-      activities.set(agent, { status: 'idle', detail: '', updatedAt: Date.now() });
+  const registry = getAgentRegistry();
+
+  for (const proxy of registry.getAll()) {
+    if (proxy.activity.updatedAt < cutoff && proxy.activity.status !== 'idle') {
+      proxy.clearStatus();
     }
   }
 }

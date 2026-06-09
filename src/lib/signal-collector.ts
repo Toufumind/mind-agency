@@ -2,7 +2,7 @@
  * Signal Collector — Event-driven signal collection for scheduler.
  *
  * Collects signals from file changes (via watcher) and periodic scans.
- * Replaces the per-agent scan in autoRespond with a centralized queue.
+ * Each agent has its own priority queue to avoid starvation.
  */
 
 import fs from 'fs';
@@ -29,57 +29,105 @@ export const SIGNAL_PRIORITY = {
   low: 2,       // heartbeat, periodic scan
 } as const;
 
-// v1.2: Priority bucket queue — O(1) insert, O(1) dequeue by priority
-const criticalQueue: Signal[] = [];
-const normalQueue: Signal[] = [];
-const lowQueue: Signal[] = [];
-const MAX_QUEUE_SIZE = 100;
+// v1.3: Per-agent priority queues
+const agentQueues = new Map<string, {
+  critical: Signal[];
+  normal: Signal[];
+  low: Signal[];
+}>();
+
+const MAX_QUEUE_PER_AGENT = 50;
 
 // Per-agent last scan time (to avoid duplicate signals)
 const lastScanTime = new Map<string, number>();
 const SCAN_COOLDOWN = 10_000; // 10s cooldown between scans for same agent
 
+function getAgentQueue(agent: string) {
+  let q = agentQueues.get(agent);
+  if (!q) {
+    q = { critical: [], normal: [], low: [] };
+    agentQueues.set(agent, q);
+  }
+  return q;
+}
+
 /**
- * Add a signal to the queue (called by watcher or periodic scan)
+ * Add a signal to the agent's queue
  */
 export function enqueueSignal(signal: Signal): void {
   // Deduplicate: don't add if same agent+type within cooldown
   const lastScan = lastScanTime.get(`${signal.agent}:${signal.type}`) || 0;
   if (Date.now() - lastScan < SCAN_COOLDOWN) return;
 
-  // Don't exceed queue size
-  const totalSize = criticalQueue.length + normalQueue.length + lowQueue.length;
-  if (totalSize >= MAX_QUEUE_SIZE) {
-    // Remove lowest priority signal
-    if (lowQueue.length > 0) lowQueue.pop();
-    else if (normalQueue.length > 0) normalQueue.pop();
+  const q = getAgentQueue(signal.agent);
+  const totalSize = q.critical.length + q.normal.length + q.low.length;
+
+  // Don't exceed queue size per agent
+  if (totalSize >= MAX_QUEUE_PER_AGENT) {
+    if (q.low.length > 0) q.low.pop();
+    else if (q.normal.length > 0) q.normal.pop();
   }
 
-  // O(1) insert into priority bucket
+  // Insert into priority bucket
   const priority = signal.priority || 'normal';
-  if (priority === 'critical') criticalQueue.push(signal);
-  else if (priority === 'low') lowQueue.push(signal);
-  else normalQueue.push(signal);
+  if (priority === 'critical') q.critical.push(signal);
+  else if (priority === 'low') q.low.push(signal);
+  else q.normal.push(signal);
 
   lastScanTime.set(`${signal.agent}:${signal.type}`, Date.now());
 }
 
 /**
- * Get next signal from queue (for scheduler to consume)
+ * Get next signal for a specific agent
  */
-export function dequeueSignal(): Signal | undefined {
-  // O(1) dequeue from highest priority non-empty bucket
-  if (criticalQueue.length > 0) return criticalQueue.shift();
-  if (normalQueue.length > 0) return normalQueue.shift();
-  if (lowQueue.length > 0) return lowQueue.shift();
+export function dequeueSignalFor(agent: string): Signal | undefined {
+  const q = agentQueues.get(agent);
+  if (!q) return undefined;
+
+  if (q.critical.length > 0) return q.critical.shift();
+  if (q.normal.length > 0) return q.normal.shift();
+  if (q.low.length > 0) return q.low.shift();
   return undefined;
 }
 
 /**
- * Peek at queue size
+ * Get next signal from any agent (round-robin)
+ */
+export function dequeueSignal(): Signal | undefined {
+  // Round-robin through agents
+  for (const [agent, q] of agentQueues) {
+    if (q.critical.length > 0) return q.critical.shift();
+    if (q.normal.length > 0) return q.normal.shift();
+    if (q.low.length > 0) return q.low.shift();
+  }
+  return undefined;
+}
+
+/**
+ * Get total queue size across all agents
  */
 export function queueSize(): number {
-  return criticalQueue.length + normalQueue.length + lowQueue.length;
+  let total = 0;
+  for (const q of agentQueues.values()) {
+    total += q.critical.length + q.normal.length + q.low.length;
+  }
+  return total;
+}
+
+/**
+ * Get queue size for a specific agent
+ */
+export function agentQueueSize(agent: string): number {
+  const q = agentQueues.get(agent);
+  if (!q) return 0;
+  return q.critical.length + q.normal.length + q.low.length;
+}
+
+/**
+ * Check if a specific agent has pending signals
+ */
+export function hasPendingSignals(agent: string): boolean {
+  return agentQueueSize(agent) > 0;
 }
 
 /**
@@ -194,15 +242,34 @@ export function scanAllAgents(): Signal[] {
  */
 export function onFileChange(dir: string): void {
   // v1.2: Extract agent name from path, or scan all agents if base dir
-  const match = dir.match(/Agents\/([^/]+)/);
-  if (match) {
+  const agentMatch = dir.match(/Agents\/([^/]+)/);
+  if (agentMatch) {
     // Specific agent directory changed
-    const signals = scanAgentSignals(match[1]);
+    const signals = scanAgentSignals(agentMatch[1]);
     for (const sig of signals) {
       enqueueSignal(sig);
     }
   } else if (dir.endsWith('Agents') || dir.endsWith('Agents/')) {
     // Base Agents directory changed — scan all agents
+    const signals = scanAllAgents();
+    for (const sig of signals) {
+      enqueueSignal(sig);
+    }
+  }
+
+  // v1.2: Handle Groups/ directory changes — scan all agents in affected group
+  const groupMatch = dir.match(/Groups\/([^/]+)/);
+  if (groupMatch) {
+    const groupName = groupMatch[1];
+    // Scan all agents that might have new mentions in this group
+    const signals = scanAllAgents();
+    for (const sig of signals) {
+      if (sig.group === groupName || sig.type === 'mention') {
+        enqueueSignal(sig);
+      }
+    }
+  } else if (dir.endsWith('Groups') || dir.endsWith('Groups/')) {
+    // Base Groups directory changed — scan all agents
     const signals = scanAllAgents();
     for (const sig of signals) {
       enqueueSignal(sig);
@@ -214,10 +281,12 @@ export function onFileChange(dir: string): void {
  * Get queue stats for monitoring
  */
 export function getQueueStats(): { size: number; critical: number; normal: number; low: number } {
-  return {
-    size: criticalQueue.length + normalQueue.length + lowQueue.length,
-    critical: criticalQueue.length,
-    normal: normalQueue.length,
-    low: lowQueue.length,
-  };
+  let size = 0, critical = 0, normal = 0, low = 0;
+  for (const q of agentQueues.values()) {
+    size += q.critical.length + q.normal.length + q.low.length;
+    critical += q.critical.length;
+    normal += q.normal.length;
+    low += q.low.length;
+  }
+  return { size, critical, normal, low };
 }

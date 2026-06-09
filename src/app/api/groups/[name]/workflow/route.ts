@@ -9,14 +9,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import * as yamlLib from 'js-yaml';
-import fs from 'fs';
-import path from 'path';
-import { GROUPS_DIR } from '@/lib/data-dir';
+import { getAgency } from '@/lib/agency';
 import { parseWorkflowYaml } from '@/lib/event-bus';
 import { triggerWorkflow, approveWorkflow, getRuns, getPendingApprovals } from '@/lib/workflow-bridge';
 import { loadRunHistory, loadRunCheckpoints } from '@/lib/workflow-checkpoint';
-
-const WF_FILE = 'workflow.yaml';
 
 // ── GET — read workflow definition + runs ──────────────────
 
@@ -41,12 +37,18 @@ export async function GET(
     return NextResponse.json({ history });
   }
 
-  const wfPath = path.join(GROUPS_DIR, name, WF_FILE);
-  if (!fs.existsSync(wfPath)) {
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
+
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+
+  const raw = await proxy.getWorkflow();
+  if (!raw) {
     return NextResponse.json({ name: '', steps: 0, yaml: '' });
   }
 
-  const raw = fs.readFileSync(wfPath, 'utf-8');
   try {
     const def = parseWorkflowYaml(raw);
     const runs = getRuns().filter(r => r.group === name);
@@ -141,18 +143,29 @@ export async function DELETE(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  const wfPath = path.join(GROUPS_DIR, name, WF_FILE);
-  if (!fs.existsSync(wfPath)) {
-    return NextResponse.json({ error: 'Workflow not found' }, { status: 404 });
+
+  const agency = getAgency();
+  const proxy = agency.getGroup(name);
+
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
-  fs.unlinkSync(wfPath);
+
+  // Clear workflow by saving empty yaml
+  await proxy.saveWorkflow('');
+
   return NextResponse.json({ success: true });
 }
 
 // ── Helpers ────────────────────────────────────────────────
 
 async function handleUpdate(group: string, body: any) {
-  const wfPath = path.join(GROUPS_DIR, group, WF_FILE);
+  const agency = getAgency();
+  const proxy = agency.getGroup(group);
+
+  if (!proxy.exists()) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
 
   let yaml = '';
   if (typeof body.yaml === 'string' && body.yaml.trim()) {
@@ -163,11 +176,16 @@ async function handleUpdate(group: string, body: any) {
   } else if (Array.isArray(body.steps)) {
     // Read existing workflow name if not provided
     let wfName = body.name || '';
-    if (!wfName && fs.existsSync(wfPath)) {
-      try {
-        const existing = parseWorkflowYaml(fs.readFileSync(wfPath, 'utf-8'));
-        wfName = existing.name || group;
-      } catch { wfName = group; }
+    if (!wfName) {
+      const existingYaml = await proxy.getWorkflow();
+      if (existingYaml) {
+        try {
+          const existing = parseWorkflowYaml(existingYaml);
+          wfName = existing.name || group;
+        } catch { wfName = group; }
+      } else {
+        wfName = group;
+      }
     }
     // Build structured object, then serialize with yaml.dump (safe, no injection)
     const wfObj: any = { name: wfName, steps: [] };
@@ -189,7 +207,6 @@ async function handleUpdate(group: string, body: any) {
     return NextResponse.json({ error: 'Provide yaml string or {name, steps[]}' }, { status: 400 });
   }
 
-  const { atomicWrite } = await import('@/lib/atomic');
-  atomicWrite(wfPath, yaml);
+  await proxy.saveWorkflow(yaml);
   return NextResponse.json({ success: true, group });
 }

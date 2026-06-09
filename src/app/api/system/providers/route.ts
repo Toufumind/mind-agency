@@ -31,14 +31,14 @@ function maskProfile(p: any) {
 
 export async function GET() {
   // Auto-import from existing settings if no profiles exist
-  const profiles = listProfiles();
+  const profiles = await listProfiles();
   if (profiles.length === 0) {
-    const imported = importFromSettings();
+    const imported = await importFromSettings();
     if (imported) {
-      return NextResponse.json({ profiles: listProfiles().map(maskProfile), active: maskProfile(imported) });
+      return NextResponse.json({ profiles: (await listProfiles()).map(maskProfile), active: maskProfile(imported) });
     }
   }
-  return NextResponse.json({ profiles: profiles.map(maskProfile), active: maskProfile(getActiveProfile()) });
+  return NextResponse.json({ profiles: profiles.map(maskProfile), active: maskProfile(await getActiveProfile()) });
 }
 
 export async function POST(request: NextRequest) {
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'name, apiKey, baseUrl required' }, { status: 400 });
   }
 
-  const profile = createProfile({
+  const profile = await createProfile({
     name,
     provider: provider || 'claude',
     apiKey,
@@ -67,9 +67,9 @@ export async function PUT(request: NextRequest) {
 
   // Activate profile
   if (action === 'activate' && id) {
-    const ok = activateProfile(id);
+    const ok = await activateProfile(id);
     if (!ok) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    return NextResponse.json({ success: true, active: maskProfile(getActiveProfile()) });
+    return NextResponse.json({ success: true, active: maskProfile(await getActiveProfile()) });
   }
 
   // Update profile
@@ -78,7 +78,7 @@ export async function PUT(request: NextRequest) {
   }
 
   const body = await request.json();
-  const profile = updateProfile(id, body);
+  const profile = await updateProfile(id, body);
   if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
   return NextResponse.json({ profile: maskProfile(profile) });
 }
@@ -88,7 +88,7 @@ export async function DELETE(request: NextRequest) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  const ok = deleteProfile(id);
+  const ok = await deleteProfile(id);
   if (!ok) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
   return NextResponse.json({ success: true });
 }
