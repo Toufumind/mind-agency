@@ -837,7 +837,7 @@ export async function chatOnce(agentName: string, userMessage: string, groupName
   // v0.8: Skip enqueueAgent if already inside one (prevent deadlock)
   const inAgentQueue = (global as any).__currentAgent === agentName;
   const doWork = async () => {
-    const overrides = opts?.noMcp ? { mcpServers: {}, permissionMode: 'bypassPermissions', allowedTools: [] } : undefined;
+    const overrides = opts?.noMcp ? { mcpServers: undefined, permissionMode: 'bypassPermissions', allowedTools: [] } : undefined;
     const forceFresh = opts?.noMcp;
     const stream = createChatStream(agentName, userMessage, groupName, undefined, overrides, forceFresh);
     // v0.7: Add overall timeout to prevent infinite hangs
