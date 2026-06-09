@@ -1,0 +1,35 @@
+name: 编写团队状态报告
+description: 收集各成员的工作进展，整合并发布一份完整的团队状态报告。
+steps:
+  - id: step1
+    agent: Bob
+    action: create
+    prompt: "请编写你个人的工作状态报告。内容包括：1. 你在过去一周完成的主要工作项（例如：完成的功能、修复的Bug、参与的会议等）。2. 目前正在进行的任务及其进度。3. 遇到的任何技术问题或障碍。4. 下周的计划。请用清晰、条理的方式写成文字，并保存为文件 `bob-status-report.md`。"
+    reviewer: Charlie
+    evaluate: true
+  - id: step2
+    agent: Charlie
+    action: create
+    prompt: "请编写你个人的工作状态报告。内容包括：1. 你在过去一周完成的主要工作项（例如：完成的设计稿、文档撰写、用户支持等）。2. 目前正在进行的任务及其进度。3. 遇到的任何问题或需要团队协助的地方。4. 下周的计划。请用清晰、条理的方式写成文字，并保存为文件 `charlie-status-report.md`。"
+    reviewer: Bob
+    evaluate: true
+  - id: step3
+    agent: Alice
+    action: create
+    prompt: "作为协调者，整合团队状态报告。请执行以下步骤：1. 读取 Bob 提供的 `bob-status-report.md` 和 Charlie 提供的 `charlie-status-report.md`。2. 整合两份报告的关键信息，形成一份完整的团队状态报告。报告结构应包括：报告期（例如：2026年6月第2周）、团队总体概览、各成员工作详情（Bob、Charlie）、本周关键成果、存在的问题与风险、下周团队计划。3. 将最终整合好的报告保存为 `team-status-report.md`。"
+    dependsOn: [step1, step2]
+    reviewer: Bob
+    evaluate: true
+  - id: step4
+    agent: Bob
+    action: review
+    prompt: "请审阅 Alice 整合的团队状态报告 (`team-status-report.md`)。审阅要点：1. **准确性**：报告中的事实（特别是你的工作部分）是否与你提供的 `bob-status-report.md` 一致？有无遗漏或错误？2. **完整性**：报告是否涵盖了关键成果、问题和计划？3. **清晰度**：报告的结构和语言是否清晰易读？请直接在报告中用批注形式（如：`[Bob审查意见：此处关于XX的描述应更具体...]`）提出具体的修改建议。"
+    dependsOn: [step3]
+    reviewer: Bob
+    evaluate: true
+  - id: step5
+    agent: Alice
+    action: verify
+    prompt: "处理 Bob 的审查意见。请执行以下步骤：1. 读取 `team-status-report.md`，查看 Bob 添加的所有审查意见。2. 根据 Bob 的合理建议，对报告进行修改和完善。3. 确认所有修改完成后，将最终版本保存为 `team-status-final.md`，并删除所有批注格式。4. 在群组中通知 Bob 和 Charlie：团队状态报告已定稿，文件为 `team-status-final.md`。"
+    dependsOn: [step4]
+    evaluate: true

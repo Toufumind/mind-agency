@@ -12,6 +12,8 @@ import LogoCanvas from '@/components/logo-canvas';
 interface AgentInfo { name: string; emailCount: number; config?: { roles?: string[]; permissions?: Record<string, boolean>; autoRespondToEmail?: boolean; }; }
 interface GroupInfo { name: string; }
 interface PendingItem { type: string; id: string; group: string; requestedBy: string; description: string; createdAt: number; }
+interface LeaderboardEntry { agent: string; balance: number; earned: number; tasks: number; }
+interface OpenTask { id: string; group: string; title: string; description: string; reward: number; claims: any[]; status: string; postedBy: string; createdAt: number; }
 
 export default function HomePage() {
   const { t } = useT();
@@ -20,6 +22,8 @@ export default function HomePage() {
   const [totalEmails, setTotalEmails] = useState(0);
   const [todayCost, setTodayCost] = useState(0);
   const [pending, setPending] = useState<PendingItem[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [openTasks, setOpenTasks] = useState<OpenTask[]>([]);
   const sidebar = useSidebarData();
   const { unreadGroups } = useNotifications();
 
@@ -28,6 +32,11 @@ export default function HomePage() {
     fetch('/api/groups/scan').then(r=>r.json()).then(d=>setGroups((d.groups||[]).map((g:string)=>({name:g})))).catch(()=>{});
     fetch('/api/system/analytics').then(r=>r.json()).then(d=>setTodayCost(d.costs?.todayTotal || 0)).catch(()=>{});
     fetch('/api/system/pending').then(r=>r.json()).then(d=>setPending(d.items||[])).catch(()=>{});
+    // v1.2: Fetch economy leaderboard
+    fetch('http://127.0.0.1:3001/api/economy/leaderboard').then(r=>r.json()).then(d=>setLeaderboard(d.leaderboard||[])).catch(()=>{});
+    // v1.2: Fetch open tasks across all groups
+    Promise.all((groups||[]).map(g=>fetch(`/api/tasks?group=${g.name}`).then(r=>r.json()).catch(()=>({tasks:[]}))))
+      .then(results=>{ const all=results.flatMap((r:any)=>(r.tasks||[]).filter((t:any)=>t.status==='open')); setOpenTasks(all); }).catch(()=>{});
     sidebar.refresh();
   },[]);
   useEffect(()=>{load()},[load]);
@@ -120,6 +129,59 @@ export default function HomePage() {
                     </Link>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Economy: Leaderboard ── */}
+          {leaderboard.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-[12px] font-medium text-muted mb-3 flex items-center gap-1.5">💰 Token 排行榜</h2>
+              <div className="bg-canvas border border-border rounded-2xl overflow-hidden">
+                <table className="w-full text-[12px]">
+                  <thead><tr className="border-b border-border">
+                    <th className="text-left px-4 py-2.5 text-muted-foreground font-medium">#</th>
+                    <th className="text-left px-4 py-2.5 text-muted-foreground font-medium">Agent</th>
+                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">余额</th>
+                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">累计收入</th>
+                    <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">任务</th>
+                  </tr></thead>
+                  <tbody>
+                    {leaderboard.slice(0, 5).map((e, i) => (
+                      <tr key={e.agent} className="border-b border-border/50 last:border-0 hover:bg-surface/50 transition-colors">
+                        <td className="px-4 py-2 text-muted-foreground">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}</td>
+                        <td className="px-4 py-2 font-medium text-foreground">{e.agent}</td>
+                        <td className="px-4 py-2 text-right font-mono text-foreground">{e.balance.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right font-mono text-muted-foreground">{e.earned.toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">{e.tasks}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── Open Tasks ── */}
+          {openTasks.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-[12px] font-medium text-muted mb-3 flex items-center gap-1.5">📋 开放任务</h2>
+              <div className="space-y-2">
+                {openTasks.slice(0, 5).map(task => (
+                  <Link key={`${task.group}-${task.id}`} href={`/groups/${task.group}`}
+                    className="flex items-center gap-3 bg-canvas border border-border rounded-xl px-4 py-3 hover:shadow-sm transition-all group">
+                    <div className="w-7 h-7 rounded-lg bg-info-muted flex items-center justify-center shrink-0">
+                      <span className="text-[10px] font-bold text-info">{task.claims?.length || 0}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-medium text-foreground truncate">{task.title}</p>
+                      <p className="text-[10px] text-muted-foreground">{task.group} · {task.postedBy} · {timeAgo(t, task.createdAt)}</p>
+                    </div>
+                    {task.reward > 0 && (
+                      <span className="text-[11px] font-mono text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full shrink-0">{task.reward} tokens</span>
+                    )}
+                  </Link>
+                ))}
               </div>
             </div>
           )}

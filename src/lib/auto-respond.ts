@@ -18,7 +18,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
+import { createHash } from 'crypto';
 import { chatOnce, getAgentConfig } from './chat';
 import { AGENTS_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
 import { loadState, saveState, ensureGroup, getAgentGroups, invalidateGroupsCache, type AgentState } from './state';
@@ -204,7 +204,7 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
           // Check for @mention
           if (msg.body.toLowerCase().includes('@' + agent.toLowerCase())) {
             // Generate hash for dedup
-            const hash = crypto.createHash('md5').update(g + msg.from + msg.body.slice(0, 100)).digest('hex').slice(0, 12);
+            const hash = createHash('md5').update(g + msg.from + msg.body.slice(0, 100)).digest('hex').slice(0, 12);
             if (gs.lastMention !== hash) {
               signal.mentions.push({
                 group: g,
@@ -236,7 +236,8 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
   }
 
   // ── 2c. Workflow notifications ─────────────────────
-  const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
+  // v1.2: Use AGENTS_DIR (same path as notifyAgent writes to)
+  const notifDir = path.join(AGENTS_DIR, agent, '.workflow-notifications');
   if (fs.existsSync(notifDir)) {
     const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
     const oneHourAgo = Date.now() - 3600_000;
@@ -317,9 +318,49 @@ function signalToPrompt(agent: string, sig: Signal, groupName?: string): string 
   }
 
   lines.push('');
-  lines.push('请用中文简短回复。如果有工作流任务，在回复中包含: workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="...")');
+  lines.push('请用中文简短回复。如果有工作流任务，直接执行任务并把结果写在回复中，系统会自动完成回调。');
 
   return lines.join('\n');
+}
+
+// ── Workflow callback processing ──────────────────────────
+
+async function processWorkflowCallbacks(agent: string, reply: string): Promise<void> {
+  const notifDir = path.join(AGENTS_DIR, agent, '.workflow-notifications');
+  if (!fs.existsSync(notifDir)) return;
+
+  const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
+  if (notifFiles.length === 0) return;
+
+  const { getEngine } = await import('./workflow-bridge');
+  const engine = getEngine();
+
+  for (const f of notifFiles) {
+    try {
+      const notif = JSON.parse(fs.readFileSync(path.join(notifDir, f), 'utf-8'));
+
+      // Check if agent's reply contains workflow_callback call
+      const callbackMatch = reply?.match(/workflow_callback\s*\(\s*runId\s*=\s*"([^"]+)"\s*,\s*stepId\s*=\s*"([^"]+)"\s*,\s*status\s*=\s*"([^"]+)"\s*,\s*summary\s*=\s*"([^"]+)"/);
+      let output;
+      if (callbackMatch) {
+        output = `${callbackMatch[3]}: ${callbackMatch[4]}`;
+        console.log(`[autoRespond] ${agent}: found workflow_callback in text for ${notif.stepId}`);
+      } else {
+        output = reply || 'Agent acknowledged task';
+      }
+
+      const ok = engine.callback(notif.runId, notif.stepId, output);
+      if (ok) {
+        console.log(`[autoRespond] ${agent}: completed workflow step ${notif.stepId}`);
+      } else {
+        console.log(`[autoRespond] ${agent}: callback returned false for ${notif.stepId}`);
+      }
+      // Clean up notification file regardless
+      try { fs.unlinkSync(path.join(notifDir, f)); } catch {}
+    } catch (e) {
+      console.log(`[autoRespond] ${agent}: notification ${f} callback error:`, e);
+    }
+  }
 }
 
 // ── Main entry ──────────────────────────────────────────
@@ -401,39 +442,19 @@ export async function autoRespond(
         break;
       }
       setActivity(agent, 'processing', signal.urgent ? '处理通知' : '检查更新');
-      const { reply } = await chatOnce(agent, prompt, options?.groupName, { noMcp: true });
+      // v1.1: Enable MCP tools for workflow tasks so agents can self-submit via workflow_callback
+      // For non-workflow tasks, keep noMcp to prevent unintended side effects
+      const hasWorkflowTasks = signal.mentions.some(m => m.group === 'workflow');
+      const { reply } = await chatOnce(agent, prompt, options?.groupName, { noMcp: !hasWorkflowTasks });
       clearActivity(agent);
       saveState(agent, state);
 
-      // v0.5: Parse workflow_callback from text response (SDK MCP tools may not work)
+      // v1.3: Process workflow callbacks
       try {
-        const { parseAndExecuteCallbacks } = await import('./event-bus');
-        parseAndExecuteCallbacks(agent, reply);
-      } catch {}
-
-      // v0.9: Auto-complete pending workflow steps after agent responds
-      // If agent can't call workflow_callback (MCP tools broken), auto-complete on their behalf
-      try {
-        const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
-        if (fs.existsSync(notifDir)) {
-          const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
-          for (const f of notifFiles) {
-            try {
-              const notif = JSON.parse(fs.readFileSync(path.join(notifDir, f), 'utf-8'));
-              // Auto-complete: agent responded, so mark step as completed
-              const { getEngine } = await import('./workflow-bridge');
-              const engine = getEngine();
-              const output = `COMPLETED: ${reply.slice(0, 200) || 'Agent acknowledged task'}`;
-              const ok = engine.callback(notif.runId, notif.stepId, output);
-              if (ok) {
-                console.log(`[autoRespond] ${agent}: auto-completed workflow step ${notif.stepId}`);
-              }
-              // Clean up notification file
-              try { fs.unlinkSync(path.join(notifDir, f)); } catch {}
-            } catch {}
-          }
-        }
-      } catch {}
+        await processWorkflowCallbacks(agent, reply);
+      } catch (e) {
+        console.log(`[autoRespond] ${agent}: workflow callback error:`, e);
+      }
 
       return { triggered: true, reply };
     } catch (e: any) {

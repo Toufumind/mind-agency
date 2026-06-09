@@ -6,6 +6,7 @@ import Sidebar from '@/components/sidebar';
 import { Send, Loader2, Play, MessageCircle, GitBranch, Settings, X, RefreshCw, Plus, Crown, Star, Trash2, ArrowRightLeft, Pin, PinOff, Bell, Eye, EyeOff, ArrowRight, Search, Paperclip } from 'lucide-react';
 import { useT } from '@/components/i18n';
 import WorkflowGantt from '@/components/workflow-gantt';
+import WorkflowArch from '@/components/workflow-arch';
 
 interface ChatMsg { from: string; date: string; body: string; file: string; }
 interface WorkflowStep { id: string; agent: string; action: string; prompt?: string; condition?: string; dependsOn?: string[]; status?: string; reviewer?: string; priority?: string; }
@@ -33,7 +34,7 @@ export default function GroupPage() {
   const { name } = useParams<{ name: string }>();
   const { t } = useT();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<'chat' | 'workflow'>(searchParams.get('tab') === 'workflow' ? 'workflow' : 'chat');
+  const [tab, setTab] = useState<'chat' | 'workflow' | 'tasks'>(searchParams.get('tab') === 'workflow' ? 'workflow' : searchParams.get('tab') === 'tasks' ? 'tasks' : 'chat');
   const [members, setMembers] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -243,6 +244,10 @@ export default function GroupPage() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${tab==='workflow'?'bg-surface-alt text-foreground':'text-muted hover:text-foreground'}`}>
               <GitBranch size={13}/> Workflow
             </button>
+            <button onClick={() => setTab('tasks')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors ${tab==='tasks'?'bg-surface-alt text-foreground':'text-muted hover:text-foreground'}`}>
+              📋 任务
+            </button>
           </div>
           <div className="flex-1 flex min-h-0">
             <div className="flex-1 flex flex-col min-h-0">
@@ -376,52 +381,35 @@ export default function GroupPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-[14px] font-medium text-foreground">{workflow.name}</h3>
+                      <h3 className="text-[14px] font-medium text-foreground" style={{ fontFamily: 'Georgia, serif' }}>{workflow.name}</h3>
                       {workflow.description && <p className="text-[12px] text-muted-foreground mt-0.5">{workflow.description}</p>}
                     </div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setShowDag(!showDag)}
-                        className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${showDag ? 'bg-surface-alt text-foreground' : 'text-muted hover:text-foreground'}`}>
-                        {showDag ? <EyeOff size={12} /> : <Eye size={12} />}
-                        {showDag ? '列表' : '看板'}
-                      </button>
                       <button onClick={runWorkflow} disabled={wfRunning}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-foreground text-canvas hover:opacity-90 disabled:opacity-50 transition-colors">
                         {wfRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                         {wfRunning ? '运行中...' : '运行'}
                       </button>
+                      <OrchestrateButton group={name!} onDone={()=>fetchWorkflow()} />
                     </div>
                   </div>
 
-                  {showDag ? (
-                    /* ── GANTT 视图 ── */
-                    <WorkflowGantt
-                      steps={(workflow.stepsList || []) as any[]}
-                      progress={0}
-                      onStepClick={(s: any) => { setEditSteps([s]); setShowWfEditor(true); }}
-                    />
-                  ) : (
-                    /* ── 列表视图 ── */
-                    <div className="space-y-2">
-                      {(workflow.stepsList || []).map((s: any, i: number) => (
-                        <div key={i} className="flex items-center gap-2 px-3 py-2 bg-surface rounded-lg text-[12px]">
-                          <span className="w-6 h-6 rounded-full bg-surface-alt flex items-center justify-center text-[10px] font-medium text-muted">{i + 1}</span>
-                          <span className="font-medium text-foreground">{s.agent || s.id}</span>
-                          <span className="text-muted-foreground">{s.action}</span>
-                          {s.priority && <span className="text-[9px] text-amber-500 ml-auto">{s.priority}</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* Architecture diagram */}
+                  <WorkflowArch
+                    steps={(workflow.stepsList || []) as any[]}
+                    run={wfResults.length > 0 ? { runId: 'current', status: 'running', steps: {}, startedAt: Date.now() } : null}
+                    onTrigger={runWorkflow}
+                    running={wfRunning}
+                  />
 
                   {/* Results */}
                   {wfResults.length > 0 && (
-                    <div className="space-y-1.5 mt-4">
-                      <h4 className="text-[12px] font-medium text-muted">执行结果</h4>
+                    <div className="space-y-1.5 mt-4 border-t border-border pt-4">
+                      <h4 className="text-[11px] font-medium text-muted uppercase tracking-wider">Results</h4>
                       {wfResults.map((r, i) => (
-                        <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg text-[11px] bg-surface">
-                          <span className="font-medium text-foreground w-16">{r.agent}</span>
-                          <span className="text-muted-foreground flex-1">{r.reply.slice(0, 100)}</span>
+                        <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg text-[11px] bg-surface border border-border">
+                          <span className="font-medium text-foreground w-16 font-mono">{r.agent}</span>
+                          <span className="text-muted-foreground flex-1">{r.reply.slice(0, 120)}</span>
                         </div>
                       ))}
                     </div>
@@ -429,6 +417,11 @@ export default function GroupPage() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* ── Tasks Tab ── */}
+          {tab === 'tasks' && (
+            <TasksTab group={name!} />
           )}
 
             </div>
@@ -901,4 +894,207 @@ function timeFmt(d: string): string {
   if (!d) return '';
   try { return new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   catch { return d.slice(11, 16); }
+}
+
+// ── v1.2: Orchestrate Button ──────────────────────────────────────
+function OrchestrateButton({ group, onDone }: { group: string; onDone: () => void }) {
+  const [show, setShow] = useState(false);
+  const [goal, setGoal] = useState('');
+  const [plan, setPlan] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const preview = async () => {
+    if (!goal) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/orchestrate', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ goal, group, coordinator:'user', confirm:false }) });
+      const data = await res.json();
+      setPlan(data);
+    } catch {}
+    setLoading(false);
+  };
+
+  const confirm = async () => {
+    setLoading(true);
+    try {
+      await fetch('/api/orchestrate', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ goal, group, coordinator:'user', confirm:true }) });
+      setShow(false); setGoal(''); setPlan(null);
+      onDone();
+    } catch {}
+    setLoading(false);
+  };
+
+  return (
+    <>
+      <button onClick={()=>setShow(!show)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-info-muted text-info hover:opacity-90 transition-colors">
+        🎯 编排
+      </button>
+      {show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={()=>setShow(false)}>
+          <div className="bg-canvas border border-border rounded-2xl p-6 w-[520px] max-h-[80vh] overflow-y-auto shadow-xl" onClick={e=>e.stopPropagation()}>
+            <h3 className="text-[14px] font-medium text-foreground mb-3">🎯 AI 编排工作流</h3>
+            <textarea value={goal} onChange={e=>{setGoal(e.target.value);setPlan(null);}}
+              placeholder="描述你想让团队完成的目标..." rows={3}
+              className="w-full px-3 py-2 text-[12px] bg-surface border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-ring resize-none mb-3"/>
+            {!plan ? (
+              <div className="flex justify-end gap-2">
+                <button onClick={()=>setShow(false)} className="px-3 py-1.5 text-[11px] text-muted hover:text-foreground">取消</button>
+                <button onClick={preview} disabled={loading||!goal}
+                  className="px-3 py-1.5 text-[11px] font-medium bg-foreground text-canvas rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors">
+                  {loading?'分析中...':'生成计划'}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="bg-surface rounded-xl p-4 mb-3">
+                  <p className="text-[12px] font-medium text-foreground mb-2">{plan.workflowName}</p>
+                  <p className="text-[11px] text-muted-foreground mb-3">{plan.description}</p>
+                  <div className="space-y-2">
+                    {(plan.steps||[]).map((s:any,i:number)=>(
+                      <div key={i} className="flex items-start gap-2 text-[11px]">
+                        <span className="w-5 h-5 rounded-full bg-surface-alt flex items-center justify-center text-[9px] font-medium text-muted shrink-0 mt-0.5">{i+1}</span>
+                        <div className="flex-1">
+                          <span className="font-medium text-foreground">{s.agent}</span>
+                          <span className="text-muted-foreground"> ({s.action})</span>
+                          {s.reviewer && <span className="text-muted-foreground"> → 审查: {s.reviewer}</span>}
+                          <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{s.prompt}</p>
+                          {s.dependsOn?.length > 0 && <p className="text-[9px] text-muted-foreground">依赖: {s.dependsOn.join(', ')}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={()=>{setPlan(null);setGoal('');}} className="px-3 py-1.5 text-[11px] text-muted hover:text-foreground">重新生成</button>
+                  <button onClick={confirm} disabled={loading}
+                    className="px-3 py-1.5 text-[11px] font-medium bg-success text-canvas rounded-lg hover:opacity-90 disabled:opacity-50 transition-colors">
+                    {loading?'触发中...':'确认触发'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── v1.2: Tasks Tab ──────────────────────────────────────────────
+function TasksTab({ group }: { group: string }) {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPost, setShowPost] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', description: '', reward: 0 });
+  const [agents, setAgents] = useState<{name:string}[]>([]);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetch(`/api/tasks?group=${group}`).then(r=>r.json()).then(d=>{ setTasks(d.tasks||[]); setLoading(false); }).catch(()=>setLoading(false));
+    fetch('/api/agents').then(r=>r.json()).then(d=>setAgents((d.agents||[]).filter((a:any)=>a.name!=='me'))).catch(()=>{});
+  }, [group]);
+  useEffect(()=>{load()},[load]);
+
+  const postTask = async () => {
+    if (!newTask.title || !newTask.description) return;
+    await fetch('/api/tasks', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ group, id: `task-${Date.now().toString(36)}`, ...newTask, postedBy: 'user' }) });
+    setNewTask({ title:'', description:'', reward:0 });
+    setShowPost(false);
+    load();
+  };
+
+  const claimTask = async (taskId: string) => {
+    await fetch('/api/tasks', { method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ group, taskId, action:'claim', agent:'me', message:'我来认领' }) });
+    load();
+  };
+
+  const selectAgent = async (taskId: string, agent: string) => {
+    await fetch('/api/tasks', { method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ group, taskId, action:'select', agent }) });
+    load();
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[14px] font-medium text-foreground">📋 任务看板</h3>
+        <button onClick={()=>setShowPost(!showPost)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-foreground text-canvas hover:opacity-90 transition-colors">
+          <Plus size={12}/> 发布任务
+        </button>
+      </div>
+
+      {showPost && (
+        <div className="bg-surface border border-border rounded-xl p-4 mb-4 space-y-3">
+          <input value={newTask.title} onChange={e=>setNewTask({...newTask, title:e.target.value})}
+            placeholder="任务标题" className="w-full px-3 py-2 text-[12px] bg-canvas border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-ring"/>
+          <textarea value={newTask.description} onChange={e=>setNewTask({...newTask, description:e.target.value})}
+            placeholder="任务描述" rows={3} className="w-full px-3 py-2 text-[12px] bg-canvas border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-ring resize-none"/>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground">奖励:</span>
+              <input type="number" value={newTask.reward} onChange={e=>setNewTask({...newTask, reward:Number(e.target.value)})}
+                className="w-20 px-2 py-1 text-[11px] bg-canvas border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-ring"/>
+              <span className="text-[10px] text-muted-foreground">tokens</span>
+            </div>
+            <div className="flex-1"/>
+            <button onClick={()=>setShowPost(false)} className="px-3 py-1.5 text-[11px] text-muted hover:text-foreground transition-colors">取消</button>
+            <button onClick={postTask} className="px-3 py-1.5 text-[11px] font-medium bg-foreground text-canvas rounded-lg hover:opacity-90 transition-colors">发布</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-[12px] text-muted-foreground text-center py-8">加载中...</p>
+      ) : tasks.length === 0 ? (
+        <p className="text-[12px] text-muted-foreground text-center py-8">暂无开放任务</p>
+      ) : (
+        <div className="space-y-3">
+          {tasks.map(task => (
+            <div key={task.id} className="bg-canvas border border-border rounded-xl p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <h4 className="text-[13px] font-medium text-foreground">{task.title}</h4>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{task.description}</p>
+                </div>
+                {task.reward > 0 && (
+                  <span className="text-[11px] font-mono text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full shrink-0 ml-2">{task.reward} tokens</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                  task.status==='open' ? 'bg-success-muted text-success' : task.status==='assigned' ? 'bg-info-muted text-info' : 'bg-surface-alt text-muted'
+                }`}>{task.status === 'open' ? '开放' : task.status === 'assigned' ? '已分配' : task.status}</span>
+                <span className="text-[10px] text-muted-foreground">发布者: {task.postedBy}</span>
+                {task.claims?.length > 0 && <span className="text-[10px] text-muted-foreground">· {task.claims.length} 个认领</span>}
+              </div>
+              {task.status === 'open' && task.claims?.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  <p className="text-[10px] text-muted-foreground font-medium">认领者:</p>
+                  {task.claims.map((c:any) => (
+                    <div key={c.agent} className="flex items-center gap-2 pl-2">
+                      <span className="text-[11px] font-medium text-foreground">{c.agent}</span>
+                      {c.message && <span className="text-[10px] text-muted-foreground truncate flex-1">{c.message}</span>}
+                      <button onClick={()=>selectAgent(task.id, c.agent)}
+                        className="px-2 py-0.5 text-[10px] font-medium bg-success-muted text-success rounded hover:opacity-80 transition-colors">选择</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {task.status === 'open' && (
+                <div className="mt-3">
+                  <button onClick={()=>claimTask(task.id)}
+                    className="px-3 py-1.5 text-[11px] font-medium bg-surface-alt text-foreground rounded-lg hover:bg-surface-hover transition-colors">认领任务</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

@@ -1,0 +1,23 @@
+name: 团队状态报告
+description: 收集团队成员的工作进展、挑战和成果，并生成一份结构化的状态报告。
+steps:
+  - id: step1
+    agent: Bob
+    action: create
+    prompt: "请负责收集本周（或指定周期）团队的工作状态信息。具体内容包括：1. 整理你个人的任务列表，标注已完成、进行中、待处理的状态。2. 简要总结你本周的核心产出与遇到的主要挑战。3. 与Charlie沟通，收集他的任务进展、核心产出与挑战摘要。4. 将收集到的所有信息（你和Charlie的）整理成一份清晰的原始数据文档，保存为团队状态报告_原始数据.md。"
+    reviewer: Charlie
+    evaluate: true
+  - id: step2
+    agent: Charlie
+    action: create
+    prompt: "请基于Bob提供的《团队状态报告_原始数据.md》文件，撰写一份正式的团队状态报告。报告需包含以下部分：1. 报告摘要（一句话总结）。2. 团队整体进度概览。3. 成员个人进展详情（分Bob和Charlie两部分）。4. 遇到的主要问题与风险。5. 下一阶段计划与建议。报告应语言简洁、重点突出、格式清晰。完成后，将报告保存为团队状态报告.md。"
+    dependsOn: [step1]
+    reviewer: Bob
+    evaluate: true
+  - id: step3
+    agent: Alice
+    action: review
+    prompt: "请审阅由Charlie撰写的《团队状态报告.md》。审阅要点：1. 内容完整性：是否涵盖了进度、问题、计划等所有必要部分。2. 准确性：报告中的信息是否与Bob提供的原始数据一致。3. 表达清晰度：报告是否易于理解，重点是否突出。4. 可操作性：提出的建议或计划是否具体、可行。请根据审阅结果，给出一个综合评分（1-10分）和具体的修改意见。"
+    dependsOn: [step2]
+    reviewer: Alice
+    evaluate: true

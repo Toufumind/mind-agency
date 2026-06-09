@@ -29,8 +29,10 @@ export const SIGNAL_PRIORITY = {
   low: 2,       // heartbeat, periodic scan
 } as const;
 
-// In-memory signal queue (sorted by priority)
-const signalQueue: Signal[] = [];
+// v1.2: Priority bucket queue — O(1) insert, O(1) dequeue by priority
+const criticalQueue: Signal[] = [];
+const normalQueue: Signal[] = [];
+const lowQueue: Signal[] = [];
 const MAX_QUEUE_SIZE = 100;
 
 // Per-agent last scan time (to avoid duplicate signals)
@@ -46,16 +48,19 @@ export function enqueueSignal(signal: Signal): void {
   if (Date.now() - lastScan < SCAN_COOLDOWN) return;
 
   // Don't exceed queue size
-  if (signalQueue.length >= MAX_QUEUE_SIZE) {
+  const totalSize = criticalQueue.length + normalQueue.length + lowQueue.length;
+  if (totalSize >= MAX_QUEUE_SIZE) {
     // Remove lowest priority signal
-    const lowestIdx = signalQueue.reduce((minIdx, s, idx, arr) =>
-      SIGNAL_PRIORITY[s.priority] > SIGNAL_PRIORITY[arr[minIdx].priority] ? idx : minIdx, 0);
-    signalQueue.splice(lowestIdx, 1);
+    if (lowQueue.length > 0) lowQueue.pop();
+    else if (normalQueue.length > 0) normalQueue.pop();
   }
 
-  signalQueue.push(signal);
-  // Sort by priority (critical first)
-  signalQueue.sort((a, b) => SIGNAL_PRIORITY[a.priority] - SIGNAL_PRIORITY[b.priority]);
+  // O(1) insert into priority bucket
+  const priority = signal.priority || 'normal';
+  if (priority === 'critical') criticalQueue.push(signal);
+  else if (priority === 'low') lowQueue.push(signal);
+  else normalQueue.push(signal);
+
   lastScanTime.set(`${signal.agent}:${signal.type}`, Date.now());
 }
 
@@ -63,14 +68,18 @@ export function enqueueSignal(signal: Signal): void {
  * Get next signal from queue (for scheduler to consume)
  */
 export function dequeueSignal(): Signal | undefined {
-  return signalQueue.shift();
+  // O(1) dequeue from highest priority non-empty bucket
+  if (criticalQueue.length > 0) return criticalQueue.shift();
+  if (normalQueue.length > 0) return normalQueue.shift();
+  if (lowQueue.length > 0) return lowQueue.shift();
+  return undefined;
 }
 
 /**
  * Peek at queue size
  */
 export function queueSize(): number {
-  return signalQueue.length;
+  return criticalQueue.length + normalQueue.length + lowQueue.length;
 }
 
 /**
@@ -94,10 +103,11 @@ export function scanAgentSignals(agentName: string): Signal[] {
 
     // Check for new messages since last scan
     const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md'));
+    const chatCheck = state.groups?.[groupName]?.chatCheck || 0;
     for (const f of files) {
       try {
         const stat = fs.statSync(path.join(chatDir, f));
-        if (stat.mtimeMs <= (state.emailCheck || 0)) continue;
+        if (stat.mtimeMs <= chatCheck) continue;
 
         const content = fs.readFileSync(path.join(chatDir, f), 'utf-8');
         if (content.toLowerCase().includes(`@${agentName.toLowerCase()}`)) {
@@ -136,7 +146,8 @@ export function scanAgentSignals(agentName: string): Signal[] {
   }
 
   // Check for workflow notifications
-  const notifDir = path.join(MIND_DIR, 'agents', agentName, '.workflow-notifications');
+  // v1.2: Use AGENTS_DIR (same path as notifyAgent writes to)
+  const notifDir = path.join(AGENTS_DIR, agentName, '.workflow-notifications');
   if (fs.existsSync(notifDir)) {
     const notifFiles = fs.readdirSync(notifDir).filter(f => f.endsWith('.json'));
     for (const f of notifFiles) {
@@ -182,14 +193,20 @@ export function scanAllAgents(): Signal[] {
  * Process file change event from watcher
  */
 export function onFileChange(dir: string): void {
-  // Extract agent name from path
+  // v1.2: Extract agent name from path, or scan all agents if base dir
   const match = dir.match(/Agents\/([^/]+)/);
-  if (!match) return;
-  const agentName = match[1];
-
-  const signals = scanAgentSignals(agentName);
-  for (const sig of signals) {
-    enqueueSignal(sig);
+  if (match) {
+    // Specific agent directory changed
+    const signals = scanAgentSignals(match[1]);
+    for (const sig of signals) {
+      enqueueSignal(sig);
+    }
+  } else if (dir.endsWith('Agents') || dir.endsWith('Agents/')) {
+    // Base Agents directory changed — scan all agents
+    const signals = scanAllAgents();
+    for (const sig of signals) {
+      enqueueSignal(sig);
+    }
   }
 }
 
@@ -197,8 +214,10 @@ export function onFileChange(dir: string): void {
  * Get queue stats for monitoring
  */
 export function getQueueStats(): { size: number; critical: number; normal: number; low: number } {
-  const critical = signalQueue.filter(s => s.priority === 'critical').length;
-  const normal = signalQueue.filter(s => s.priority === 'normal').length;
-  const low = signalQueue.filter(s => s.priority === 'low').length;
-  return { size: signalQueue.length, critical, normal, low };
+  return {
+    size: criticalQueue.length + normalQueue.length + lowQueue.length,
+    critical: criticalQueue.length,
+    normal: normalQueue.length,
+    low: lowQueue.length,
+  };
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Hash, Users, Activity, Bot, Trash2, X, Shield, User, BarChart3, FileText, Settings, Plus, ChevronDown, PanelLeftClose, PanelLeftOpen, GitBranch } from 'lucide-react';
+import { Hash, Users, Activity, Bot, Trash2, X, Shield, User, BarChart3, FileText, Settings, Plus, ChevronDown, PanelLeftClose, PanelLeftOpen, TrendingUp } from 'lucide-react';
 import { useSidebarData } from './sidebar-context';
 import { useNotifications } from './notification-provider';
 import { useT } from './i18n';
@@ -113,7 +113,6 @@ export default function Sidebar() {
         <nav className="flex-1 py-3 px-2.5 space-y-4 overflow-y-auto">
           <NavItem href="/" icon={Activity} label={t('dashboard')} />
           <NavItem href="/audit" icon={FileText} label={t('audit')} />
-          <NavItem href="/workflows" icon={GitBranch} label={t('workflows')} />
 
           {/* Teams section */}
           {!collapsed ? (
@@ -240,12 +239,14 @@ export default function Sidebar() {
             <>
               <NavItem href="/me" icon={User} label={t('me')} badge={unreadEmails} />
               <NavItem href="/analytics" icon={BarChart3} label={t('usage')} />
+              <NavItem href="/learning" icon={TrendingUp} label="学习" />
               <NavItem href="/settings" icon={Settings} label={t('settings')} />
             </>
           ) : (
             <div className="space-y-0.5">
               <NavItem href="/me" icon={User} label="" badge={unreadEmails} />
               <NavItem href="/analytics" icon={BarChart3} label="" />
+              <NavItem href="/learning" icon={TrendingUp} label="" />
               <NavItem href="/settings" icon={Settings} label="" />
             </div>
           )}

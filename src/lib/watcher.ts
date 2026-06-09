@@ -46,7 +46,9 @@ export function startWatcher(onChange: Callback): void {
         if (!filename) return;
         // Ignore .swp, .tmp, session.json, etc.
         if (filename.includes('.tmp') || filename.includes('.swp')) return;
-        debouncedTrigger(baseDir);
+        // v1.2: Pass full path for faster agent-specific scanning
+        const fullPath = path.join(baseDir, filename);
+        debouncedTrigger(fullPath);
       });
       directoryWatchers.push(w);
       console.log(`[watcher] watching ${path.basename(baseDir)}/ (directory)`);

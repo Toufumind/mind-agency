@@ -24,11 +24,14 @@ let engine: WorkflowEngine | null = null;
 /** Module-level AbortController — cancelled on shutdown to stop all polling loops */
 const _shutdownController = new AbortController();
 
-export function getEngine(): WorkflowEngine {
+export function getEngine(bus?: any): WorkflowEngine {
   if (!engine) {
-    engine = new WorkflowEngine(undefined, new ChatStepExecutor());
+    engine = new WorkflowEngine(bus, new ChatStepExecutor());
     // Register globally for text-based callback parsing (fallback when MCP tools don't work)
     (global as any).__workflowEngine = engine;
+  } else if (bus && !(engine as any).bus) {
+    // Attach bus if it was created without one (server.ts provides the bus)
+    (engine as any).bus = bus;
   }
   return engine;
 }

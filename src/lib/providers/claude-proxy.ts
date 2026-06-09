@@ -173,8 +173,43 @@ async function executeTool(
         const output = execSync(`grep -rn "${pattern}" "${searchPath}" 2>/dev/null | head -50`, { cwd: workingDir, encoding: 'utf-8' });
         return { content: output || '(no matches)', isError: false };
       }
-      default:
-        return { content: `Unknown tool: ${name}`, isError: true };
+      default: {
+        // v1.2: Handle MCP tools by importing and calling handlers directly
+        try {
+          const { handleGroupTool } = await import('../../../mcp/tools/group');
+          const { handleCommunicationTool } = await import('../../../mcp/tools/communication');
+          const { handleWorkflowTool } = await import('../../../mcp/tools/workflow');
+          const { handleAgentTool } = await import('../../../mcp/tools/agent');
+          const { handleConsensusTool } = await import('../../../mcp/tools/consensus');
+          const { handleMemoryTool } = await import('../../../mcp/tools/memory');
+          const { handleTaskTool } = await import('../../../mcp/tools/task');
+          const { handleEconomyTool } = await import('../../../mcp/tools/economy');
+
+          let result = '';
+          const respond = (_id: string, msg: any) => {
+            result = msg?.content?.[0]?.text || JSON.stringify(msg);
+          };
+
+          const handlers = [handleGroupTool, handleCommunicationTool, handleWorkflowTool, handleAgentTool, handleConsensusTool, handleMemoryTool, handleTaskTool, handleEconomyTool];
+          let handled = false;
+          for (const handler of handlers) {
+            try {
+              if (await handler(name, input, agentName, respond, 'tool-call')) {
+                handled = true;
+                break;
+              }
+            } catch (handlerErr: any) {
+              // Handler threw — try next
+            }
+          }
+
+          if (handled && result) return { content: result, isError: false };
+          if (handled) return { content: 'Tool executed (no output)', isError: false };
+          return { content: `Unknown tool: ${name}`, isError: true };
+        } catch (e: any) {
+          return { content: `MCP tool error: ${e.message}`, isError: true };
+        }
+      }
     }
   } catch (e: any) {
     return { content: `Error: ${e.message}`, isError: true };

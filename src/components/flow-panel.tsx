@@ -45,9 +45,21 @@ function fmtTime(ms: number): string { const s=Math.round(ms/1000); return s<60?
 // ── Tree Node Component ──
 function TreeNodeView({ node, depth, isDark }: { node: TreeNode; depth: number; isDark: boolean }) {
   const [expanded, setExpanded] = useState(true);
+  const [learningScore, setLearningScore] = useState<number | null>(null);
   const cfg = ST[node.status] || ST.pending;
   const Icon = cfg.icon;
   const icon = getIcon(node.step);
+
+  // v1.2: Fetch learning score for completed steps
+  useEffect(() => {
+    if (node.status === 'completed' && node.step.agent) {
+      fetch(`/api/learning?group=global&limit=20`).then(r => r.json()).then(d => {
+        const records = d.records || [];
+        const agentRecord = records.find((r: any) => r.agent === node.step.agent && r.stepId === node.step.id);
+        if (agentRecord?.evaluation?.total) setLearningScore(agentRecord.evaluation.total);
+      }).catch(() => {});
+    }
+  }, [node.status, node.step.agent, node.step.id]);
   const isActive = node.status === 'in_progress' || node.status === 'waiting';
   const hasChildren = node.children.length > 0;
 
@@ -69,6 +81,11 @@ function TreeNodeView({ node, depth, isDark }: { node: TreeNode; depth: number; 
             {node.step.prompt && <p className={`text-[10px] mt-0.5 line-clamp-1 ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>{node.step.prompt.slice(0, 80)}</p>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {learningScore !== null && (
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                learningScore >= 32 ? 'bg-emerald-100 text-emerald-700' : learningScore >= 24 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+              }`}>{learningScore}/40</span>
+            )}
             <div className={`w-2 h-2 rounded-full ${cfg.dot} ${isActive ? 'animate-pulse' : ''}`} />
             <span className={`text-[10px] ${cfg.color}`}>{cfg.label}</span>
           </div>

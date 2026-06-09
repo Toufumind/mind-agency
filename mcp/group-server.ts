@@ -29,6 +29,7 @@ import { agentTools, handleAgentTool } from './tools/agent.js';
 import { consensusTools, handleConsensusTool } from './tools/consensus.js';
 import { memoryTools, handleMemoryTool } from './tools/memory.js';
 import { taskTools, handleTaskTool } from './tools/task.js';
+import { economyTools, handleEconomyTool } from './tools/economy.js';
 
 const WS_BASE_URL = process.env.WS_BASE_URL || `http://localhost:${process.env.WS_PORT || '3003'}`;
 const WS_BROADCAST_URL = process.env.WS_BROADCAST_URL || `${WS_BASE_URL}/broadcast`;
@@ -163,6 +164,7 @@ const tools = [
   ...consensusTools(),
   ...memoryTools(),
   ...taskTools(),
+  ...economyTools(),
 ];
 
 const rl = createInterface({ input: process.stdin });
@@ -212,7 +214,7 @@ rl.on('line', async (line: string) => {
       }
 
       // v0.4: Try modular handlers first — return true if handled.
-      const modHandlers = [handleGroupTool, handleCommunicationTool, handleWorkflowTool, handleAgentTool, handleConsensusTool, handleMemoryTool, handleTaskTool];
+      const modHandlers = [handleGroupTool, handleCommunicationTool, handleWorkflowTool, handleAgentTool, handleConsensusTool, handleMemoryTool, handleTaskTool, handleEconomyTool];
       for (const handler of modHandlers) {
         try {
           if (await handler(name, a, agentName, respond, id)) return;

@@ -48,4 +48,5 @@ function evaluateContent(content: string, type: string): ScoreResult {
   return { scores, total, percentage, feedback, suggestions };
 }
 
-export { evaluateContent, ScoreResult };
+export { evaluateContent };
+export type { ScoreResult };

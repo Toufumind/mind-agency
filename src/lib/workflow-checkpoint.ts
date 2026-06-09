@@ -12,6 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { GROUPS_DIR } from './data-dir';
+import { atomicWrite } from './atomic';
 
 const CHECKPOINT_DIR = '.checkpoints';
 
@@ -61,14 +62,14 @@ function ensureDir(dir: string): void {
 export function saveRunMeta(group: string, runId: string, meta: { workflowName: string; startedAt: number; status: string }): void {
   const dir = runDir(group, runId);
   ensureDir(dir);
-  const { atomicWrite } = require('./atomic');
+
   atomicWrite(path.join(dir, 'meta.json'), JSON.stringify({ ...meta, runId, group }, null, 2));
 }
 
 export function saveStepCheckpoint(group: string, runId: string, step: StepCheckpoint): void {
   const dir = runDir(group, runId);
   ensureDir(dir);
-  const { atomicWrite } = require('./atomic');
+
   atomicWrite(path.join(dir, `${step.stepId}.json`), JSON.stringify(step, null, 2));
 }
 
@@ -79,7 +80,7 @@ export function completeRunCheckpoint(group: string, runId: string, status: stri
     meta.status = status;
     meta.completedAt = Date.now();
     if (error) meta.error = error;
-    const { atomicWrite } = require('./atomic');
+  
     atomicWrite(metaPath, JSON.stringify(meta, null, 2));
   } catch {}
 }

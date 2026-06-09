@@ -44,11 +44,15 @@ setEventBus(bus); // v0.4: register singleton for in-process subscribers
 // ── WorkflowEngine singleton ───────────────────────────────────────────────
 
 import { ChatStepExecutor } from './src/lib/event-bus.js';
-const useChat = true; // process.env.WORKFLOW_EXECUTOR === 'chat';
-const executor = useChat ? new ChatStepExecutor() : undefined;
-const workflowEngine = new WorkflowEngine(bus, executor);
-if (useChat) console.log('[ws] WorkflowEngine using ChatStepExecutor (real AI)');
+import { getEngine } from './src/lib/workflow-bridge.js';
+const workflowEngine = getEngine(bus);
+console.log('[ws] WorkflowEngine using shared singleton from workflow-bridge');
 initConsensusHandlers();
+
+// v1.2: Timeout monitoring — check every 30s for stuck WAITING steps
+setInterval(() => {
+  try { workflowEngine.checkTimeouts(); } catch {}
+}, 30_000);
 
 // ── Per-client state ─────────────────────────────────────────────────────
 
@@ -408,6 +412,8 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
           return;
         }
         const run = await workflowEngine.execute(def, input.group);
+        // v1.1: Set group metadata so findRunByGroup works for dynamic modifications
+        if (input.group) run.group = input.group;
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, runId: run.runId, status: run.status, stepsCompleted: run.steps.size }));
       } catch (e: any) {
@@ -451,6 +457,93 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     res.end(JSON.stringify({ ok: true, summary, workflows: byGroup }, null, 2));
     return;
   }
+
+  // ── POST /api/economy/deposit ──────────────────────────────────────
+  if (req.method === 'POST' && req.url === '/api/economy/deposit') {
+    let body = '';
+    req.on('data', (c: Buffer) => body += c.toString());
+    req.on('end', async () => {
+      try {
+        const { agent, amount, from, reason } = JSON.parse(body);
+        const { deposit } = await import('./src/lib/token-economy.js');
+        const acc = deposit(agent, amount, from || 'user', reason);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, balance: acc.balance }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/economy/account?agent=X ───────────────────────────────
+  if (req.method === 'GET' && req.url?.startsWith('/api/economy/account')) {
+    const url = new URL(req.url, 'http://localhost');
+    const agent = url.searchParams.get('agent');
+    if (!agent) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: 'agent required' })); return; }
+    import('./src/lib/token-economy.js').then(({ getAccount }) => {
+      const acc = getAccount(agent);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, account: acc }));
+    }).catch(e => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    });
+    return;
+  }
+
+  // ── POST /api/economy/transfer ─────────────────────────────────────
+  if (req.method === 'POST' && req.url === '/api/economy/transfer') {
+    let body = '';
+    req.on('data', (c: Buffer) => body += c.toString());
+    req.on('end', async () => {
+      try {
+        const { from, to, amount, reason } = JSON.parse(body);
+        const { transfer, getBalance } = await import('./src/lib/token-economy.js');
+        const ok = transfer(from, to, amount, reason);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok, balance: ok ? undefined : getBalance(from) }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/economy/reward ───────────────────────────────────────
+  if (req.method === 'POST' && req.url === '/api/economy/reward') {
+    let body = '';
+    req.on('data', (c: Buffer) => body += c.toString());
+    req.on('end', async () => {
+      try {
+        const { agent, task, amount, quality } = JSON.parse(body);
+        const { reward } = await import('./src/lib/token-economy.js');
+        const acc = reward(agent, amount, task, quality || 'normal');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, balance: acc.balance }));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/economy/leaderboard ───────────────────────────────────
+  if (req.method === 'GET' && req.url === '/api/economy/leaderboard') {
+    import('./src/lib/token-economy.js').then(({ getLeaderboard }) => {
+      const leaderboard = getLeaderboard();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, leaderboard }));
+    }).catch(e => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    });
+    return;
+  }
+
   // ── Everything else ────────────────────────────────────────────────
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: false, error: 'Not Found', path: req.url, method: req.method }));

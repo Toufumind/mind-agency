@@ -78,6 +78,28 @@ export function fetchJSON(urlStr: string): Promise<unknown> {
   });
 }
 
+/** POST with JSON response (for API calls that return data) */
+export function fetchPost(urlStr: string, body: Record<string, unknown>): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(body);
+    const u = new URL(urlStr);
+    const req = http.request({
+      hostname: u.hostname, port: u.port, path: u.pathname,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      timeout: 120000,
+    }, (res) => {
+      let body = '';
+      res.on('data', (c: string) => body += c);
+      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+    });
+    req.on('error', reject);
+    req.setTimeout(120000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.write(data);
+    req.end();
+  });
+}
+
 // ── Chat helpers ──────────────────────────────────────────
 
 export interface ChatMsg { from: string; date: string; body: string; }

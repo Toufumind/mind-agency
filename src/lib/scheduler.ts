@@ -16,7 +16,8 @@ import { refreshIndex, saveIndex } from './chat-index';
 import { recoverPendingConsensus } from './consensus';
 import { broadcastWs } from './ws-embedded';
 import { loadTriggers, checkTriggers } from './workflow-trigger';
-import { onFileChange, dequeueSignal, queueSize, getQueueStats, scanAllAgents, type Signal } from './signal-collector';
+import { onFileChange, dequeueSignal, queueSize, getQueueStats, scanAllAgents, enqueueSignal, type Signal } from './signal-collector';
+import { EventType } from './event-bus';
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -26,7 +27,7 @@ let dispatchTimer: ReturnType<typeof setInterval> | null = null;
 let running = false;
 let dispatching = false;
 const STARTUP_DELAY = 3000;
-const FALLBACK_POLL_MS = 300_000; // 5min fallback polling (reduced from 30s)
+const FALLBACK_POLL_MS = 30_000; // 30s fallback polling for faster response
 const DISPATCH_INTERVAL = 1_000; // Check queue every 1s
 
 // --- Adaptive heartbeat ---
@@ -48,6 +49,29 @@ export function startScheduler(options?: number | {
     onFileChange(dir);
   });
 
+  // v1.2: Subscribe to EventBus TASK_ASSIGNED events for instant agent triggering
+  import('./event-bus').then(({ getEventBus, EventType }) => {
+    const bus = getEventBus();
+    bus.subscribe(
+      { event: EventType.TASK_ASSIGNED },
+      { scope: 'events' },
+      'scheduler:task-assigned',
+      async (msg) => {
+        const agent = msg.payload?.agent as string;
+        if (agent) {
+          console.log(`[scheduler] EventBus: task assigned to ${agent}, triggering directly`);
+          try {
+            const result = await autoRespond(agent, { groupName: 'workflow', force: true });
+            console.log(`[scheduler] autoRespond result for ${agent}: triggered=${result.triggered}, reason=${result.reason || 'none'}`);
+          } catch (e) {
+            console.log(`[scheduler] autoRespond failed for ${agent}: ${e}`);
+          }
+        }
+      }
+    );
+    console.log(`[scheduler] subscribed to TASK_ASSIGNED events`);
+  }).catch(e => console.log(`[scheduler] failed to subscribe to EventBus: ${e}`));
+
   if (pollTimer) clearInterval(pollTimer);
   if (dispatchTimer) clearInterval(dispatchTimer);
   if (startupTimer) clearTimeout(startupTimer);
@@ -68,8 +92,17 @@ export function startScheduler(options?: number | {
     pollTimer = setInterval(() => fallbackScan('fallback'), FALLBACK_POLL_MS);
     // Dispatch queue every 1s
     dispatchTimer = setInterval(() => dispatch(), DISPATCH_INTERVAL);
-    // Heartbeat — adaptive
-    heartbeatTimer = setInterval(() => tickHeartbeat(), DEFAULT_HEARTBEAT_MS);
+    // Heartbeat — adaptive (recreated on each tick based on activity)
+    const startAdaptiveHeartbeat = () => {
+      if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      const isActive = (Date.now() - lastActivityTime) < IDLE_THRESHOLD_MS;
+      const interval = isActive ? HEARTBEAT_ACTIVE_MS : HEARTBEAT_IDLE_MS;
+      heartbeatTimer = setTimeout(() => {
+        tickHeartbeat();
+        startAdaptiveHeartbeat(); // Recurse with updated interval
+      }, interval);
+    };
+    startAdaptiveHeartbeat();
   }, STARTUP_DELAY);
 }
 
@@ -77,7 +110,7 @@ export function stopScheduler(): void {
   stopWatcher();
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   if (dispatchTimer) { clearInterval(dispatchTimer); dispatchTimer = null; }
-  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  if (heartbeatTimer) { clearTimeout(heartbeatTimer); heartbeatTimer = null; }
   if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
   saveIndex();
   console.log('[scheduler] stopped, index saved');
@@ -107,7 +140,6 @@ async function fallbackScan(source: string): Promise<void> {
     // Scan all agents for signals and enqueue
     const signals = scanAllAgents();
     for (const sig of signals) {
-      const { enqueueSignal } = await import('./signal-collector');
       enqueueSignal(sig);
     }
 

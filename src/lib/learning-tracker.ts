@@ -50,4 +50,5 @@ function getStrategyStats(): Record<string, { count: number; avgScore: number }>
   return stats;
 }
 
-export { recordCollaboration, getCollaborationHistory, getStrategyStats, CollaborationRecord };
+export { recordCollaboration, getCollaborationHistory, getStrategyStats };
+export type { CollaborationRecord };

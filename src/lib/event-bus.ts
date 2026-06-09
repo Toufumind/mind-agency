@@ -13,9 +13,10 @@
 import { randomUUID } from 'crypto';
 import * as yaml from 'js-yaml';
 import fs from 'fs';
+import { atomicWrite } from './atomic';
 import path from 'path';
 import os from 'os';
-import { AUDIT_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
+import { AUDIT_DIR, AGENTS_DIR, GROUPS_DIR, MIND_DIR } from './data-dir';
 import { broadcastWs } from './ws-embedded';
 import { enqueueTask, completeTask } from './task-queue';
 import { checkToolPermission } from './permission-engine';
@@ -257,34 +258,13 @@ export function getEventBus(): EventBus {
   return _singleton;
 }
 
-type EventHandler = (event: EventMessage) => void;
-const _handlers = new Map<EventType, Set<EventHandler>>();
-
-function onEvent(type: EventType, handler: EventHandler): () => void {
-  if (!_handlers.has(type)) _handlers.set(type, new Set());
-  _handlers.get(type)!.add(handler);
-  // Auto-route via the singleton's subscribe
-  const bus = getEventBus();
-  const subId = bus.subscribe({ event: type }, { scope: 'events' }, `inproc:${type}`, (msg) => {
-    handler(msg);
-  });
-  return () => {
-    _handlers.get(type)?.delete(handler);
-    try { bus.unsubscribe(subId); } catch { /* sub may already be removed */ }
-  };
-}
-
-function emitEvent(type: EventType, payload: Record<string, unknown>, source: string): void {
-  getEventBus().emit({ event: type, payload, timestamp: Date.now(), source, id: randomUUID() });
-}
-
 // ═══════════════════════════════════════════════════ Workflow Engine ═══
 
 export enum StepStatus { PENDING = 'pending', BLOCKED = 'blocked', IN_PROGRESS = 'in_progress', WAITING = 'waiting', COMPLETED = 'completed', SKIPPED = 'skipped', FAILED = 'failed' }
 export enum WorkflowStatus { IDLE = 'idle', RUNNING = 'running', COMPLETED = 'completed', FAILED = 'failed' }
 
 export interface WorkflowStepRoute { step: string; when: string; }
-export interface WorkflowStep { id: string; type?: 'step' | 'trigger'; agent?: string; action?: string; prompt?: string; trigger?: WorkflowTrigger; notify?: string | string[]; condition?: string; dependsOn?: string[]; routes?: WorkflowStepRoute[]; timeout?: number; onFailure?: string; onReject?: string; onApprove?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; }
+export interface WorkflowStep { id: string; type?: 'step' | 'trigger'; agent?: string; action?: string; prompt?: string; trigger?: WorkflowTrigger; notify?: string | string[]; condition?: string; dependsOn?: string[]; routes?: WorkflowStepRoute[]; timeout?: number; onFailure?: string; onReject?: string; onApprove?: string; maxRejectRetries?: number; retry?: number; retryBackoff?: 'fixed' | 'exponential'; priority?: 'low' | 'normal' | 'high' | 'critical'; reviewer?: string; reviewPrompt?: string; evaluate?: boolean; reward?: number; budget?: number; }
 export interface WorkflowTrigger {
   type: 'manual' | 'file_change' | 'schedule' | 'event';
   /** For schedule: cron expression (e.g. "0 9 * * 1-5") */
@@ -300,7 +280,7 @@ export interface WorkflowTrigger {
 }
 export interface WorkflowDefinition { name: string; description?: string; steps: WorkflowStep[]; source?: string; concurrency?: number; trigger?: WorkflowTrigger; }
 export interface TaskReport { stepId: string; agent: string; status: string; summary: string; details: string; timestamp: number; }
-export interface WorkflowRunRecord { runId: string; workflowName: string; startedAt: number; completedAt?: number; status: WorkflowStatus; steps: Map<string, StepStatus>; stepRetries: Map<string, number>; rollbacks: Array<{ stepId: string; reason: string; timestamp: number }>; compensations: string[]; taskReports: Map<string, TaskReport>; }
+export interface WorkflowRunRecord { runId: string; workflowName: string; startedAt: number; completedAt?: number; status: WorkflowStatus; steps: Map<string, StepStatus>; stepRetries: Map<string, number>; rollbacks: Array<{ stepId: string; reason: string; timestamp: number }>; compensations: string[]; taskReports: Map<string, TaskReport>; group?: string; }
 
 export interface StepExecutor { execute(step: WorkflowStep, context: Record<string, string>): Promise<string>; }
 
@@ -356,16 +336,50 @@ export class SimulatedStepExecutor implements StepExecutor {
 export class ChatStepExecutor implements StepExecutor {
   async execute(step: WorkflowStep, ctx: Record<string, string>): Promise<string> {
     const { chatOnce } = await import('./chat');
-    // v0.4: Build context from upstream steps (including task reports)
-    const ctxStr = Object.entries(ctx)
+    // v1.1: Build context from upstream steps — smart truncation, not fixed 500 chars
+    // Total context budget: 4000 chars. Split proportionally among upstream outputs.
+    const entries = Object.entries(ctx);
+    const totalLen = entries.reduce((sum, [, v]) => sum + v.length, 0);
+    const BUDGET = 4000;
+    const ctxStr = entries
       .map(([k, v]) => {
         if (k.includes('.')) {
           // Task report field (e.g., "step1.status", "step1.summary")
           return `[${k}]: ${v}`;
         }
-        return `[上游步骤 ${k} 的输出]\n${v.slice(0, 500)}`;
+        // Proportional truncation: give more space to larger outputs
+        const limit = entries.length === 1 ? BUDGET : Math.max(500, Math.floor(BUDGET * v.length / totalLen));
+        const truncated = v.length > limit ? v.slice(0, limit) + `\n...(共 ${v.length} 字，截取前 ${limit} 字)` : v;
+        return `[上游步骤 ${k} 的输出]\n${truncated}`;
       })
       .join('\n\n');
+
+    // v1.2: Query learning records — inject past feedback so agent avoids repeating mistakes
+    const agent = step.agent || 'unknown';
+    let learningHint = '';
+    try {
+      const evalDir = path.join(MIND_DIR, 'learning');
+      if (fs.existsSync(evalDir)) {
+        // Search all group learning files for this agent's past rejections
+        const files = fs.readdirSync(evalDir).filter(f => f.startsWith('learning-') && f.endsWith('.jsonl'));
+        const pastRejections: string[] = [];
+        for (const f of files) {
+          const lines = fs.readFileSync(path.join(evalDir, f), 'utf-8').split('\n').filter(Boolean);
+          for (const line of lines.slice(-30)) { // Last 30 records per group
+            try {
+              const r = JSON.parse(line);
+              if (r.agent === agent && r.evaluation?.verdict === 'NEEDS_REVISION' && r.evaluation?.feedback) {
+                pastRejections.push(`[${r.stepId || r.workflow}] ${r.evaluation.feedback.slice(0, 200)}`);
+              }
+            } catch {}
+          }
+        }
+        if (pastRejections.length > 0) {
+          const unique = [...new Set(pastRejections)].slice(-3); // Last 3 unique rejections
+          learningHint = `\n\n---\n\n【历史反馈 — 请避免以下问题】\n${unique.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+        }
+      }
+    } catch {}
 
     // v0.4: Step is a notification — agent does the work and reports via task tool
     const promptSuffix = `\n\n---\n\n【重要】完成任务后，请用 task 工具报告结果：
@@ -373,11 +387,10 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
 这一步的结果会被工作流引擎读取。`;
 
     const prompt = ctxStr
-      ? `[工作流上下文]\n${ctxStr}\n\n---\n\n你的任务:\n${step.prompt}${promptSuffix}`
-      : `${step.prompt}${promptSuffix}`;
+      ? `[工作流上下文]\n${ctxStr}\n\n---\n\n你的任务:\n${step.prompt}${learningHint}${promptSuffix}`
+      : `${step.prompt}${learningHint}${promptSuffix}`;
 
     // ── Permission check — every step execution goes through the engine ──
-    const agent = step.agent || 'unknown';
     const action = step.action || 'execute';
     const perm = checkToolPermission(agent, `workflow_step_${action}`, { stepId: step.id, action });
     if (!perm.allowed) {
@@ -487,6 +500,8 @@ export function parseWorkflowYaml(raw: string): WorkflowDefinition {
       retryBackoff: s.retry_backoff || s.retryBackoff || undefined,
       priority: s.priority || undefined, reviewer: s.reviewer || undefined,
       reviewPrompt: s.review_prompt || s.reviewPrompt || undefined,
+      reward: typeof s.reward === 'number' ? s.reward : undefined,
+      budget: typeof s.budget === 'number' ? s.budget : undefined,
     };
   });
 
@@ -547,7 +562,7 @@ export class WorkflowEngine {
   execute(def: WorkflowDefinition, group?: string, triggerStepId?: string): WorkflowRunRecord {
     const runId = randomUUID();
     const rec: WorkflowRunRecord = { runId, workflowName: def.name, startedAt: Date.now(), status: WorkflowStatus.RUNNING, steps: new Map(def.steps.map(s => [s.id, StepStatus.PENDING])), stepRetries: new Map(), rollbacks: [], compensations: [], taskReports: new Map() };
-    if (group) (rec as any)._group = group;
+    if (group) rec.group = group;
     this.runs.set(runId, rec);
     this.latestRuns.set(def.name, runId);
     // v0.4: Register abort controller
@@ -580,7 +595,6 @@ export class WorkflowEngine {
       }
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, error: err.message }, 'workflow-engine'));
       // v0.9: Don't evict on error — let runs persist for status queries
-      // this.evictOldRuns();
     });
     return rec;
   }
@@ -705,9 +719,10 @@ export class WorkflowEngine {
 
     // Build notification prompt with callback instructions
     const ctxStr = Object.entries(ctx).map(([k, v]) => `[${k}]: ${v.slice(0, 500)}`).join('\n\n');
-    const callbackInstr = `\n\n---\n\n【工作流回调】完成后请用 workflow_callback 报告结果：
-workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECTED 或 COMPLETED 或 FAILED", summary="结果摘要", details="详细说明")
-这一步的结果会被工作流引擎读取并决定下一步。`;
+    // v1.2: Stronger callback instruction — MUST call workflow_callback tool
+    const callbackInstr = `\n\n【重要】完成任务后，你必须调用 workflow_callback MCP 工具来报告结果。这是完成步骤的唯一方式。
+工具调用格式：workflow_callback(runId="${runId}", stepId="${sid}", status="COMPLETED", summary="你的结果摘要", details="详细说明")
+如果不调用此工具，工作流将无法推进到下一步。`;
 
     const prompt = ctxStr
       ? `[工作流上下文]\n${ctxStr}\n\n---\n\n你的任务:\n${node.step.prompt}${callbackInstr}`
@@ -722,12 +737,12 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       }, 'workflow-engine'));
     }
 
-    // Also persist notification to agent's chat so it can be picked up
+    // Also persist notification to agent's directory so autoRespond can pick it up
     try {
-      const notifDir = path.join(MIND_DIR, 'agents', agent, '.workflow-notifications');
+      const notifDir = path.join(AGENTS_DIR, agent, '.workflow-notifications');
       if (!fs.existsSync(notifDir)) fs.mkdirSync(notifDir, { recursive: true });
       const notifPath = path.join(notifDir, `${runId}_${sid}.json`);
-      const { atomicWrite } = require('./atomic');
+
       atomicWrite(notifPath, JSON.stringify({ runId, stepId: sid, prompt, createdAt: Date.now() }));
     } catch {}
 
@@ -748,11 +763,20 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
   /** Handle callback from agent — step completed */
   callback(runId: string, stepId: string, output: string): boolean {
     const run = this.runs.get(runId);
-    if (!run || run.status !== WorkflowStatus.RUNNING) return false;
+    if (!run || run.status !== WorkflowStatus.RUNNING) {
+      console.log(`[wf] Callback FAILED: run ${runId.slice(0, 8)} not found or not running (status: ${run?.status})`);
+      return false;
+    }
     const nodes = this.runNodes.get(runId);
-    if (!nodes) return false;
+    if (!nodes) {
+      console.log(`[wf] Callback FAILED: no nodes for run ${runId.slice(0, 8)}`);
+      return false;
+    }
     const node = nodes.get(stepId);
-    if (!node || node.status !== StepStatus.WAITING) return false;
+    if (!node || node.status !== StepStatus.WAITING) {
+      console.log(`[wf] Callback FAILED: step ${stepId} not found or not waiting (status: ${node?.status})`);
+      return false;
+    }
 
     console.log(`[wf] Callback: ${stepId} ← ${output.slice(0, 100)} (run ${runId.slice(0, 8)})`);
 
@@ -763,17 +787,40 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
 
     // Clean up notification file
     try {
-      const notifPath = path.join(MIND_DIR, 'agents', agentName, '.workflow-notifications', `${runId}_${stepId}.json`);
+      const notifPath = path.join(AGENTS_DIR, agentName, '.workflow-notifications', `${runId}_${stepId}.json`);
       if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
     } catch {}
+
+    // v1.2: Auto-save agent output to file (since LLM may not call Write tool)
+    const outGroup = run.group as string | undefined;
+    if (outGroup && output && output.length > 50) {
+      try {
+        const outDir = path.join(GROUPS_DIR, outGroup, 'outputs');
+        if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+        const outFile = path.join(outDir, `${stepId}.md`);
+        atomicWrite(outFile, `# ${stepId}\n\nAgent: ${agentName}\nAction: ${node.step.action || 'execute'}\n\n---\n\n${output}`);
+        console.log(`[wf] Auto-saved output to ${outFile}`);
+      } catch (e) {
+        console.log(`[wf] Failed to auto-save output: ${e}`);
+      }
+    }
 
     // Set output and complete
     node.output = output;
     node.status = StepStatus.COMPLETED;
     run.steps.set(stepId, StepStatus.COMPLETED);
 
+    // v1.2: Token economy — auto-reward on step completion (fire-and-forget)
+    if (node.step.reward && node.step.reward > 0) {
+      import('./token-economy').then(({ reward }) => {
+        const isGoodQuality = !isFailed && output.length > 100;
+        reward(agentName, node.step.reward!, stepId, isGoodQuality ? 'bonus' : 'normal');
+        console.log(`[wf] Rewarded ${agentName} with ${node.step.reward} tokens for ${stepId}`);
+      }).catch(e => console.log(`[wf] Failed to reward ${agentName}: ${e}`));
+    }
+
     // Save checkpoint
-    const grp = (run as any)._group as string | undefined;
+    const grp = run.group as string | undefined;
     if (grp) saveStepCheckpoint(grp, runId, { stepId, status: 'completed', output, retries: node.retryCount, timestamp: Date.now(), startedAt: node.startedAt, completedAt: Date.now(), durationMs: Date.now() - node.startedAt });
 
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_COMPLETED, { taskId: runId, stepId, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, output }, 'workflow-engine'));
@@ -832,6 +879,10 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
         node.dependents.push(reviewId);
         run.steps.set(reviewId, StepStatus.PENDING);
       }
+    } else if (node.step.evaluate) {
+      // v1.0: No reviewer — fallback to self-evaluation (heuristic, no AI call)
+      const grp = run.group as string | undefined;
+      this.storeSelfEvaluation(grp, run.workflowName, node.step, output);
     }
 
     // Review branching
@@ -839,6 +890,12 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       const originalId = sid.replace(/_review$/, '');
       const originalNode = nodes.get(originalId);
       if (originalNode) {
+        // v1.0: Store learning record from review output (reviewer IS the evaluator)
+        if (originalNode.step.evaluate) {
+          const grp = run.group as string | undefined;
+          this.storeReviewEvaluation(grp, run.workflowName, node.step, output, originalNode.output || '');
+        }
+
         if (/REJECTED/i.test(output)) {
           const onReject = originalNode.onReject || originalNode.step.onReject;
           if (onReject === 'fail') {
@@ -847,13 +904,19 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
             run.steps.set(originalId, StepStatus.FAILED);
           } else if (onReject && onReject !== 'retry' && nodes.has(onReject)) {
             const target = nodes.get(onReject)!;
-            target.step = { ...target.step, prompt: `${target.step.prompt}\n\n---\n\n【审查反馈】${originalId} 被拒绝，原因：${output.slice(0, 1000)}` };
+            target.step = { ...target.step, prompt: `${target.step.prompt}\n\n---\n\n【审查反馈 #${originalNode.rejectCount + 1}】${originalId} 被拒绝，原因：${output.slice(0, 1000)}` };
             target.deps = target.deps.filter(d => d !== sid);
           } else if (originalNode.rejectCount < originalNode.maxRejectRetries) {
             originalNode.rejectCount++;
             originalNode.status = StepStatus.PENDING;
             originalNode.output = '';
-            originalNode.step = { ...originalNode.step, prompt: `${originalNode.step.prompt}\n\n---\n\n【审查反馈】上次提交被拒绝，原因：${output.slice(0, 1000)}\n请根据反馈修改后重新提交。` };
+            // v1.1: Preserve original prompt, append numbered rejection history
+            const rawPrompt = originalNode.step.prompt || '';
+            const feedbackIdx = rawPrompt.lastIndexOf('\n\n---\n\n【审查反馈');
+            const originalPrompt = feedbackIdx > 0 ? rawPrompt.slice(0, feedbackIdx) : rawPrompt;
+            const rejectionNum = originalNode.rejectCount;
+            const rejectionBlock = `\n\n---\n\n【历次审查反馈】\n${originalNode.rejectCount > 1 ? `第 1-${rejectionNum - 1} 次反馈见上文。\n` : ''}第 ${rejectionNum} 次被拒绝，原因：${output.slice(0, 1000)}\n\n请综合所有反馈，重新提交。注意不要重复犯之前的错误。`;
+            originalNode.step = { ...originalNode.step, prompt: originalPrompt + rejectionBlock };
             run.steps.set(originalId, StepStatus.PENDING);
           } else {
             originalNode.status = StepStatus.FAILED;
@@ -870,6 +933,201 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       }
     }
   }
+
+  // ── v1.0: Learning Records & Quality Evaluation ──────────────────────
+
+  /**
+   * Store a learning record from review output.
+   * Called when a _review step completes — the reviewer's verdict IS the evaluation.
+   * No extra AI call needed.
+   */
+  /** Consolidated evaluation storage — handles both review and self-evaluation */
+  private storeEvaluation(group: string | undefined, workflowName: string, stepId: string, step: WorkflowStep, evaluation: Record<string, unknown>, outputSnippet: string, reviewSnippet?: string): void {
+    const evalDir = path.join(MIND_DIR, 'learning');
+    if (!fs.existsSync(evalDir)) fs.mkdirSync(evalDir, { recursive: true });
+
+    const record = {
+      id: Date.now().toString(36),
+      group,
+      workflow: workflowName,
+      stepId,
+      action: step.action,
+      agent: step.agent,
+      evaluation,
+      outputSnippet: outputSnippet.slice(0, 500),
+      ...(reviewSnippet ? { reviewSnippet: reviewSnippet.slice(0, 500) } : {}),
+      timestamp: new Date().toISOString(),
+    };
+
+    const logFile = path.join(evalDir, `learning-${group || 'global'}.jsonl`);
+    fs.appendFileSync(logFile, JSON.stringify(record) + '\n', 'utf-8');
+    console.log(`[wf] evaluation ${stepId}: total=${evaluation.total}/40 verdict=${evaluation.verdict}`);
+  }
+
+  private storeReviewEvaluation(group: string | undefined, workflowName: string, reviewStep: WorkflowStep, reviewOutput: string, originalOutput: string): void {
+    const isApproved = /APPROVED/i.test(reviewOutput);
+    const isRejected = /REJECTED/i.test(reviewOutput);
+
+    const feedbackText = reviewOutput
+      .replace(/^(APPROVED|REJECTED)\s*[:\-]?\s*/i, '')
+      .trim()
+      .slice(0, 500) || 'No feedback provided';
+
+    const hasDetail = feedbackText.length > 50;
+    const baseScore = isApproved ? 8 : isRejected ? 4 : 5;
+    const detailBonus = hasDetail ? 1 : 0;
+
+    const evaluation = {
+      quality: Math.min(10, baseScore + detailBonus),
+      completeness: Math.min(10, baseScore + (isApproved ? 1 : 0)),
+      clarity: Math.min(10, baseScore + detailBonus),
+      actionability: Math.min(10, baseScore + (isApproved ? 1 : 0)),
+      total: 0,
+      feedback: feedbackText,
+      verdict: isApproved ? 'APPROVED' : isRejected ? 'NEEDS_REVISION' : 'UNKNOWN',
+      reviewer: reviewStep.agent,
+    };
+    evaluation.total = evaluation.quality + evaluation.completeness + evaluation.clarity + evaluation.actionability;
+
+    const originalId = reviewStep.id?.replace(/_review$/, '') || reviewStep.id;
+    this.storeEvaluation(group, workflowName, originalId, reviewStep, evaluation, originalOutput, reviewOutput);
+  }
+
+  private storeSelfEvaluation(group: string | undefined, workflowName: string, step: WorkflowStep, output: string): void {
+    const len = output.length;
+    const hasStructure = /^#|^-|^\d+\./m.test(output);
+    const hasDetail = len > 200;
+    const hasResult = /完成|DONE|SUCCESS|APPROVED/i.test(output);
+
+    const evaluation = {
+      quality: Math.min(10, 5 + (hasDetail ? 2 : 0) + (hasResult ? 1 : 0)),
+      completeness: Math.min(10, 5 + (hasDetail ? 2 : 0) + (len > 500 ? 1 : 0)),
+      clarity: Math.min(10, 5 + (hasStructure ? 2 : 0)),
+      actionability: Math.min(10, 5 + (hasResult ? 2 : 0)),
+      total: 0,
+      feedback: 'Self-evaluation (no reviewer configured)',
+      verdict: hasResult ? 'APPROVED' : 'UNKNOWN',
+      reviewer: 'self',
+    };
+    evaluation.total = evaluation.quality + evaluation.completeness + evaluation.clarity + evaluation.actionability;
+
+    this.storeEvaluation(group, workflowName, step.id, step, evaluation, output);
+  }
+
+  /**
+   * v1.1: Self-improvement — review the entire workflow execution after completion.
+   * Analyzes rejections, timing, scores, and writes improvement suggestions.
+   * This is the "retrospective" step that helps the system learn.
+   */
+  private reviewWorkflowExecution(group: string | undefined, run: WorkflowRunRecord, nodes: Map<string, DagNode>): void {
+    const evalDir = path.join(MIND_DIR, 'learning');
+    if (!fs.existsSync(evalDir)) fs.mkdirSync(evalDir, { recursive: true });
+
+    const durationMs = (run.completedAt || Date.now()) - run.startedAt;
+    const stepStats: Array<{
+      id: string; agent: string; action: string;
+      status: string; durationMs: number; retries: number; rejected: boolean;
+    }> = [];
+
+    for (const [id, node] of nodes) {
+      if (node.step.type === 'trigger') continue;
+      stepStats.push({
+        id,
+        agent: node.step.agent || 'unknown',
+        action: node.step.action || 'execute',
+        status: node.status,
+        durationMs: node.startedAt ? Date.now() - node.startedAt : 0,
+        retries: node.retryCount,
+        rejected: node.rejectCount > 0,
+      });
+    }
+
+    const totalSteps = stepStats.length;
+    const completedSteps = stepStats.filter(s => s.status === 'completed').length;
+    const failedSteps = stepStats.filter(s => s.status === 'failed').length;
+    const rejectedSteps = stepStats.filter(s => s.rejected).length;
+    const totalRetries = stepStats.reduce((sum, s) => sum + s.retries, 0);
+    const avgDuration = totalSteps > 0 ? Math.round(stepStats.reduce((sum, s) => sum + s.durationMs, 0) / totalSteps) : 0;
+    const longestStep = stepStats.sort((a, b) => b.durationMs - a.durationMs)[0];
+
+    // Read existing learning records for trend analysis
+    const existingRecords = this.getLearningRecords(group || 'global', 20);
+    const prevAvgScore = existingRecords.length > 0
+      ? existingRecords.reduce((sum: number, r: any) => sum + (r.evaluation?.total || 0), 0) / existingRecords.length
+      : 0;
+
+    // Build improvement suggestions
+    const suggestions: string[] = [];
+    if (rejectedSteps > 0) {
+      suggestions.push(`${rejectedSteps}/${totalSteps} 个步骤被拒绝 — 考虑优化任务描述或分配给更合适的 agent`);
+    }
+    if (totalRetries > 0) {
+      suggestions.push(`共重试 ${totalRetries} 次 — 审查标准可能过严，或任务定义不够明确`);
+    }
+    if (longestStep && longestStep.durationMs > avgDuration * 2) {
+      suggestions.push(`步骤 "${longestStep.id}" 耗时 ${Math.round(longestStep.durationMs / 1000)}s，远超平均 ${Math.round(avgDuration / 1000)}s — 考虑拆分或并行化`);
+    }
+    if (failedSteps > 0) {
+      suggestions.push(`${failedSteps} 个步骤失败 — 检查错误原因，可能需要人工介入`);
+    }
+    if (rejectedSteps === 0 && failedSteps === 0 && totalRetries === 0) {
+      suggestions.push('所有步骤一次通过 — 流程顺畅，可考虑提高质量标准');
+    }
+
+    // Store workflow review record
+    const reviewRecord = {
+      id: Date.now().toString(36),
+      type: 'workflow_review',
+      group,
+      workflow: run.workflowName,
+      runId: run.runId,
+      summary: {
+        totalSteps,
+        completedSteps,
+        failedSteps,
+        rejectedSteps,
+        totalRetries,
+        avgDurationMs: avgDuration,
+        totalDurationMs: durationMs,
+        prevAvgScore: Math.round(prevAvgScore),
+      },
+      stepStats: stepStats.map(s => ({
+        id: s.id, agent: s.agent, action: s.action,
+        status: s.status, durationMs: s.durationMs, retries: s.retries, rejected: s.rejected,
+      })),
+      suggestions,
+      timestamp: new Date().toISOString(),
+    };
+
+    const logFile = path.join(evalDir, `workflow-reviews-${group || 'global'}.jsonl`);
+    fs.appendFileSync(logFile, JSON.stringify(reviewRecord) + '\n', 'utf-8');
+    console.log(`[wf] Workflow review: ${run.workflowName} — ${completedSteps}/${totalSteps} completed, ${rejectedSteps} rejected, ${suggestions.length} suggestions`);
+  }
+
+  /** Get learning records for a group — agents can query this for past outcomes */
+  getLearningRecords(group: string, limit = 20): Array<Record<string, unknown>> {
+    const logFile = path.join(MIND_DIR, 'learning', `learning-${group}.jsonl`);
+    if (!fs.existsSync(logFile)) return [];
+    const lines = fs.readFileSync(logFile, 'utf-8').split('\n').filter(Boolean);
+    return lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean).slice(-limit);
+  }
+
+  /** Get average scores for a group — quick quality overview */
+  getQualitySummary(group: string): { avgTotal: number; count: number; approved: number; needsRevision: number } {
+    const records = this.getLearningRecords(group, 100);
+    if (records.length === 0) return { avgTotal: 0, count: 0, approved: 0, needsRevision: 0 };
+    const totals = records.map((r: any) => r.evaluation?.total || 0);
+    const approved = records.filter((r: any) => r.evaluation?.verdict === 'APPROVED').length;
+    const needsRevision = records.filter((r: any) => r.evaluation?.verdict === 'NEEDS_REVISION').length;
+    return {
+      avgTotal: Math.round(totals.reduce((a: number, b: number) => a + b, 0) / totals.length),
+      count: records.length,
+      approved,
+      needsRevision,
+    };
+  }
+
+  // ── v1.2: Timeout Monitoring ────────────────────────────────────────────
 
   // v0.7: Guard against reentrant schedule() calls
   private scheduling = new Set<string>();
@@ -914,8 +1172,10 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
         run.status = failed ? WorkflowStatus.FAILED : WorkflowStatus.COMPLETED;
         run.completedAt = Date.now();
         console.log(`[wf] Run ${runId.slice(0, 8)} ${run.status}`);
+        // v1.1: Self-improvement — review the workflow execution and write learning record
+        const grp = run.group as string | undefined;
+        this.reviewWorkflowExecution(grp, run, nodes);
         // Save history and cleanup
-        const grp = (run as any)._group as string | undefined;
         if (grp) {
           completeRunCheckpoint(grp, runId, run.status === WorkflowStatus.COMPLETED ? 'completed' : 'failed');
           const stepsCompleted = [...(run.steps.values())].filter(s => s === StepStatus.COMPLETED).length;
@@ -930,8 +1190,7 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
           cleanupCheckpoints(grp);
         }
         // v0.8: Don't evict immediately — let runs persist for status queries
-        // this.evictOldRuns();
-      }
+        }
       return;
     }
 
@@ -977,7 +1236,7 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
 
       // Push notification to browser so the human user sees the approval request
       try {
-        const group = (run as any)._group || '';
+        const group = run.group || '';
         broadcastWs('wf_approval', {
           runId, approvalId, stepId: sid, group,
           workflow: run.workflowName,
@@ -990,6 +1249,28 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
     }
 
     if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, action: node.step.action, phase }, 'workflow-engine'));
+
+    // v1.2: Budget check — verify agent has enough balance
+    const budgetAgent = node.step.agent || 'unknown';
+    if (node.step.budget && node.step.budget > 0) {
+      try {
+        const { getBalance, withdraw } = await import('./token-economy');
+        const balance = getBalance(budgetAgent);
+        if (balance < node.step.budget) {
+          console.log(`[wf] ${budgetAgent} insufficient balance for ${sid}: has ${balance}, needs ${node.step.budget}`);
+          node.error = `Insufficient balance: ${budgetAgent} has ${balance} tokens, needs ${node.step.budget}`;
+          node.status = StepStatus.FAILED;
+          run.steps.set(sid, StepStatus.FAILED);
+          run.rollbacks.push({ stepId: sid, reason: node.error, timestamp: Date.now() });
+          if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: budgetAgent, reason: node.error, retriesExhausted: true, phase }, 'workflow-engine'));
+          return;
+        }
+        // Deduct budget
+        withdraw(budgetAgent, node.step.budget, sid);
+        console.log(`[wf] Deducted ${node.step.budget} tokens from ${budgetAgent} for ${sid}`);
+      } catch {}
+    }
+
     const ctx: Record<string, string> = {};
     for (const depId of node.deps) {
       const dn = nodes.get(depId);
@@ -1014,6 +1295,16 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
       run.steps.set(sid, StepStatus.FAILED);
       run.rollbacks.push({ stepId: sid, reason: msg, timestamp: Date.now() });
       if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, { taskId: runId, stepId: sid, workflow: run.workflowName, agent: node.step.agent, reason: msg, retriesExhausted: true, phase }, 'workflow-engine'));
+
+      // v1.2: Token economy — auto-deduct on step failure
+      if (node.step.reward && node.step.reward > 0) {
+        const failAgent = node.step.agent || 'unknown';
+        try {
+          const { penalize } = await import('./token-economy');
+          penalize(failAgent, Math.floor(node.step.reward * 0.2), sid, msg.slice(0, 100));
+          console.log(`[wf] Penalized ${failAgent} with ${Math.floor(node.step.reward * 0.2)} tokens for failed ${sid}`);
+        } catch {}
+      }
     }
   }
 
@@ -1021,6 +1312,42 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
   private evalRouteCondition(when: string, output: string): boolean {
     if (!when) return false;
     const out = output.toLowerCase().trim();
+
+    // v1.1: AND/OR compound conditions
+    // "condition1 AND condition2" or "condition1 OR condition2"
+    const andParts = when.split(/\s+AND\s+/i);
+    if (andParts.length > 1) return andParts.every(p => this.evalRouteCondition(p.trim(), output));
+    const orParts = when.split(/\s+OR\s+/i);
+    if (orParts.length > 1) return orParts.some(p => this.evalRouteCondition(p.trim(), output));
+
+    // v1.1: Score threshold — "score > 30", "score <= 20", "total >= 28"
+    const scoreMatch = when.match(/^(score|total)\s*([><=!]+)\s*(\d+)$/i);
+    if (scoreMatch) {
+      const op = scoreMatch[2];
+      const threshold = parseInt(scoreMatch[3]);
+      // Extract score from output — look for patterns like "total=28/40" or "28/40" or just a number
+      let score = 0;
+      const totalMatch = output.match(/(?:total[=:]\s*)?(\d+)\s*\/\s*40/i);
+      if (totalMatch) score = parseInt(totalMatch[1]);
+      else {
+        const numMatch = output.match(/\b(\d{1,2})\b/);
+        if (numMatch) score = parseInt(numMatch[1]);
+      }
+      if (op === '>') return score > threshold;
+      if (op === '>=') return score >= threshold;
+      if (op === '<') return score < threshold;
+      if (op === '<=') return score <= threshold;
+      if (op === '==') return score === threshold;
+      if (op === '!=') return score !== threshold;
+      return false;
+    }
+
+    // v1.1: Regex match — "regex:pattern"
+    const regexMatch = when.match(/^regex:(.+)$/i);
+    if (regexMatch) {
+      try { return new RegExp(regexMatch[1], 'i').test(output); } catch { return false; }
+    }
+
     // "output contains X" or just "X"
     const containsMatch = when.match(/^output\s+contains\s+(.+)$/i);
     if (containsMatch) return out.includes(containsMatch[1].toLowerCase().trim());
@@ -1035,99 +1362,10 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
   }
 
   /** v0.4: Enhanced condition evaluator — supports and_(), or_(), not_(), router() */
-  private evalCond(cond: string, ctx: Record<string, string>): boolean {
-    // ── Compound operators (v0.4) ──
-    // and_($.a.output contains X, $.b.output == Y)
-    const andMatch = cond.match(/^and_\((.+)\)$/i);
-    if (andMatch) {
-      const args = this.splitConditionArgs(andMatch[1]);
-      return args.every(a => this.evalCond(a.trim(), ctx));
-    }
-    // or_($.a.output contains X, $.b.output == Y)
-    const orMatch = cond.match(/^or_\((.+)\)$/i);
-    if (orMatch) {
-      const args = this.splitConditionArgs(orMatch[1]);
-      return args.some(a => this.evalCond(a.trim(), ctx));
-    }
-    // not_($.step.output contains ERROR)
-    const notMatch = cond.match(/^not_\((.+)\)$/i);
-    if (notMatch) {
-      return !this.evalCond(notMatch[1].trim(), ctx);
-    }
-    // router($.step.output, { "APPROVED": "deploy_step", "REJECTED": "rollback_step" })
-    // Returns true if the current step output matches any key (used for branching)
-    const routerMatch = cond.match(/^router\(\s*\$\.(\w+)\.output\s*,\s*\{(.+)\}\s*\)$/i);
-    if (routerMatch) {
-      const [, sid, routesStr] = routerMatch;
-      const out = (ctx[sid] || '').toLowerCase().trim();
-      // Parse route keys
-      const keys = routesStr.split(',').map(k => {
-        const m = k.match(/"(.+?)"/);
-        return m ? m[1].toLowerCase() : k.trim().toLowerCase();
-      });
-      return keys.some(k => out.includes(k));
-    }
-
-    // ── Single expression (original) ──
-    const m = cond.match(/^\$\.(\w+)\.output\s+(contains|==|!=)\s+(.+)$/i);
-    if (m) { const [, sid, op, raw] = m; const v = raw.trim().replace(/^['"]|['"]$/g, ''); const out = (ctx[sid] || '').toLowerCase(); const o = op.toLowerCase(); if (o === 'contains') return out.includes(v.toLowerCase()); if (o === '==') return out === v.toLowerCase(); if (o === '!=') return out !== v.toLowerCase(); }
-    return Object.prototype.hasOwnProperty.call(ctx, cond);
-  }
-
-  /** Split condition arguments respecting nested parentheses */
-  private splitConditionArgs(argsStr: string): string[] {
-    const args: string[] = [];
-    let depth = 0, current = '';
-    for (const ch of argsStr) {
-      if (ch === '(') depth++;
-      else if (ch === ')') depth--;
-      if (ch === ',' && depth === 0) { args.push(current); current = ''; }
-      else current += ch;
-    }
-    if (current.trim()) args.push(current);
-    return args;
-  }
-
   // ── Public helpers ────────────────────────────────────────────────
 
   /** Find the latest run by workflow name */
-  private findRunByName(wn: string): WorkflowRunRecord | undefined {
-    let latest: WorkflowRunRecord | undefined;
-    for (const r of this.runs.values()) {
-      if (r.workflowName === wn) {
-        if (!latest || r.startedAt > latest.startedAt) latest = r;
-      }
-    }
-    return latest;
-  }
 
-  /** Evict old completed/failed runs — keep last `keep` per workflow name */
-  private evictOldRuns(keep: number = 100): void {
-    const byName = new Map<string, WorkflowRunRecord[]>();
-    for (const r of this.runs.values()) {
-      if (!byName.has(r.workflowName)) byName.set(r.workflowName, []);
-      byName.get(r.workflowName)!.push(r);
-    }
-    for (const [, runs] of byName) {
-      // Sort by startedAt ascending (oldest first)
-      runs.sort((a, b) => a.startedAt - b.startedAt);
-      // Remove finished runs beyond the keep limit
-      const finished = runs.filter(r => r.status !== WorkflowStatus.RUNNING);
-      while (finished.length > keep) {
-        const oldest = finished.shift()!;
-        this.runs.delete(oldest.runId);
-        this.abortControllers.delete(oldest.runId);
-        this.runNodes.delete(oldest.runId);
-      }
-    }
-  }
-
-  updateStep(wn: string, sid: string, s: StepStatus) { const r = this.findRunByName(wn); if (r) r.steps.set(sid, s); }
-  recordRetry(wn: string, sid: string): number { const r = this.findRunByName(wn); if (!r) return 0; const n = (r.stepRetries.get(sid) || 0) + 1; r.stepRetries.set(sid, n); return n; }
-  recordRollback(wn: string, sid: string, reason: string) { const r = this.findRunByName(wn); if (r) r.rollbacks.push({ stepId: sid, reason, timestamp: Date.now() }); }
-  recordCompensation(wn: string, sid: string) { const r = this.findRunByName(wn); if (!r) return; r.compensations.push(sid); if (this.bus) this.bus.emit(createEvent(EventType.TASK_IN_PROGRESS, { taskId: `dag:${wn}:${sid}`, workflow: wn, step: sid, agent: 'scheduler', action: 'compensation' }, 'workflow-engine')); }
-  complete(wn: string) { const r = this.findRunByName(wn); if (r) { r.status = WorkflowStatus.COMPLETED; r.completedAt = Date.now(); } }
-  fail(wn: string) { const r = this.findRunByName(wn); if (r) { r.status = WorkflowStatus.FAILED; r.completedAt = Date.now(); } }
   listRuns(): WorkflowRunRecord[] { const seen = new Set<string>(); const out: WorkflowRunRecord[] = []; for (const r of this.runs.values()) { if (!seen.has(r.runId)) { seen.add(r.runId); out.push(r); } } return out; }
 
   /** GET /api/workflows — per-group workflow status dashboard data */
@@ -1320,7 +1558,7 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
               }
               // Clean up notification file
               try {
-                const notifPath = path.join(MIND_DIR, 'agents', node.step.agent || 'unknown', '.workflow-notifications', `${rid}_${sid}.json`);
+                const notifPath = path.join(AGENTS_DIR, node.step.agent || 'unknown', '.workflow-notifications', `${rid}_${sid}.json`);
                 if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
               } catch {}
               if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, {
@@ -1338,7 +1576,7 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
 
   getStats(): { totalRuns: number; activeRuns: number; completedRuns: number; failedRuns: number; totalRetries: number; totalRollbacks: number; totalCompensations: number } {
     const seen = new Set<string>(); let a = 0, c = 0, f = 0, tr = 0, rb = 0, cp = 0;
-    for (const [, r] of this.runs) { if (seen.has(r.runId)) continue; seen.add(r.runId); if (r.status === WorkflowStatus.RUNNING) a++; else if (r.status === WorkflowStatus.COMPLETED) c++; else if (r.status === WorkflowStatus.FAILED) f++; tr += r.stepRetries.size; rb += r.rollbacks.length; cp += r.compensations.length; }
+    for (const [, r] of this.runs) { if (seen.has(r.runId)) continue; seen.add(r.runId); if (r.status === WorkflowStatus.RUNNING) a++; else if (r.status === WorkflowStatus.COMPLETED) c++; else if (r.status === WorkflowStatus.FAILED) f++; for (const v of r.stepRetries.values()) tr += v; rb += r.rollbacks.length; cp += r.compensations.length; }
     return { totalRuns: seen.size, activeRuns: a, completedRuns: c, failedRuns: f, totalRetries: tr, totalRollbacks: rb, totalCompensations: cp };
   }
 
@@ -1355,80 +1593,121 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
   addStep(group: string, step: WorkflowStep): boolean {
     const run = this.findRunByGroup(group);
     if (!run || run.status !== WorkflowStatus.RUNNING) return false;
-    // Store in pending additions — will be picked up by hot-reload
-    const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
-    if (!fs.existsSync(wfPath)) return false;
+
+    // v1.1: Add to in-memory DAG directly (not just YAML file)
+    const nodes = this.runNodes.get(run.runId);
+    if (!nodes) return false;
+
+    // Check for duplicate step ID
+    if (nodes.has(step.id)) return false;
+
+    // Parse deps — ensure they exist in the DAG
+    const deps = (step.dependsOn || []).filter(d => nodes.has(d));
+    const node: DagNode = {
+      step, deps, dependents: [],
+      status: StepStatus.PENDING, output: '', error: '',
+      retryCount: 0, maxRetries: step.retry ?? 3,
+      rejectCount: 0, maxRejectRetries: step.maxRejectRetries ?? 3,
+      onFailure: step.onFailure, onReject: step.onReject, onApprove: step.onApprove,
+      routes: step.routes, timeout: step.timeout || 300000, startedAt: 0, notifiedAt: 0,
+    };
+    nodes.set(step.id, node);
+
+    // Rebuild dependent links
+    for (const [id, n] of nodes) {
+      n.dependents = [];
+      for (const [oid, other] of nodes) {
+        if (other.deps.includes(id)) n.dependents.push(oid);
+      }
+    }
+
+    // Sync to run record
+    run.steps.set(step.id, StepStatus.PENDING);
+
+    // Also persist to YAML for recovery
     try {
-      const raw = fs.readFileSync(wfPath, 'utf-8');
-      const def = parseWorkflowYaml(raw);
-      def.steps.push(step);
-      const { atomicWrite } = require('./atomic');
-      atomicWrite(wfPath, yaml.dump(def));
-      console.log(`[wf] Added step ${step.id} to ${group} workflow`);
-      return true;
-    } catch { return false; }
+      const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
+      if (fs.existsSync(wfPath)) {
+        const raw = fs.readFileSync(wfPath, 'utf-8');
+        const def = parseWorkflowYaml(raw);
+        if (!def.steps.find(s => s.id === step.id)) {
+          def.steps.push(step);
+          atomicWrite(wfPath, yaml.dump(def));
+        }
+      }
+    } catch {}
+
+    console.log(`[wf] Added step ${step.id} to running workflow in ${group}`);
+    // Trigger scheduling to pick up the new step
+    this.schedule(run.runId);
+    return true;
   }
 
-  /** v0.4: Delete a step from a running workflow */
+  /** v1.1: Delete a step from a running workflow — in-memory DAG + YAML */
   deleteStep(group: string, stepId: string): boolean {
     const run = this.findRunByGroup(group);
     if (!run || run.status !== WorkflowStatus.RUNNING) return false;
-    const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
-    if (!fs.existsSync(wfPath)) return false;
-    try {
-      const raw = fs.readFileSync(wfPath, 'utf-8');
-      const def = parseWorkflowYaml(raw);
-      const idx = def.steps.findIndex(s => s.id === stepId);
-      if (idx === -1) return false;
-      def.steps.splice(idx, 1);
-      const { atomicWrite } = require('./atomic');
-      atomicWrite(wfPath, yaml.dump(def));
-      console.log(`[wf] Deleted step ${stepId} from ${group} workflow`);
-      return true;
-    } catch { return false; }
+    const nodes = this.runNodes.get(run.runId);
+    if (!nodes) return false;
+    const node = nodes.get(stepId);
+    if (!node) return false;
+    // Can't delete if step is currently running
+    if (node.status === StepStatus.WAITING || node.status === StepStatus.IN_PROGRESS) return false;
+
+    // Remove from DAG
+    nodes.delete(stepId);
+    // Rebuild dependent links
+    for (const [, n] of nodes) {
+      n.dependents = n.dependents.filter(d => d !== stepId);
+      n.deps = n.deps.filter(d => d !== stepId);
+    }
+    run.steps.delete(stepId);
+    console.log(`[wf] Deleted step ${stepId} from running workflow in ${group}`);
+    this.schedule(run.runId);
+    return true;
   }
 
-  /** v0.4: Modify a step in a running workflow */
+  /** v1.1: Modify a step in a running workflow — in-memory DAG + YAML */
   modifyStep(group: string, stepId: string, changes: Partial<WorkflowStep>): boolean {
     const run = this.findRunByGroup(group);
     if (!run || run.status !== WorkflowStatus.RUNNING) return false;
-    const wfPath = path.join(GROUPS_DIR, group, 'workflow.yaml');
-    if (!fs.existsSync(wfPath)) return false;
-    try {
-      const raw = fs.readFileSync(wfPath, 'utf-8');
-      const def = parseWorkflowYaml(raw);
-      const step = def.steps.find(s => s.id === stepId);
-      if (!step) return false;
-      Object.assign(step, changes);
-      const { atomicWrite } = require('./atomic');
-      atomicWrite(wfPath, yaml.dump(def));
-      console.log(`[wf] Modified step ${stepId} in ${group} workflow`);
-      return true;
-    } catch { return false; }
+    const nodes = this.runNodes.get(run.runId);
+    if (!nodes) return false;
+    const node = nodes.get(stepId);
+    if (!node) return false;
+
+    // Apply changes to the step definition
+    Object.assign(node.step, changes);
+    // Update deps if changed
+    if (changes.dependsOn) {
+      node.deps = changes.dependsOn.filter(d => nodes.has(d));
+      // Rebuild dependent links
+      for (const [, n] of nodes) {
+        n.dependents = [];
+        for (const [oid, other] of nodes) {
+          if (other.deps.includes(oid)) n.dependents.push(oid);
+        }
+      }
+    }
+    console.log(`[wf] Modified step ${stepId} in running workflow in ${group}`);
+    // If step is pending, reschedule to pick up changes
+    if (node.status === StepStatus.PENDING) this.schedule(run.runId);
+    return true;
   }
 
   /** v0.4: Find a running workflow by group name */
   private findRunByGroup(group: string): WorkflowRunRecord | undefined {
+    // v1.2: Return the LATEST running workflow for this group, not the first
+    let latest: WorkflowRunRecord | undefined;
     for (const run of this.runs.values()) {
-      if ((run as any)._group === group && run.status === WorkflowStatus.RUNNING) {
-        return run;
+      if (run.group === group && run.status === WorkflowStatus.RUNNING) {
+        if (!latest || run.startedAt > latest.startedAt) latest = run;
       }
     }
-    return undefined;
+    return latest;
   }
 
   /** v0.4: Get global concurrency limit from settings */
-  private getGlobalConcurrency(): number {
-    try {
-      const settingsPath = path.join(process.env.MIND_DATA_DIR || process.cwd(), '.mind', 'settings.json');
-      if (fs.existsSync(settingsPath)) {
-        const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-        return settings.maxConcurrentTasks || 5;
-      }
-    } catch {}
-    return 5; // default
-  }
-
   /** v0.4: Recover incomplete runs — resume from checkpoint */
   recoverCheckpoints(): Array<{ group: string; runId: string; workflowName: string }> {
     const incomplete = findIncompleteRuns();
@@ -1500,48 +1779,3 @@ workflow_callback(runId="${runId}", stepId="${sid}", status="APPROVED 或 REJECT
  *   workflow_callback(runId="abc", stepId="plan", status="COMPLETED", summary="done")
  *   workflow_callback(runId='abc', stepId='plan', status='APPROVED', summary='looks good', details='...')
  */
-export function parseAndExecuteCallbacks(agentName: string, text: string): void {
-  if (!text) return;
-
-  // Match workflow_callback(...) calls in the text
-  const callbackRegex = /workflow_callback\s*\(\s*([^)]+)\)/gi;
-  let match;
-
-  while ((match = callbackRegex.exec(text)) !== null) {
-    try {
-      const argsStr = match[1];
-      const args: Record<string, string> = {};
-
-      // Parse key="value" or key='value' pairs
-      const argRegex = /(\w+)\s*=\s*["']([^"']*)["']/g;
-      let argMatch;
-      while ((argMatch = argRegex.exec(argsStr)) !== null) {
-        args[argMatch[1].toLowerCase()] = argMatch[2];
-      }
-
-      const runId = args.runid || args.runId;
-      const stepId = args.stepid || args.stepId;
-      const status = (args.status || 'COMPLETED').toUpperCase();
-      const summary = args.summary || args.result || text.slice(0, 200);
-      const details = args.details || '';
-
-      if (!runId || !stepId) {
-        console.log(`[wf-text-callback] Missing runId or stepId in: ${match[0].slice(0, 100)}`);
-        continue;
-      }
-
-      console.log(`[wf-text-callback] ${agentName}: ${stepId} ← ${status} (run ${runId.slice(0, 8)})`);
-
-      // Find the engine instance and call callback
-      const engineInstance = (global as any).__workflowEngine as WorkflowEngine | undefined;
-      if (engineInstance) {
-        const output = `${status}: ${summary}${details ? '\n' + details : ''}`;
-        engineInstance.callback(runId, stepId, output);
-      } else {
-        console.log(`[wf-text-callback] No workflow engine instance available`);
-      }
-    } catch (e) {
-      console.log(`[wf-text-callback] Parse error: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-}
