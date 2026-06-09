@@ -1,13 +1,17 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Play, Loader2, CheckCircle, XCircle, Clock, AlertTriangle, ChevronRight } from 'lucide-react';
+import { useMemo } from 'react';
 
 /**
- * Workflow Architecture Diagram — NLP Paper Style
+ * Workflow Architecture Diagram — Transformer Paper Style
  *
- * Clean rectangular blocks, arrows with data flow labels,
- * monospace fonts, minimal color. Like Transformer architecture diagrams.
+ * Matches "Attention is All You Need" (Vaswani et al., 2017):
+ * - Vertical layout (inputs bottom, outputs top)
+ * - Large colored blocks filling available width
+ * - Semantic colors for different component types
+ * - Thick arrows between blocks
+ * - Nx notation for repeated layers
+ * - Clean academic styling
  */
 
 interface Step {
@@ -37,19 +41,22 @@ interface Props {
   running?: boolean;
 }
 
-// Status colors — minimal palette
-const STATUS: Record<string, { bg: string; border: string; text: string; dot: string; label: string }> = {
-  pending:     { bg: 'bg-white',      border: 'border-gray-300',  text: 'text-gray-500',  dot: 'bg-gray-300',  label: 'PENDING' },
-  waiting:     { bg: 'bg-amber-50',   border: 'border-amber-300', text: 'text-amber-600', dot: 'bg-amber-400', label: 'WAITING' },
-  in_progress: { bg: 'bg-blue-50',    border: 'border-blue-300',  text: 'text-blue-600',  dot: 'bg-blue-400',  label: 'RUNNING' },
-  completed:   { bg: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-600', dot: 'bg-emerald-400', label: 'DONE' },
-  failed:      { bg: 'bg-red-50',     border: 'border-red-300',   text: 'text-red-600',   dot: 'bg-red-400',   label: 'FAILED' },
-  skipped:     { bg: 'bg-gray-50',    border: 'border-gray-200',  text: 'text-gray-400',  dot: 'bg-gray-300',  label: 'SKIP' },
+// Semantic colors — matching Transformer diagram palette
+const ACTION_COLORS: Record<string, { fill: string; stroke: string }> = {
+  create:  { fill: '#e8f5e9', stroke: '#388e3c' },  // Green — production
+  review:  { fill: '#fff3e0', stroke: '#f57c00' },  // Orange — review/audit
+  fix:     { fill: '#e3f2fd', stroke: '#1976d2' },  // Blue — revision
+  verify:  { fill: '#f3e5f5', stroke: '#7b1fa2' },  // Purple — verification
+  deploy:  { fill: '#fce4ec', stroke: '#c2185b' },  // Pink — deployment
+  research:{ fill: '#e0f2f1', stroke: '#00796b' },  // Teal — research
+  execute: { fill: '#f5f5f5', stroke: '#757575' },  // Gray — default
 };
 
-function getStatus(step: Step, run: Run | null): string {
-  if (!run) return 'pending';
-  return run.steps[step.id] || 'pending';
+function getActionColor(action: string): { fill: string; stroke: string } {
+  for (const [key, colors] of Object.entries(ACTION_COLORS)) {
+    if (action.toLowerCase().includes(key)) return colors;
+  }
+  return ACTION_COLORS.execute;
 }
 
 // Build layers from dependency graph (topological sort by depth)
@@ -58,7 +65,7 @@ function buildLayers(steps: Step[]): Step[][] {
   const depth = new Map<string, number>();
 
   function getDepth(id: string): number {
-    if (depth.has(id)) return depth.get(id)!;
+    if (depth.has(id)) depth.get(id)!;
     const step = stepMap.get(id);
     if (!step || !step.dependsOn || step.dependsOn.length === 0) {
       depth.set(id, 0);
@@ -81,152 +88,143 @@ function buildLayers(steps: Step[]): Step[][] {
   return Array.from(layers.entries()).sort((a, b) => a[0] - b[0]).map(([, steps]) => steps);
 }
 
-export default function WorkflowArch({ steps, run, onTrigger, running }: Props) {
+export default function WorkflowArch({ steps, run }: Props) {
   const layers = useMemo(() => buildLayers(steps), [steps]);
-  const [selectedStep, setSelectedStep] = useState<string | null>(null);
 
-  const selected = steps.find(s => s.id === selectedStep);
+  // Fixed SVG dimensions — match Transformer diagram proportions exactly
+  const svgW = 620;
+  const svgH = layers.length * 95 + 70;
+
+  // Calculate block positions — match Transformer proportions exactly
+  const positions = useMemo(() => {
+    const pos = new Map<string, { x: number; y: number; w: number; h: number }>();
+    const blockW = 380; // Transformer blocks are about 380px wide
+    const blockH = 60;  // Transformer blocks are about 60px tall
+    const gapY = 35;
+    const startX = (svgW - blockW) / 2;
+    const startY = 30;
+
+    for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
+      const layer = layers[layerIdx];
+      const y = startY + (layers.length - 1 - layerIdx) * (blockH + gapY);
+
+      if (layer.length === 1) {
+        pos.set(layer[0].id, { x: startX, y, w: blockW, h: blockH });
+      } else {
+        const gap = 12;
+        const singleW = (blockW - gap * (layer.length - 1)) / layer.length;
+        for (let i = 0; i < layer.length; i++) {
+          pos.set(layer[i].id, { x: startX + i * (singleW + gap), y, w: singleW, h: blockH });
+        }
+      }
+    }
+    return pos;
+  }, [layers]);
 
   return (
-    <div className="font-mono">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-[14px] font-semibold text-gray-900 tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
-            Architecture
-          </h2>
-          <p className="text-[11px] text-gray-400 mt-0.5">{steps.length} modules · {layers.length} layers</p>
-        </div>
-        {onTrigger && (
-          <button onClick={onTrigger} disabled={running}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 transition-colors">
-            {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-            {running ? 'Running...' : 'Execute'}
-          </button>
+    <div style={{ fontFamily: '"Times New Roman", Times, serif', color: '#000' }}>
+      {/* Paper-style caption */}
+      <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', textAlign: 'center' }}>
+        Figure 1. Workflow Architecture
+      </div>
+
+      {/* SVG Diagram — fills container */}
+      <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block' }}>
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+          </marker>
+        </defs>
+
+        {/* Arrows between blocks */}
+        {layers.map((layer, layerIdx) => {
+          if (layerIdx >= layers.length - 1) return null;
+          const nextLayer = layers[layerIdx + 1];
+
+          return layer.map(step => {
+            const from = positions.get(step.id);
+            if (!from) return null;
+
+            const targets = nextLayer.filter(s => s.dependsOn?.includes(step.id));
+            return targets.map(target => {
+              const to = positions.get(target.id);
+              if (!to) return null;
+
+              const x1 = from.x + from.w / 2;
+              const y1 = from.y;
+              const x2 = to.x + to.w / 2;
+              const y2 = to.y + to.h;
+
+              return (
+                <line key={`${step.id}-${target.id}`}
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke="#333" strokeWidth="2.5" markerEnd="url(#arrowhead)" />
+              );
+            });
+          });
+        })}
+
+        {/* Step blocks — large, filling width */}
+        {Array.from(positions.entries()).map(([stepId, pos]) => {
+          const step = steps.find(s => s.id === stepId);
+          if (!step) return null;
+          const colors = getActionColor(step.action || 'execute');
+
+          return (
+            <g key={stepId}>
+              <rect x={pos.x} y={pos.y} width={pos.w} height={pos.h}
+                fill={colors.fill} stroke={colors.stroke} strokeWidth="2" rx="4" />
+              <text x={pos.x + pos.w / 2} y={pos.y + 25} fontSize="14" fontWeight="bold" fill="#333" textAnchor="middle" fontFamily="monospace">
+                {step.id}
+              </text>
+              <text x={pos.x + pos.w / 2} y={pos.y + 42} fontSize="11" fill="#555" textAnchor="middle" fontFamily="monospace">
+                {step.agent || '?'} · {step.action || 'execute'}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Nx notation */}
+        {layers.length > 1 && (
+          <text x={svgW - 20} y={svgH / 2} fontSize="16" fill="#666" fontFamily="serif">
+            ×{layers.length}
+          </text>
         )}
-      </div>
 
-      {/* Architecture diagram */}
-      <div className="relative">
-        {layers.map((layer, layerIdx) => (
-          <div key={layerIdx} className="mb-2">
-            {/* Layer label */}
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[9px] text-gray-400 uppercase tracking-widest w-12 shrink-0">L{layerIdx}</span>
-              <div className="flex-1 h-px bg-gray-200" />
-              <span className="text-[9px] text-gray-400">{layer.length} module{layer.length > 1 ? 's' : ''}</span>
-            </div>
+        {/* Skip connections — like Transformer diagram */}
+        {layers.length > 1 && layers[0].map(step => {
+          const from = positions.get(step.id);
+          if (!from) return null;
+          const lastLayer = layers[layers.length - 1];
+          const targets = lastLayer.filter(s => s.dependsOn?.includes(step.id));
+          return targets.map(target => {
+            const to = positions.get(target.id);
+            if (!to) return null;
+            const skipX = from.x - 15;
+            return (
+              <g key={`skip-${step.id}-${target.id}`}>
+                <line x1={skipX} y1={from.y + from.h / 2} x2={skipX} y2={to.y + to.h / 2}
+                  stroke="#333" strokeWidth="1.5" markerEnd="url(#arrowhead)" />
+              </g>
+            );
+          });
+        })}
 
-            {/* Step blocks */}
-            <div className="flex gap-3 pl-14">
-              {layer.map(step => {
-                const st = getStatus(step, run);
-                const cfg = STATUS[st];
-                const isSelected = selectedStep === step.id;
-                return (
-                  <div key={step.id} className="flex items-center gap-2">
-                    <button
-                      onClick={() => setSelectedStep(isSelected ? null : step.id)}
-                      className={`relative border-2 rounded px-3 py-2 text-left transition-all min-w-[140px] ${cfg.bg} ${cfg.border} ${isSelected ? 'ring-2 ring-gray-300 shadow-sm' : 'hover:shadow-sm'}`}>
-                      {/* Status dot */}
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <div className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-                        <span className={`text-[9px] font-bold tracking-wider ${cfg.text}`}>{cfg.label}</span>
-                      </div>
-                      {/* Step ID */}
-                      <p className="text-[12px] font-semibold text-gray-900 truncate">{step.id}</p>
-                      {/* Agent + Action */}
-                      <div className="flex items-center gap-1 mt-1">
-                        {step.agent && <span className="text-[10px] text-gray-500">{step.agent}</span>}
-                        {step.action && <span className="text-[9px] text-gray-400">· {step.action}</span>}
-                      </div>
-                      {/* Reviewer badge */}
-                      {step.reviewer && (
-                        <div className="absolute -top-1.5 -right-1.5 text-[8px] bg-violet-100 text-violet-600 border border-violet-200 rounded px-1 py-0.5 font-medium">
-                          → {step.reviewer}
-                        </div>
-                      )}
-                      {/* Evaluate badge */}
-                      {step.evaluate && (
-                        <div className="absolute -top-1.5 left-2 text-[8px] bg-blue-100 text-blue-600 border border-blue-200 rounded px-1 py-0.5 font-medium">
-                          eval
-                        </div>
-                      )}
-                    </button>
-                    {/* Arrow to next layer */}
-                    {layerIdx < layers.length - 1 && (
-                      <div className="flex flex-col items-center mx-1">
-                        <ChevronRight size={14} className="text-gray-300" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+        {/* Inputs label */}
+        <text x={svgW / 2} y={svgH - 10} fontSize="12" fill="#333" textAnchor="middle" fontFamily="serif">
+          Inputs
+        </text>
 
-            {/* Dependency arrows between layers */}
-            {layerIdx < layers.length - 1 && (
-              <div className="pl-14 mt-1 mb-1">
-                <svg width="100%" height="20" className="overflow-visible">
-                  {layer.map((step, i) => {
-                    const nextLayer = layers[layerIdx + 1] || [];
-                    const nextSteps = nextLayer.filter(s => s.dependsOn?.includes(step.id));
-                    return nextSteps.map((ns, j) => {
-                      const x1 = (i / layer.length) * 100 + (50 / layer.length);
-                      const x2 = (nextLayer.indexOf(ns) / nextLayer.length) * 100 + (50 / nextLayer.length);
-                      return (
-                        <line key={`${step.id}-${ns.id}`}
-                          x1={`${x1}%`} y1="0" x2={`${x2}%`} y2="20"
-                          stroke="#d1d5db" strokeWidth="1.5" markerEnd="url(#arrowhead)" />
-                      );
-                    });
-                  })}
-                  <defs>
-                    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-                      <polygon points="0 0, 8 3, 0 6" fill="#d1d5db" />
-                    </marker>
-                  </defs>
-                </svg>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+        {/* Output label */}
+        <text x={svgW / 2} y={20} fontSize="12" fill="#333" textAnchor="middle" fontFamily="serif">
+          Output
+        </text>
+      </svg>
 
-      {/* Selected step detail */}
-      {selected && (
-        <div className="mt-6 border-2 border-gray-200 rounded-lg p-4 bg-gray-50/50">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[11px] font-bold text-gray-900">{selected.id}</span>
-            <span className="text-[10px] text-gray-400">·</span>
-            <span className="text-[10px] text-gray-500">{selected.agent}</span>
-            <span className="text-[10px] text-gray-400">·</span>
-            <span className="text-[10px] text-gray-500">{selected.action}</span>
-          </div>
-          {selected.prompt && (
-            <p className="text-[11px] text-gray-600 leading-relaxed border-l-2 border-gray-300 pl-3">
-              {selected.prompt}
-            </p>
-          )}
-          <div className="flex gap-4 mt-3 text-[10px] text-gray-400">
-            {selected.dependsOn?.length ? <span>← depends: {selected.dependsOn.join(', ')}</span> : null}
-            {selected.reviewer && <span>→ reviewer: {selected.reviewer}</span>}
-            {selected.evaluate && <span>★ evaluated</span>}
-            {selected.routes?.length && <span>⟁ {selected.routes.length} route(s)</span>}
-          </div>
-        </div>
-      )}
-
-      {/* Legend */}
-      <div className="mt-6 flex items-center gap-4 text-[9px] text-gray-400 border-t border-gray-200 pt-3">
-        <span className="uppercase tracking-wider font-medium">Legend:</span>
-        {Object.entries(STATUS).map(([key, cfg]) => (
-          <div key={key} className="flex items-center gap-1">
-            <div className={`w-2 h-2 rounded-sm ${cfg.dot}`} />
-            <span>{cfg.label}</span>
-          </div>
-        ))}
-        <span className="ml-auto">→ dependency</span>
+      {/* Caption */}
+      <div style={{ fontSize: '10px', color: '#555', textAlign: 'center', marginTop: '8px', fontFamily: '"Times New Roman", serif' }}>
+        <strong>Fig. 1.</strong> {steps.length}-module workflow with {layers.length} dependency layers.
+        {' '}Color indicates component type (green=production, orange=review, blue=revision).
       </div>
     </div>
   );
