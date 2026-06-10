@@ -17,7 +17,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <SidebarProvider>
-        <TitleBar />
+        <Suspense fallback={null}>
+          <TitleBar />
+        </Suspense>
         <div className="h-screen overflow-hidden" style={{ paddingTop: '36px' }}>
           <div className="h-full overflow-hidden">
             <ToastProvider>

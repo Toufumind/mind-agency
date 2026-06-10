@@ -12,7 +12,12 @@ import { Minus, Square, X, Maximize2 } from 'lucide-react';
 export default function TitleBar() {
   const { agents, activity } = useSidebarData();
   const [maximized, setMaximized] = useState(false);
-  const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron');
+  const [mounted, setMounted] = useState(false);
+  const isElectron = mounted && typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -34,10 +39,10 @@ export default function TitleBar() {
 
   const nonAgent = agents.filter(a => a.name !== 'me');
   // Don't render on /setup or when there's no data
-  const isSetup = typeof window !== 'undefined' && window.location.pathname === '/setup';
+  const isSetup = mounted && typeof window !== 'undefined' && window.location.pathname === '/setup';
   if (isSetup && !isElectron) return null;
   // On non-Electron, still show a simplified bar
-  if (!isElectron && nonAgent.length === 0) return null;
+  if (mounted && !isElectron && nonAgent.length === 0) return null;
 
   return (
     <div
