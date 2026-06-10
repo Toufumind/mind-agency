@@ -322,13 +322,10 @@ app.whenReady().then(async () => {
     process.env.MIND_ELECTRON_EXE = process.execPath;
   }
 
-  // (3) Start Next.js server in-process
-  console.log('[mind] Starting Next.js...');
-  try {
-    await import(pathToFileURL(path.join(APP_ROOT, 'server.js')).href);
-  } catch (e) {
-    console.error('[mind] Server load error:', e.message);
-  }
+  // (3) Wait for Next.js server (user must start it manually)
+  console.log('[mind] Waiting for Next.js server...');
+  // The server should already be running from the launch script
+  // If not, try to connect and wait
 
   // (4) Wait for server ready
   console.log('[mind] Waiting for server...');
