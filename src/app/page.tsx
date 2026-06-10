@@ -28,7 +28,7 @@ export default function HomePage() {
   const { unreadGroups } = useNotifications();
 
   const load = useCallback(() => {
-    fetch('/api/agents').then(r=>r.json()).then(d=>{ setAgents(d.agents||[]); let t=0; for(const a of d.agents||[]) t+=a.emailCount; setTotalEmails(t); }).catch(()=>{});
+    fetch('/api/agents').then(r=>r.json()).then(d=>{ setAgents(d.agents||[]); let t=0; for(const a of d.agents||[]) t+=(a.emailCount||0); setTotalEmails(t||0); }).catch(()=>{});
     fetch('/api/groups/scan').then(r=>r.json()).then(d=>setGroups((d.groups||[]).map((g:string)=>({name:g})))).catch(()=>{});
     fetch('/api/system/analytics').then(r=>r.json()).then(d=>setTodayCost(d.costs?.todayTotal || 0)).catch(()=>{});
     fetch('/api/system/pending').then(r=>r.json()).then(d=>setPending(d.items||[])).catch(()=>{});
@@ -59,7 +59,7 @@ export default function HomePage() {
             <StatCard icon={<Users size={15} className="text-info"/>} bg="bg-info-muted" value={nonMe.length} label={t('agents')} />
             <StatCard icon={<Hash size={15} className="text-indigo-600"/>} bg="bg-indigo-50" value={groups.length} label={t('groups')} />
             <StatCard icon={<Mail size={15} className="text-amber-600"/>} bg="bg-amber-50" value={totalEmails} label={t('emails')} />
-            <StatCard icon={<DollarSign size={15} className="text-success"/>} bg="bg-success-muted" value={`¥${todayCost.toFixed(2)}`} label="今日消耗" />
+            <StatCard icon={<DollarSign size={15} className="text-success"/>} bg="bg-success-muted" value={`¥${(todayCost||0).toFixed(2)}`} label="今日消耗" />
             <StatCard icon={<AlertCircle size={15} className="text-destructive"/>} bg="bg-destructive-muted" value={pending.length} label="待审批" />
           </div>
 
