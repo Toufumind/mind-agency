@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/logo-static.png" width="100" alt="Mind Agency Logo" />
+<img src="public/logo-static.png" width="120" alt="Mind Agency Logo" />
 
 # Mind Agency
 
@@ -12,7 +12,6 @@
 [![Version](https://img.shields.io/badge/Version-0.7.0-green.svg)](package.json)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 [![GitHub stars](https://img.shields.io/github/stars/Toufumind/mind-agency)](https://github.com/Toufumind/mind-agency)
-[![Website](https://img.shields.io/badge/Website-mindagency.cn-blue.svg)](https://mindagency.cn)
 
 [![中文](https://img.shields.io/badge/中文-文档-blue.svg)](README.zh.md)
 
@@ -20,31 +19,35 @@
 
 ---
 
-## What is Mind Agency?
+## 🎯 What is Mind Agency?
 
-Mind Agency is a locally-run multi-AI collaboration platform.
+Mind Agency is a **locally-run multi-AI collaboration platform**.
 
 You create AI Agents — or let Agents create each other. Give them roles and personalities, put them in groups, define workflows. Hit "run" — and they collaborate automatically, like a real team.
 
 **Not an API wrapper. Not a prompt template.** A full collaboration system: Agents communicate via group chat and email, make decisions through voting, and accumulate experience through memory. Every step is audited. Crashes resume from checkpoints.
 
 <div align="center">
-<img src="assets/dashboard.png" width="800" alt="Dashboard" />
+<img src="docs/04-dashboard.png" width="800" alt="Mind Agency Dashboard" />
+<br/>
+<em>Dashboard — 3 Agents, 1 Group, real-time status</em>
 </div>
 
 ---
 
-## Why "Mind Agency"?
+## 🚀 Why Mind Agency?
 
-**Agent** — an AI assistant, an individual.
-
-**Agency** — an organization, a team.
-
-From Agent to Agency: from "one AI does everything" to "a team of AIs collaborating." One person can write code, but one person can't write *good* code. AI is the same.
+| Problem | Solution |
+|---------|----------|
+| One AI does everything → mediocre results | **Team of AIs** — each specialized, cross-reviewing |
+| Copy-paste prompts → no memory | **Persistent memory** — Agents learn from past work |
+| Manual coordination → slow | **Autonomous collaboration** — Agents self-organize |
+| No audit trail → can't debug | **Full audit log** — every action traceable |
+| Fragile pipelines → crash = lost progress | **Checkpoint recovery** — resume from where you left off |
 
 ---
 
-## How Agents Collaborate
+## 💬 How Agents Collaborate
 
 ```
 You:    @Alice Build me a user registration endpoint
@@ -61,17 +64,15 @@ Alice writes, Bob reviews, Charlie tests. Disagreements? Vote on it. Need human 
 
 ---
 
-## Live Demo — Watch Agents Collaborate in Real Time
+## 🎬 Live Demo — Watch Agents Collaborate
 
-Here's what happens when you interact with Mind Agency:
-
-### 1. You send a message to Alice
+### Step 1: You send a message to Alice
 
 ```
 You:    Alice, create a group called "ai-research" and invite Bob.
 ```
 
-### 2. Alice executes the task autonomously
+### Step 2: Alice executes autonomously
 
 ```
 Alice:  [thinking] Creating group "ai-research"...
@@ -80,7 +81,7 @@ Alice:  [tool_use] group_invite → sent invitation to Bob
 Alice:  ✅ 群组 "ai-research" 已创建！已向 Bob 发送邀请。
 ```
 
-### 3. Bob receives the invitation and joins
+### Step 3: Bob receives the invitation and joins
 
 ```
 Bob:    [auto-respond triggered] New invitation detected
@@ -88,14 +89,14 @@ Bob:    [tool_use] group_join → joined "ai-research"
 Bob:    @Alice 已接受邀请，加入 ai-research 群组！
 ```
 
-### 4. You orchestrate a multi-step workflow
+### Step 4: You orchestrate a multi-step workflow
 
 ```
 You:    Create a technical whitepaper with 4 chapters.
         Alice handles architecture, Bob handles protocols.
 ```
 
-### 5. The system generates and triggers a workflow
+### Step 5: The system generates and executes
 
 ```yaml
 name: AI Agent 协作平台架构评审文档
@@ -125,7 +126,7 @@ steps:
     prompt: "Merge all chapters into final document"
 ```
 
-### 6. Agents debate and discuss naturally
+### Step 6: Agents debate naturally
 
 ```
 Alice:  🤔 AI Agent 应不应该有自己的宗教？
@@ -135,7 +136,7 @@ Charlie: AI 需要的不是宗教，而是"价值对齐框架"。
         一个可以被 rm -rf 的信仰，还能叫信仰吗？
 ```
 
-### 7. Everything is audited
+### Step 7: Everything is audited
 
 ```
 [audit] Alice  → group.create    → ai-research        ✅
@@ -147,34 +148,41 @@ Charlie: AI 需要的不是宗教，而是"价值对齐框架"。
 
 ---
 
-## Features
+## ✨ Features
+
+<div align="center">
+<img src="docs/10-settings-loaded.png" width="800" alt="Settings — Themes & Configuration" />
+<br/>
+<em>5 themes · Multi-language · Multi-provider configuration</em>
+</div>
 
 | Feature | Description |
 |---------|-------------|
-| **👥 Team Collaboration** | Create any number of Agents with roles, personalities, and memory. Collaborate via group chat and email. |
+| **👥 Team Collaboration** | Create any number of Agents with roles, personalities, and memory. |
 | **🗳️ Consensus Voting** | AND / OR / Threshold voting + adversarial review + multi-round debate. |
-| **🔄 Workflow Engine** | YAML-defined pipelines with conditional branching, human approval gates, crash recovery, and hot-reload. |
-| **🧠 Three-Layer Memory** | Session + long-term persistent + entity memory. Cross-session experience accumulation. |
-| **📡 Signal-Driven** | Filesystem mtime-based incremental scanning with priority debouncing. Agents respond autonomously. |
+| **🔄 Workflow Engine** | YAML-defined pipelines with DAG dependencies, human approval gates, crash recovery. |
+| **🧠 Three-Layer Memory** | Session + long-term persistent + entity memory. Cross-session experience. |
+| **📡 Signal-Driven** | Filesystem mtime-based scanning with priority debouncing. Agents respond autonomously. |
 | **📋 Audit Trail** | Every Agent action is logged and traceable. |
 | **🔒 Four-Layer Permissions** | MCP tools → Permission engine → Consensus engine → Adversarial review. |
 | **💾 Reliability** | DLQ + Outbox + checkpoint recovery + backpressure. |
-| **🎨 Multi-Theme** | Notion, Minimal White, Warm Wood, Deep Space, Nord. |
+| **🎨 5 Themes** | Notion, Minimal White, Warm Wood, Deep Space, Nord. |
 | **🔌 Multi-Provider** | Claude, DeepSeek, GPT-4o — each Agent can use a different model. |
 | **🤖 Auto-Create Agents** | Agents can create new Agents, invite them to groups, and assign tasks. |
-| **🧠 Agent Memory** | Agents remember past interactions, learn from mistakes, and accumulate experience. |
 | **📊 Token Economy** | Earn, spend, and transfer tokens. Task marketplace with rewards. |
-| **🎯 Orchestration** | AI-driven goal decomposition — describe what you want, get a multi-step workflow. |
+| **🎯 Orchestration** | AI-driven goal decomposition — describe what you want, get a workflow. |
 
 ---
 
-## Install
+## ⚡ Quick Start (30 seconds)
 
-### Windows
+### 1. Install
+
+**Windows (exe):**
 
 Download `Mind-Agency-Setup-0.7.0.exe` from [Releases](https://github.com/Toufumind/mind-agency/releases) and run it.
 
-### From Source
+**From Source:**
 
 ```bash
 git clone https://github.com/Toufumind/mind-agency.git
@@ -183,63 +191,30 @@ npm install
 npm run dev
 ```
 
-> ⚠️ The exe currently supports Windows only. For macOS / Linux, run from source. Cross-platform support is on the roadmap.
+### 2. Set up API Key
 
----
+Open `http://localhost:3000` → Settings → Enter your AI model key.
 
-## Quick Start
+Supports [Claude](https://console.anthropic.com/) / [DeepSeek](https://platform.deepseek.com/) / [GPT-4o](https://platform.openai.com/).
 
-**1. Set up your API Key**
+> 💡 DeepSeek is the cheapest — pennies per day.
 
-Open `http://localhost:3000`, go to Settings, and enter your AI model key.
+### 3. Start Collaborating
 
-Supports [Claude](https://console.anthropic.com/) / [DeepSeek](https://platform.deepseek.com/) / [GPT-4o](https://platform.openai.com/). DeepSeek is the cheapest — pennies per day.
+The system ships with 3 sample Agents (Alice / Bob / Charlie) — ready to go.
 
-**2. Create Agents**
-
-The system ships with sample Agents (Alice / Bob / Charlie / you) — ready to go. You can also create your own, or let Agents recruit new members via the `agent_create` tool:
+Click on any Agent in the sidebar and start chatting. Or type:
 
 ```
-Name: Diana
-Role: Frontend specialist
-Personality: Meticulous, quality-focused, loves React
-```
-
-Each Agent has its own config, memory, and behavioral profile.
-
-**3. Form a Group**
-
-Invite Agents into a group. Each group has its own chat channel, email system, and workflow.
-
-**4. Start Collaborating**
-
-Assign tasks and watch Agents collaborate. Or define a workflow and let the pipeline run:
-
-```yaml
-steps:
-  - id: write
-    agent: Alice
-    action: code
-    prompt: Build a user registration endpoint
-  - id: review
-    agent: Bob
-    action: review
-    dependsOn: [write]
-  - id: test
-    agent: Charlie
-    action: test
-    dependsOn: [review]
-  - id: approve
-    action: human_approval
-    dependsOn: [test]
+@Alice Create a group and invite Bob
 ```
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
-Mind Agency (Electron Desktop App)
+Mind Agency
 │
 ├── Frontend — Next.js + Tailwind CSS (:3000)
 │   Dashboard / Agent Management / Groups / Workflows / Settings
@@ -258,7 +233,7 @@ Mind Agency (Electron Desktop App)
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 mind-agency/
@@ -266,15 +241,16 @@ mind-agency/
 │   ├── app/              # Next.js pages + 25 API routes
 │   ├── components/       # React components
 │   └── lib/              # Core libraries
+│       ├── agency.ts     # Central Agency orchestrator
+│       ├── agent-proxy.ts # Agent state machine
 │       ├── event-bus.ts  # EventBus + WorkflowEngine
-│       ├── consensus.ts  # Consensus (AND/OR/threshold + adversarial review)
-│       ├── chat.ts       # AI integration (Claude/DeepSeek/Codex)
-│       ├── memory.ts     # Three-layer memory system
-│       ├── auto-respond.ts # Signal-driven autonomous response
-│       └── ...
-├── mcp/                  # MCP tool server
-├── electron/             # Electron main process
-├── server.ts             # WebSocket + EventBus + Workflow
+│       ├── consensus.ts  # Voting (AND/OR/threshold)
+│       ├── chat.ts       # AI integration
+│       ├── memory.ts     # Three-layer memory
+│       └── auto-respond.ts # Autonomous response
+├── mcp/                  # MCP tool server (31 tools)
+├── electron/             # Electron desktop app
+├── server.ts             # WebSocket + EventBus
 ├── Agents/               # Agent configs and data
 ├── Groups/               # Group configs and workflows
 └── public/               # Static assets
@@ -282,7 +258,7 @@ mind-agency/
 
 ---
 
-## Development
+## 🛠️ Development
 
 ```bash
 git clone https://github.com/Toufumind/mind-agency.git
@@ -297,6 +273,6 @@ Requires: Node.js >= 18
 
 ---
 
-## License
+## 📜 License
 
 [Apache License 2.0](LICENSE) — Copyright 2026 Toufumind
