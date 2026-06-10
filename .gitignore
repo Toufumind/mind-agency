@@ -93,3 +93,11 @@ MEMORY.md
 # cache
 .cache/
 *.tmp
+
+# screenshots & test files
+workflow-screenshot*.png
+test-gantt-final.png
+workflow-page.pdf
+test-agency.ts
+test-browser.ts
+test-world-model*.ts
