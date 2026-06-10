@@ -1,15 +1,15 @@
 /**
  * AgentProxy — unified agent representation in Next.js process.
  *
- * Consolidates ALL agent logic:
- *   - AgentConfig (config.json)
- *   - AgentState (mind-state.json)
- *   - AgentActivity (in-memory status)
- *   - Session management (chat history)
- *   - System prompt building (identity, MCP, etc.)
- *   - Provider selection and execution
- *   - Token usage tracking
- *   - claude.exe process (lifecycle-bound)
+ * Consolidates ALL agent logic by composing module files:
+ *   - agent-types.ts   (types & defaults)
+ *   - agent-config.ts  (config load/save)
+ *   - agent-state.ts   (state load/save)
+ *   - agent-session.ts (session load/save/clear)
+ *   - agent-task.ts    (task load/save/add/complete)
+ *   - agent-email.ts   (email load/send/delete)
+ *   - agent-skill.ts   (skill load/context)
+ *   - agent-memory.ts  (memory CRUD/search)
  *
  * Each agent has one proxy instance with its own claude.exe process.
  * Use AgentRegistry to get/create proxies.
@@ -25,102 +25,23 @@ import { randomUUID } from 'crypto';
 import { getMemoryContext } from './memory';
 import { loadGoalContext } from './cli-commands';
 
-// ── Types ─────────────────────────────────────────────────
+// ── Re-export types for backward compatibility ─────────────
+export type {
+  AgentStatus, AgentConfig, GroupState, AgentState,
+  AgentActivity, AgentTask, ChatHistory, ChatEvent,
+  ChatResult, Email, AgentSkill,
+} from './agent-types';
 
-export type AgentStatus = 'idle' | 'processing' | 'chatting' | 'working';
-
-export interface AgentConfig {
-  roles: string[];
-  permissions?: {
-    canCreateGroup?: boolean;
-    canDeleteGroup?: boolean;
-    canDeploy?: boolean;
-  };
-  autoRespondToEmail?: boolean;
-  autoProcessGroupInvites?: boolean;
-  notifyOnEmail?: boolean;
-  notifyOnGroupMention?: boolean;
-  behavior?: {
-    style?: string;
-    focus?: string[];
-    preferences?: Record<string, string>;
-    avoidTopics?: string[];
-  };
-  // Provider config
-  provider?: string;
-  model?: string;
-  apiKey?: string;
-  baseUrl?: string;
-  // SDK config
-  permissionMode?: string;
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  maxTurns?: number;
-}
-
-export interface GroupState {
-  chatCheck: number;
-  emailCheck: number;
-  lastMention?: string;
-}
-
-export interface AgentState {
-  emailCheck: number;
-  groups: Record<string, GroupState>;
-}
-
-export interface AgentActivity {
-  status: AgentStatus;
-  detail: string;
-  updatedAt: number;
-}
-
-export interface AgentTask {
-  runId: string;
-  stepId: string;
-  workflow: string;
-  prompt: string;
-  priority: 'critical' | 'high' | 'normal' | 'low';
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  createdAt: number;
-  result?: string;
-}
-
-export interface ChatHistory {
-  sessionId: string | null;
-  messages: { role: 'user' | 'assistant'; content: string; events?: ChatEvent[]; timestamp: string }[];
-  _version?: number;
-}
-
-export interface ChatEvent {
-  type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | 'done' | 'error';
-  content?: string;
-  toolName?: string;
-  toolInput?: string;
-  toolOutput?: string;
-  timestamp: string;
-}
-
-export interface ChatResult {
-  reply: string;
-  events: ChatEvent[];
-  sessionId: string;
-  tokenUsage?: { input: number; output: number };
-}
-
-// ── Default values ────────────────────────────────────────
-
-const DEFAULT_CONFIG: AgentConfig = {
-  roles: [],
-  autoRespondToEmail: false,
-  autoProcessGroupInvites: false,
-  notifyOnEmail: true,
-  notifyOnGroupMention: true,
-};
-
-const DEFAULT_STATE: AgentState = { emailCheck: 0, groups: {} };
-
-const DEFAULT_ACTIVITY: AgentActivity = { status: 'idle', detail: '', updatedAt: 0 };
+// ── Module imports ─────────────────────────────────────────
+import { DEFAULT_CONFIG, DEFAULT_STATE, DEFAULT_ACTIVITY } from './agent-types';
+import type { AgentConfig, AgentState, AgentActivity, ChatHistory, ChatEvent, ChatResult, AgentTask, AgentStatus } from './agent-types';
+import { loadAgentConfig, saveAgentConfig } from './agent-config';
+import { loadAgentState, saveAgentState } from './agent-state';
+import { loadAgentSession, saveAgentSession, clearAgentSession } from './agent-session';
+import { loadAgentTasks, saveAgentTasks, addAgentTask, completeAgentTask } from './agent-task';
+import { loadAgentEmails, sendAgentEmail, deleteAgentEmail } from './agent-email';
+import { loadAgentSkills, loadAgentSkillsContext } from './agent-skill';
+import { getAgentMemory, saveAgentMemory, searchAgentMemory, listAgentMemory } from './agent-memory';
 
 // ── AgentProxy class ──────────────────────────────────────
 
@@ -138,7 +59,7 @@ export class AgentProxy {
   private _sessionLoaded = false;
 
   // claude.exe process (lifecycle-bound)
-  private _warmQuery: any = null; // WarmQuery from SDK startup()
+  private _warmQuery: any = null;
   private _processReady = false;
   private _processError: string | null = null;
 
@@ -165,46 +86,17 @@ export class AgentProxy {
       return this._config;
     }
 
-    try {
-      const cf = path.join(AGENTS_DIR, this.name, 'config.json');
-      if (fs.existsSync(cf)) {
-        const data = JSON.parse(fs.readFileSync(cf, 'utf-8'));
-        this._config = {
-          roles: data.roles || [],
-          permissions: data.permissions,
-          autoRespondToEmail: data.autoRespondToEmail,
-          autoProcessGroupInvites: data.autoProcessGroupInvites,
-          notifyOnEmail: data.notifyOnEmail ?? true,
-          notifyOnGroupMention: data.notifyOnGroupMention ?? true,
-          behavior: data.behavior,
-          provider: data.provider,
-          model: data.model,
-          apiKey: data.apiKey,
-          baseUrl: data.baseUrl,
-          permissionMode: data.permissionMode,
-          allowedTools: data.allowedTools,
-          disallowedTools: data.disallowedTools,
-          maxTurns: data.maxTurns,
-        };
-        agentCache.set('config', this.name, this._config);
-      }
-    } catch {}
+    this._config = await loadAgentConfig(this.name);
+    if (Object.keys(this._config).length > 0) {
+      agentCache.set('config', this.name, this._config);
+    }
 
     this._configLoaded = true;
     return this._config;
   }
 
   async saveConfig(): Promise<void> {
-    try {
-      const agentDir = path.join(AGENTS_DIR, this.name);
-      if (!fs.existsSync(agentDir)) fs.mkdirSync(agentDir, { recursive: true });
-
-      const cf = path.join(agentDir, 'config.json');
-      fs.writeFileSync(cf, JSON.stringify(this._config, null, 2), 'utf-8');
-      agentCache.invalidate('config', this.name);
-    } catch (err) {
-      console.error(`[agent-proxy] saveConfig(${this.name}):`, err);
-    }
+    await saveAgentConfig(this.name, this._config);
   }
 
   // ── State ─────────────────────────────────────────────
@@ -216,28 +108,13 @@ export class AgentProxy {
   async loadState(): Promise<AgentState> {
     if (this._stateLoaded) return this._state;
 
-    try {
-      const file = path.join(AGENTS_DIR, this.name, 'chat', 'mind-state.json');
-      if (fs.existsSync(file)) {
-        this._state = { ...DEFAULT_STATE, ...JSON.parse(fs.readFileSync(file, 'utf-8')) };
-      }
-    } catch {}
-
+    this._state = await loadAgentState(this.name);
     this._stateLoaded = true;
     return this._state;
   }
 
   async saveState(): Promise<void> {
-    try {
-      const stateDir = path.join(AGENTS_DIR, this.name, 'chat');
-      if (!fs.existsSync(stateDir)) fs.mkdirSync(stateDir, { recursive: true });
-
-      const file = path.join(stateDir, 'mind-state.json');
-      fs.writeFileSync(file, JSON.stringify(this._state, null, 2), 'utf-8');
-      agentCache.invalidate('state', this.name);
-    } catch (err) {
-      console.error(`[agent-proxy] saveState(${this.name}):`, err);
-    }
+    await saveAgentState(this.name, this._state);
   }
 
   // ── Activity ──────────────────────────────────────────
@@ -270,43 +147,20 @@ export class AgentProxy {
       return this._session;
     }
 
-    try {
-      const file = path.join(AGENTS_DIR, this.name, 'chat', 'session.json');
-      if (fs.existsSync(file)) {
-        this._session = JSON.parse(fs.readFileSync(file, 'utf-8'));
-        if (typeof this._session._version !== 'number') this._session._version = 0;
-      }
-    } catch {}
-
+    this._session = await loadAgentSession(this.name);
     this._sessionLoaded = true;
     agentCache.set('session', this.name, this._session);
     return this._session;
   }
 
   async saveSession(): Promise<void> {
-    try {
-      const sessionDir = path.join(AGENTS_DIR, this.name, 'chat');
-      if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
-
-      const file = path.join(sessionDir, 'session.json');
-      const tmp = file + '.tmp';
-      this._session._version = (this._session._version || 0) + 1;
-      fs.writeFileSync(tmp, JSON.stringify(this._session, null, 2), 'utf-8');
-      fs.renameSync(tmp, file);
-      agentCache.set('session', this.name, this._session);
-    } catch (err) {
-      console.error(`[agent-proxy] saveSession(${this.name}):`, err);
-    }
+    await saveAgentSession(this.name, this._session);
   }
 
   clearSession(): void {
     this._session = { sessionId: null, messages: [], _version: 0 };
     this._sessionLoaded = true;
-    try {
-      const file = path.join(AGENTS_DIR, this.name, 'chat', 'session.json');
-      if (fs.existsSync(file)) fs.unlinkSync(file);
-    } catch {}
-    agentCache.invalidate('session', this.name);
+    clearAgentSession(this.name);
   }
 
   // ── Tasks ─────────────────────────────────────────────
@@ -314,25 +168,12 @@ export class AgentProxy {
   private _tasks: AgentTask[] = [];
 
   async loadTasks(): Promise<AgentTask[]> {
-    try {
-      const file = path.join(AGENTS_DIR, this.name, 'tasks.json');
-      if (fs.existsSync(file)) {
-        this._tasks = JSON.parse(fs.readFileSync(file, 'utf-8'));
-      }
-    } catch {}
+    this._tasks = await loadAgentTasks(this.name);
     return this._tasks;
   }
 
   async saveTasks(): Promise<void> {
-    try {
-      const agentDir = path.join(AGENTS_DIR, this.name);
-      if (!fs.existsSync(agentDir)) fs.mkdirSync(agentDir, { recursive: true });
-
-      const file = path.join(agentDir, 'tasks.json');
-      fs.writeFileSync(file, JSON.stringify(this._tasks, null, 2), 'utf-8');
-    } catch (err) {
-      console.error(`[agent-proxy] saveTasks(${this.name}):`, err);
-    }
+    await saveAgentTasks(this.name, this._tasks);
   }
 
   get tasks(): AgentTask[] {
@@ -340,17 +181,39 @@ export class AgentProxy {
   }
 
   async addTask(task: AgentTask): Promise<void> {
-    this._tasks.push(task);
-    await this.saveTasks();
+    await addAgentTask(this.name, this._tasks, task);
   }
 
   async completeTask(runId: string, result: string): Promise<void> {
-    const task = this._tasks.find(t => t.runId === runId);
-    if (task) {
-      task.status = 'completed';
-      task.result = result;
-      await this.saveTasks();
-    }
+    await completeAgentTask(this.name, this._tasks, runId, result);
+  }
+
+  // ── Email ─────────────────────────────────────────────
+
+  private _emails: import('./agent-types').Email[] = [];
+  private _emailsLoaded = false;
+
+  async getEmails(): Promise<import('./agent-types').Email[]> {
+    if (this._emailsLoaded) return this._emails;
+
+    this._emails = await loadAgentEmails(this.name);
+    this._emailsLoaded = true;
+    return this._emails;
+  }
+
+  private parseEmailFile(content: string, filename: string): import('./agent-types').Email | null {
+    const { parseEmailFile } = require('./agent-email');
+    return parseEmailFile(content, filename);
+  }
+
+  async sendEmail(to: string, subject: string, body: string): Promise<boolean> {
+    return sendAgentEmail(this.name, to, subject, body);
+  }
+
+  async deleteEmail(filename: string): Promise<boolean> {
+    const result = await deleteAgentEmail(this.name, filename);
+    if (result) this._emailsLoaded = false;
+    return result;
   }
 
   // ── Token Usage ───────────────────────────────────────
@@ -364,12 +227,46 @@ export class AgentProxy {
     this._tokenUsage.output += output;
   }
 
+  // ── Skills ────────────────────────────────────────────
+
+  private _skills: import('./agent-types').AgentSkill[] = [];
+  private _skillsLoaded = false;
+
+  async getSkills(): Promise<import('./agent-types').AgentSkill[]> {
+    if (this._skillsLoaded) return this._skills;
+
+    this._skills = await loadAgentSkills(this.name);
+    this._skillsLoaded = true;
+    return this._skills;
+  }
+
+  async loadSkillsContext(context?: string): Promise<string> {
+    return loadAgentSkillsContext(this.name, context);
+  }
+
+  // ── Memory ────────────────────────────────────────────
+
+  async getMemory(key: string): Promise<import('./memory').MemoryEntry | null> {
+    return getAgentMemory(this.name, key);
+  }
+
+  async saveMemory(key: string, value: string): Promise<import('./memory').MemoryEntry> {
+    return saveAgentMemory(this.name, key, value);
+  }
+
+  async searchMemory(query: string): Promise<import('./memory').MemoryEntry[]> {
+    return searchAgentMemory(this.name, query);
+  }
+
+  async listMemory(): Promise<import('./memory').MemoryEntry[]> {
+    return listAgentMemory(this.name);
+  }
+
   // ── System Prompt Building ────────────────────────────
 
   buildIdentity(): string {
     const config = this._config;
 
-    // Read agent's own CLAUDE.md
     let identity = this.readClaudeMd();
     if (!identity) {
       const claudeMdAlt = path.join(AGENTS_DIR, this.name, '.claude', 'CLAUDE.md');
@@ -379,7 +276,6 @@ export class AgentProxy {
     }
     if (!identity) identity = `你是${this.name}，Mind Agency 团队成员。`;
 
-    // Append behavioral config
     const behavior = config.behavior;
     const behaviorLines: string[] = [];
     if (behavior) {
@@ -389,7 +285,6 @@ export class AgentProxy {
     }
     if (behaviorLines.length > 0) identity += '\n\n【行为偏好】\n' + behaviorLines.join('\n');
 
-    // Append L1/L2/L3 boundaries + tools reference
     identity += `\n\n【能力边界 — L1·L2·L3】
 L1-你的领域: 自己的 chat session、.todo、email 收件箱（只看+删）、.mind 记忆。可自由操作。
 L2-协议交互: 跟别人沟通用 group_send/group_read/email（写到对方 Agents/<name>/email/）。不要直接写其他 Agent 的文件。
@@ -523,7 +418,6 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
       await this.loadSession();
       await this.loadConfig();
 
-      // Ensure claude.exe process is running
       if (!this._processReady) {
         await this.startProcess();
       }
@@ -531,16 +425,13 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
         throw new Error(`claude.exe not available for ${this.name}`);
       }
 
-      // Build prompt
       const systemPrompt = this.buildSystemPrompt(groupName);
       const fullPrompt = groupName
         ? this.buildGroupChatContext(groupName) + '\n\n---\n\n' + userMessage
         : userMessage;
 
-      // Build MCP config
       const mcpServers = this.buildMcpConfig();
 
-      // Send to claude.exe via SDK
       const query = this._warmQuery.query(fullPrompt);
       let reply = '';
       const events: ChatEvent[] = [];
@@ -548,9 +439,7 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
       let outputTokens = 0;
 
       for await (const msg of query) {
-        // SDK message types
         if (msg.type === 'assistant') {
-          // Process content blocks
           if (Array.isArray(msg.content)) {
             for (const block of msg.content) {
               if (block.type === 'text') {
@@ -579,7 +468,6 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
             events.push({ type: 'text', content: msg.content, timestamp: new Date().toISOString() });
           }
         } else if (msg.type === 'result') {
-          // Token usage from result
           if (msg.usage) {
             inputTokens = msg.usage.input_tokens || 0;
             outputTokens = msg.usage.output_tokens || 0;
@@ -588,13 +476,11 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
         }
       }
 
-      // Save to session
       this._session.messages.push(
         { role: 'user', content: userMessage, timestamp: new Date().toISOString() },
         { role: 'assistant', content: reply, events, timestamp: new Date().toISOString() }
       );
 
-      // Keep last 100 messages
       if (this._session.messages.length > 100) {
         this._session.messages = this._session.messages.slice(-100);
       }
@@ -618,10 +504,6 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
 
   // ── claude.exe Process (lifecycle-bound) ──────────────
 
-  /**
-   * Start the claude.exe process for this agent.
-   * Must be called before sending any prompts.
-   */
   async startProcess(): Promise<void> {
     if (this._processReady) return;
     if (this._processError) {
@@ -632,7 +514,18 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     try {
       console.log(`[agent-proxy] ${this.name}: starting claude.exe...`);
 
-      // Build options for SDK
+      // Load API settings from settings.json
+      let apiKey = '';
+      let baseUrl = '';
+      try {
+        const settingsPath = path.join(MIND_DIR, 'settings.json');
+        if (fs.existsSync(settingsPath)) {
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+          apiKey = settings.apiKey || '';
+          baseUrl = settings.baseUrl || '';
+        }
+      } catch {}
+
       const opts: any = {
         cwd: path.join(AGENTS_DIR, this.name),
         systemPrompt: this.buildSystemPrompt(),
@@ -642,11 +535,9 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
         ...(this._config.disallowedTools?.length ? { disallowedTools: this._config.disallowedTools } : {}),
       };
 
-      // Apply model config (from agent config or global settings)
       if (this._config.model) {
         opts.model = this._config.model;
       } else {
-        // Try to get from global settings
         try {
           const settingsPath = path.join(MIND_DIR, 'settings.json');
           if (fs.existsSync(settingsPath)) {
@@ -656,7 +547,18 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
         } catch {}
       }
 
-      // SDK binary path
+      // Set API configuration via env option
+      // SDK's env option replaces subprocess env entirely
+      opts.env = {
+        ANTHROPIC_API_KEY: apiKey || '',
+        ANTHROPIC_AUTH_TOKEN: apiKey || '',
+        ANTHROPIC_BASE_URL: baseUrl || '',
+        PATH: process.env.PATH || '',
+        HOME: process.env.HOME || '',
+        TEMP: process.env.TEMP || '',
+        TMP: process.env.TMP || '',
+      };
+
       const sdkBin = process.env.CLAUDE_CODE_PATH
         || ['node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe',
             '../node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe',
@@ -668,7 +570,6 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
         opts.pathToClaudeCodeExecutable = sdkBin;
       }
 
-      // Pre-warm the process
       const { startup } = await import('@anthropic-ai/claude-agent-sdk');
       this._warmQuery = await startup({ options: opts });
       this._processReady = true;
@@ -679,9 +580,6 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     }
   }
 
-  /**
-   * Stop the claude.exe process for this agent.
-   */
   stopProcess(): void {
     if (this._warmQuery) {
       try {
@@ -694,9 +592,6 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     }
   }
 
-  /**
-   * Check if the process is ready.
-   */
   get isProcessReady(): boolean {
     return this._processReady;
   }

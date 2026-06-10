@@ -1,0 +1,78 @@
+name: world-model-tutorial
+description: "为大一学生创建世界模型教程，目标是成为顶级 AI 研究员"
+
+steps:
+  - id: research
+    agent: Alice
+    action: research
+    prompt: |
+      研究世界模型的核心概念，包括：
+      1. 什么是世界模型（World Model）
+      2. 世界模型的历史发展
+      3. 世界模型在 AI 中的应用
+      4. 世界模型的关键论文和作者
+
+      输出格式：结构化的研究报告，包含定义、历史、应用、关键论文
+
+  - id: outline
+    agent: Bob
+    action: design
+    dependsOn: [research]
+    prompt: |
+      基于 Alice 的研究报告，设计教程大纲：
+      1. 教程目标：让大一学生理解世界模型
+      2. 教程结构：从基础到进阶
+      3. 每章的学习目标和内容概要
+      4. 推荐的阅读材料
+
+      输出格式：详细的教程大纲
+
+  - id: chapter1
+    agent: Alice
+    action: write
+    dependsOn: [outline]
+    prompt: |
+      撰写第一章：什么是世界模型
+      1. 用简单易懂的语言解释概念
+      2. 举生活中的例子
+      3. 与大一学生已知的知识联系
+
+      要求：只用往下看就能明白，不需要前置知识
+
+  - id: chapter2
+    agent: Bob
+    action: write
+    dependsOn: [outline]
+    prompt: |
+      撰写第二章：世界模型的历史
+      1. 从早期 AI 到现代深度学习
+      2. 关键里程碑和突破
+      3. 重要人物和贡献
+
+      要求：故事化叙述，引人入胜
+
+  - id: chapter3
+    agent: Alice
+    action: write
+    dependsOn: [outline]
+    prompt: |
+      撰写第三章：世界模型的应用
+      1. 游戏 AI（AlphaGo, OpenAI Five）
+      2. 自动驾驶
+      3. 机器人控制
+      4. 语言模型
+
+      要求：用实际案例说明
+
+  - id: review
+    agent: Bob
+    action: review
+    dependsOn: [chapter1, chapter2, chapter3]
+    prompt: |
+      审阅所有章节：
+      1. 检查内容准确性
+      2. 检查难度是否适合大一学生
+      3. 检查是否满足"只用往下看就能明白"的要求
+      4. 提出改进建议
+
+      输出：审阅报告和修改建议

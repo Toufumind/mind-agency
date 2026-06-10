@@ -6,10 +6,7 @@
  *   - GroupRegistry (group proxies)
  *   - SystemProxy (system configuration)
  *   - WorkflowProxy (workflow management)
- *   - SkillProxy (skill management)
- *   - MemoryProxy (memory management)
  *   - ConsensusProxy (consensus management)
- *   - EmailProxy (email management)
  *   - AuditProxy (audit logging)
  *
  * Singleton instance — use getAgency() to access.
@@ -21,11 +18,42 @@ import { GroupRegistry, getGroupRegistry } from './group-registry';
 import { GroupProxy } from './group-proxy';
 import { SystemProxy, getSystemProxy } from './system-proxy';
 import { WorkflowProxy, getWorkflowProxy } from './workflow-proxy';
-import { SkillProxy, getSkillProxy } from './skill-proxy';
-import { MemoryProxy, getMemoryProxy } from './memory-proxy';
 import { ConsensusProxy, getConsensusProxy } from './consensus-proxy';
-import { EmailProxy, getEmailProxy } from './email-proxy';
 import { AuditProxy, getAuditProxy } from './audit-proxy';
+
+// ── Error types ───────────────────────────────────────────
+
+export class AgencyError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = 'AgencyError';
+  }
+}
+
+export class NotFoundError extends AgencyError {
+  constructor(resource: string, id: string) {
+    super(`${resource} "${id}" not found`, 'NOT_FOUND', { resource, id });
+    this.name = 'NotFoundError';
+  }
+}
+
+export class ValidationError extends AgencyError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'VALIDATION_ERROR', details);
+    this.name = 'ValidationError';
+  }
+}
+
+export class OperationError extends AgencyError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'OPERATION_ERROR', details);
+    this.name = 'OperationError';
+  }
+}
 
 // ── Agency class ──────────────────────────────────────────
 
@@ -34,10 +62,7 @@ export class Agency {
   private _groups: GroupRegistry;
   private _system: SystemProxy;
   private _workflow: WorkflowProxy;
-  private _skill: SkillProxy;
-  private _memory: MemoryProxy;
   private _consensus: ConsensusProxy;
-  private _email: EmailProxy;
   private _audit: AuditProxy;
 
   constructor() {
@@ -45,10 +70,7 @@ export class Agency {
     this._groups = getGroupRegistry();
     this._system = getSystemProxy();
     this._workflow = getWorkflowProxy();
-    this._skill = getSkillProxy();
-    this._memory = getMemoryProxy();
     this._consensus = getConsensusProxy();
-    this._email = getEmailProxy();
     this._audit = getAuditProxy();
   }
 
@@ -70,20 +92,8 @@ export class Agency {
     return this._workflow;
   }
 
-  get skill(): SkillProxy {
-    return this._skill;
-  }
-
-  get memory(): MemoryProxy {
-    return this._memory;
-  }
-
   get consensus(): ConsensusProxy {
     return this._consensus;
-  }
-
-  get email(): EmailProxy {
-    return this._email;
   }
 
   get audit(): AuditProxy {
@@ -167,6 +177,67 @@ export class Agency {
       groups: this.getGroups().length,
       pendingTasks,
     };
+  }
+
+  // ── Error handling ────────────────────────────────────
+
+  /**
+   * Execute an operation with unified error handling.
+   */
+  async execute<T>(operation: () => Promise<T>, context?: string): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof AgencyError) {
+        throw error;
+      }
+      throw new OperationError(
+        `${context || 'Operation'} failed: ${error instanceof Error ? error.message : String(error)}`,
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * Validate agent name.
+   */
+  validateAgentName(name: string): void {
+    if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+      throw new ValidationError('Invalid agent name', { name });
+    }
+  }
+
+  /**
+   * Validate group name.
+   */
+  validateGroupName(name: string): void {
+    if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+      throw new ValidationError('Invalid group name', { name });
+    }
+  }
+
+  /**
+   * Check if agent exists.
+   */
+  requireAgent(name: string): AgentProxy {
+    this.validateAgentName(name);
+    const proxy = this.getAgent(name);
+    if (!proxy.exists()) {
+      throw new NotFoundError('Agent', name);
+    }
+    return proxy;
+  }
+
+  /**
+   * Check if group exists.
+   */
+  requireGroup(name: string): GroupProxy {
+    this.validateGroupName(name);
+    const proxy = this.getGroup(name);
+    if (!proxy.exists()) {
+      throw new NotFoundError('Group', name);
+    }
+    return proxy;
   }
 }
 

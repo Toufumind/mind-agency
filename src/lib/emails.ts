@@ -1,6 +1,6 @@
 import path from 'path';
 import { AGENTS_DIR } from './data-dir';
-import { getEmailProxy } from './email-proxy';
+import { getAgency } from './agency';
 
 export interface SendEmailParams {
   from: string;
@@ -13,22 +13,21 @@ export interface SendEmailParams {
 export async function sendEmail(params: SendEmailParams): Promise<{ success: boolean; filename: string; error?: string }> {
   const { from, to, subject, body } = params;
 
-  // 检查收件人是否存在
-  const proxy = getEmailProxy();
-  const recipientDir = path.join(AGENTS_DIR, to);
+  const agency = getAgency();
+  const senderProxy = agency.getAgent(from);
+  const recipientProxy = agency.getAgent(to);
 
-  const fs = require('fs');
-  if (!fs.existsSync(recipientDir)) {
+  // 检查收件人是否存在
+  if (!recipientProxy.exists()) {
     return { success: false, filename: '', error: `收件人 "${to}" 不存在` };
   }
 
-  // Use EmailProxy for the core send operation
-  const ok = await proxy.sendEmail(from, to, subject, body);
+  // Use AgentProxy for the core send operation
+  const ok = await senderProxy.sendEmail(to, subject, body);
   if (!ok) {
     return { success: false, filename: '', error: '邮件发送失败' };
   }
 
-  // EmailProxy generates filename as: ${timestamp}_${safeFrom}_${safeSubject}.md
   // Reconstruct the filename for return value
   const date = new Date();
   const dateStr = date.toISOString().split('T')[0];
@@ -44,6 +43,7 @@ export async function sendEmail(params: SendEmailParams): Promise<{ success: boo
   // Also save sent copy to sender's email dir (so "Me" can see sent mail)
   if (from && from !== to) {
     const senderDir = path.join(AGENTS_DIR, from);
+    const fs = require('fs');
     if (fs.existsSync(senderDir)) {
       const senderEmailDir = path.join(AGENTS_DIR, from, 'email');
       if (!fs.existsSync(senderEmailDir)) fs.mkdirSync(senderEmailDir, { recursive: true });
@@ -61,8 +61,9 @@ export async function sendEmail(params: SendEmailParams): Promise<{ success: boo
 
 /** 删除邮件 */
 export async function deleteEmail(agentName: string, filename: string): Promise<{ success: boolean; error?: string }> {
-  const proxy = getEmailProxy();
-  const ok = await proxy.deleteEmail(agentName, filename);
+  const agency = getAgency();
+  const proxy = agency.getAgent(agentName);
+  const ok = await proxy.deleteEmail(filename);
 
   if (!ok) {
     return { success: false, error: '邮件不存在' };

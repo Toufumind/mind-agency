@@ -45,7 +45,10 @@ function loadApiSettings(): void {
     if (fs.existsSync(settingsFile)) {
       const s = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
       // settings.json takes precedence over env vars (user explicitly configured via UI)
-      if (s.apiKey) process.env.ANTHROPIC_AUTH_TOKEN = s.apiKey;
+      if (s.apiKey) {
+        process.env.ANTHROPIC_AUTH_TOKEN = s.apiKey;
+        process.env.ANTHROPIC_API_KEY = s.apiKey;
+      }
       if (s.baseUrl) process.env.ANTHROPIC_BASE_URL = s.baseUrl;
       if (s.model) process.env.ANTHROPIC_MODEL = s.model;
       console.log('[chat] API settings loaded from settings.json');
@@ -570,15 +573,16 @@ export async function createChatStream(agentName: string, userMessage: string, g
   // Skills: RAG uses full accumulated context
   let skillsCtx = '';
   try {
-    // Delegate to SkillProxy for skill context loading
-    const skillProxy = getSkillProxy();
+    // Delegate to AgentProxy for skill context loading
+    const agency = await import('./agency').then(m => m.getAgency());
+    const agentProxy = agency.getAgent(agentName);
     // Build RAG context: full conversation history + user message
     const history = getChatHistory(agentName);
     const fullContext = history.messages
       .map(m => `[${m.role}] ${m.content.slice(0, 300)}`)
       .join('\n');
     const ragContext = fullContext ? fullContext + '\n[user] ' + userMessage : userMessage;
-    skillsCtx = await skillProxy.loadSkillsContext(agentName, ragContext);
+    skillsCtx = await agentProxy.loadSkillsContext(ragContext);
   } catch {}
 
   const fullPrompt = groupChatCtx

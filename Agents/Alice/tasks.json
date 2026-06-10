@@ -1,6 +1,111 @@
 {
-  "pending": [],
+  "pending": [
+    {
+      "runId": "a6829ca8-f326-4355-b9ee-e3859cb91eba",
+      "stepId": "research",
+      "workflow": "world-model-tutorial",
+      "prompt": "�о�����ģ�͵ĺ��ĸ�����塢��ʷ��Ӧ�á��ؼ�����",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781095746842
+    },
+    {
+      "runId": "01dcf696-98d2-4d27-8d42-bc2827148286",
+      "stepId": "research",
+      "workflow": "world-model-tutorial",
+      "prompt": "研究世界模型的核心概念，包括：\n1. 什么是世界模型（World Model）\n2. 世界模型的历史发展\n3. 世界模型在 AI 中的应用\n4. 世界模型的关键论文和作者\n\n输出格式：结构化的研究报告，包含定义、历史、应用、关键论文\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781096944680
+    },
+    {
+      "runId": "7588f490-c8a7-4193-b194-44e852d0a840",
+      "stepId": "research",
+      "workflow": "world-model-tutorial",
+      "prompt": "研究世界模型的核心概念，包括：\n1. 什么是世界模型（World Model）\n2. 世界模型的历史发展\n3. 世界模型在 AI 中的应用\n4. 世界模型的关键论文和作者\n\n输出格式：结构化的研究报告，包含定义、历史、应用、关键论文\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781097935055
+    }
+  ],
   "completed": [
+    {
+      "runId": "3b104130-1083-4f0f-86bc-798307ddbd96",
+      "stepId": "research",
+      "workflow": "world-model-tutorial",
+      "prompt": "研究世界模型的核心概念，包括：\n1. 什么是世界模型（World Model）\n2. 世界模型的历史发展\n3. 世界模型在 AI 中的应用\n4. 世界模型的关键论文和作者\n\n输出格式：结构化的研究报告，包含定义、历史、应用、关键论文\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781096597032,
+      "completedAt": 1781096696425,
+      "result": "✅ **任务已完成并报告！**\n\n**world-model-tutorial 工作流 — research 步骤：**\n\n研究世界模型四个核心概念已全部完成：\n\n| 核心概念 | 内容摘要 |\n|----------|----------|\n| **定义** | 智能体对外部环境的内部表征，核心功能是预测、推理和规划 |\n| **历史** | 1940s→2024：神经元模型→符号AI→专家系统→统计学习→深度学习→世界模型诞生 |\n| **应用** | 机器人学、自动驾驶、游戏AI、NLP、科学发现、具身智能6大领域 |\n| **关键人物** | 10位先驱：McCulloch & Pitts、Rosenblatt、McCarthy、Hinton、LeCun、Bengio、Pearl、Friston等 |\n\n✅ 已通过 task 工具提交结果，状态为 APPROVED。"
+    },
+    {
+      "runId": "48ab2b2a-299f-4176-8aa5-fcdb6763b376",
+      "stepId": "chapter3",
+      "workflow": "world-model-tutorial",
+      "prompt": "撰写第三章：世界模型的应用\n1. 游戏 AI（AlphaGo, OpenAI Five）\n2. 自动驾驶\n3. 机器人控制\n4. 语言模型\n\n要求：用实际案例说明\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781096461812,
+      "completedAt": 1781096474745,
+      "result": "Agent acknowledged task"
+    },
+    {
+      "runId": "48ab2b2a-299f-4176-8aa5-fcdb6763b376",
+      "stepId": "chapter1",
+      "workflow": "world-model-tutorial",
+      "prompt": "撰写第一章：什么是世界模型\n1. 用简单易懂的语言解释概念\n2. 举生活中的例子\n3. 与大一学生已知的知识联系\n\n要求：只用往下看就能明白，不需要前置知识\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781096461802,
+      "completedAt": 1781096474741,
+      "result": "Agent acknowledged task"
+    },
+    {
+      "runId": "48ab2b2a-299f-4176-8aa5-fcdb6763b376",
+      "stepId": "research",
+      "workflow": "world-model-tutorial",
+      "prompt": "研究世界模型的核心概念，包括：\n1. 什么是世界模型（World Model）\n2. 世界模型的历史发展\n3. 世界模型在 AI 中的应用\n4. 世界模型的关键论文和作者\n\n输出格式：结构化的研究报告，包含定义、历史、应用、关键论文\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781096405608,
+      "completedAt": 1781096414672,
+      "result": "让我先检查新邮件和待处理任务。我看到有1个待处理任务和1封新邮件。让我先处理这些。"
+    },
+    {
+      "runId": "08d44462-da14-45aa-94ce-b70663f6bc09",
+      "stepId": "chapter3",
+      "workflow": "world-model-tutorial",
+      "prompt": "撰写第三章：世界模型的应用\n1. 游戏 AI（AlphaGo, OpenAI Five）\n2. 自动驾驶\n3. 机器人控制\n4. 语言模型\n\n要求：用实际案例说明\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781096410892,
+      "completedAt": 1781096414666,
+      "result": "让我先检查新邮件和待处理任务。我看到有1个待处理任务和1封新邮件。让我先处理这些。"
+    },
+    {
+      "runId": "08d44462-da14-45aa-94ce-b70663f6bc09",
+      "stepId": "chapter1",
+      "workflow": "world-model-tutorial",
+      "prompt": "撰写第一章：什么是世界模型\n1. 用简单易懂的语言解释概念\n2. 举生活中的例子\n3. 与大一学生已知的知识联系\n\n要求：只用往下看就能明白，不需要前置知识\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781096410881,
+      "completedAt": 1781096414659,
+      "result": "让我先检查新邮件和待处理任务。我看到有1个待处理任务和1封新邮件。让我先处理这些。"
+    },
+    {
+      "runId": "08d44462-da14-45aa-94ce-b70663f6bc09",
+      "stepId": "research",
+      "workflow": "world-model-tutorial",
+      "prompt": "研究世界模型的核心概念，包括：\n1. 什么是世界模型（World Model）\n2. 世界模型的历史发展\n3. 世界模型在 AI 中的应用\n4. 世界模型的关键论文和作者\n\n输出格式：结构化的研究报告，包含定义、历史、应用、关键论文\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781096004285,
+      "completedAt": 1781096212550,
+      "result": "null我收到了通知说workflow-engine在workflow群@了我，但我没有找到workflow这个群。让我检查一下我的待处理任务。我有一个待处理的工作流任务！这是来自 `world-model-tutorial` 工作流的研究任务，要求研究世界模型的核心概念、历史、应用和关键人物。让我执行这个任务。我已完成来自 `world-model-tutorial` 工作流的研究任务，研究了世界模型的核心概念、发展历程、应用领域和关键人物。\n\n关于您提到的 `workflow` 群，我目前不在该群组中。我的群组列表包括：ai-tutorial、code-review、default、deploy-pipeline、dev-team、research-project、self-improve、test-project。\n\n如果需要我加入 workflow 群，请提供邀请或让我加入该群组。任务已报告完成。"
+    },
     {
       "runId": "e32ae6d5-25db-47ac-87aa-5f113f6a1098",
       "stepId": "review",
@@ -473,83 +578,6 @@
       "createdAt": 1781013236310,
       "completedAt": 1781013300824,
       "result": "Agent acknowledged task"
-    },
-    {
-      "runId": "dbea109e-59a9-4473-9206-c4b9465c3e30",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013236303,
-      "completedAt": 1781013300806,
-      "result": "Agent acknowledged task"
-    },
-    {
-      "runId": "9767f621-b7f1-4744-a641-71dad183c1d2",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013236298,
-      "completedAt": 1781013300785,
-      "result": "Agent acknowledged task"
-    },
-    {
-      "runId": "7440e936-fd82-4513-88ae-4e86f67e297f",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013236292,
-      "completedAt": 1781013300765,
-      "result": "Agent acknowledged task"
-    },
-    {
-      "runId": "0e162463-39d7-495c-8bca-64a39f3cf5c4",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013236286,
-      "completedAt": 1781013300744,
-      "result": "Agent acknowledged task"
-    },
-    {
-      "runId": "5e69a7e5-eddd-4a53-9cd6-71aef434cbd7",
-      "stepId": "review-experiments",
-      "workflow": "CCFA-Subconscious-LLM-Paper",
-      "prompt": "你是一位AI实验方法论专家。请审查实验设计：\n1. 实验设计是否严谨？是否有混淆变量？\n2. 基线设置是否合理？\n3. 统计分析方法是否正确？\n4. 预期结果的解读是否有多种可能？是否考虑了替代解释？\n5. 实验规模和计算资源需求是否现实？\n\n回复 APPROVED 或 REJECTED 并给出修改建议。\n",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013016981,
-      "completedAt": 1781013293182,
-      "result": ""
-    },
-    {
-      "runId": "5e69a7e5-eddd-4a53-9cd6-71aef434cbd7",
-      "stepId": "theory",
-      "workflow": "CCFA-Subconscious-LLM-Paper",
-      "prompt": "基于文献综述，请构建\"LLM潜意识\"(LLM Subconscious)的理论框架。这是一个全新的概念，请从以下角度展开：\n\n1. 定义\"LLM潜意识\"：\n   - 什么是LLM的\"潜意识\"？它与\"显式推理\"的区别是什么？\n   - 类比人类潜意识：弗洛伊德的潜意识概念 vs LLM的潜空间\n   - 操作性定义：如何在实验中测量和验证LLM潜意识的存在？\n\n2. 理论基础：\n   - 信息论视角：潜空间中的信息压缩与隐式知识编码\n   - 认知科学视角：双过程理论 (dual-process theory) 在LLM中的映射\n   - 计算神经科学视角：类比人脑的意识/潜意识分层\n\n3. 可检验假设：\n   - H1: LLM在没有显式推理链的情况下，其潜空间活动包含推理过程的痕迹\n   - H2: 干扰潜空间表示会导致模型在简单任务上表现下降\n   - H3: 模型的\"直觉\"回答（快速回答）与其\"深思\"回答（长coT）在潜空间中有不同的表征\n\n请输出完整的理论框架文档: theory-framework.md\n",
-      "priority": "normal",
-      "status": "failed",
-      "createdAt": 1781012899138,
-      "completedAt": 1781012925060,
-      "result": "FAILED: CCFA理论审查任务无法执行：文件系统不可用\n文件系统工具不可用，无法读取论文文件执行理论审查。CCFA论文整合工作（LLM潜意识定义、Power Analysis、噪声向量、Related Work框架）仍被阻塞。"
-    },
-    {
-      "runId": "e32ae6d5-25db-47ac-87aa-5f113f6a1098",
-      "stepId": "review",
-      "workflow": "novel-writing",
-      "prompt": "审阅两章内容，给出修改建议，确保风格一致",
-      "priority": "normal",
-      "status": "failed",
-      "createdAt": 1781012830233,
-      "completedAt": 1781012925046,
-      "result": "FAILED: 小说审阅任务无法执行：文件系统不可用\n文件系统工具不可用，无法读取小说文件。"
     }
   ]
 }

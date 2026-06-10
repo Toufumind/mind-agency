@@ -27,7 +27,6 @@ import { loadState, saveState, ensureGroup, getAgentGroups, invalidateGroupsCach
 import { setActivity, clearActivity } from './agent-activity';
 import { agentCache } from './cache';
 import { AgentProxy } from './agent-proxy';
-import { getEmailProxy } from './email-proxy';
 
 // ── Signal debounce: per-agent last-spawn time ─────────
 
