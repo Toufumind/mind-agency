@@ -9,8 +9,8 @@
 @import "tailwindcss";
 
 @theme {
-  /* 字体 */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* 字体 — taste: Inter 是 AI 默认，换 Space Grotesk */
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 
   /* 圆角 */
@@ -48,34 +48,21 @@
   --color-border:        #e8e8e8;
   --color-border-strong: #d4d4d4;
 
-  /* 品牌蓝 */
-  --color-primary:         #4c6ef5;
-  --color-primary-hover:   #3b5bdb;
-  --color-primary-muted:   #edf2ff;
-  --color-primary-subtle:  #dbe4ff;
+  /* 品牌蓝 — taste: two accents, not oversaturated */
+  --color-primary:         #2563eb;
+  --color-primary-hover:   #1d4ed8;
+  --color-primary-muted:   #eff6ff;
+  --color-primary-subtle:  #dbeafe;
 
-  /* 状态色 */
-  --color-success:           #059669;
-  --color-success-muted:     #ecfdf5;
-  --color-warning:           #d97706;
-  --color-warning-muted:     #fffbeb;
+  /* 状态色 — taste: ONE semantic color contextually */
+  --color-success:           #16a34a;
+  --color-success-muted:     #f0fdf4;
+  --color-warning:           #ca8a04;
+  --color-warning-muted:     #fefce8;
   --color-destructive:       #dc2626;
   --color-destructive-muted: #fef2f2;
-  --color-info:              #4c6ef5;
-  --color-info-muted:        #edf2ff;
-
-  /* 品牌色板 */
-  --color-agency-50:  #f0f4ff;
-  --color-agency-100: #dbe4ff;
-  --color-agency-200: #bac8ff;
-  --color-agency-300: #91a7ff;
-  --color-agency-400: #748ffc;
-  --color-agency-500: #5c7cfa;
-  --color-agency-600: #4c6ef5;
-  --color-agency-700: #4263eb;
-  --color-agency-800: #3b5bdb;
-  --color-agency-900: #364fc7;
-  --color-agency-950: #2b3fa0;
+  --color-info:              #2563eb;
+  --color-info-muted:        #eff6ff;
 }
 
 
@@ -141,11 +128,11 @@
   --color-border:        #23232d;
   --color-border-strong: #32323f;
 
-  /* 品牌蓝 #4c6ef5 — 三套主题统一锁定 */
-  --color-primary:         #4c6ef5;
-  --color-primary-hover:   #3b5bdb;
-  --color-primary-muted:   #1a1f3a;
-  --color-primary-subtle:  #0d1530;
+  /* 品牌蓝 — 三套主题统一锁定 */
+  --color-primary:         #3b82f6;
+  --color-primary-hover:   #2563eb;
+  --color-primary-muted:   #1e3a5f;
+  --color-primary-subtle:  #172554;
 
   --color-success:           #3fb950;
   --color-success-muted:     #0b2e1a;
@@ -219,11 +206,11 @@
   --color-border:        #e5ddd4;
   --color-border-strong: #d4cbbf;
 
-  /* 品牌蓝 #4c6ef5 — 三套主题统一锁定 */
-  --color-primary:         #4c6ef5;
-  --color-primary-hover:   #3b5bdb;
-  --color-primary-muted:   #edf0ff;
-  --color-primary-subtle:  #dbe0ff;
+  /* 品牌蓝 — 三套主题统一锁定 */
+  --color-primary:         #2563eb;
+  --color-primary-hover:   #1d4ed8;
+  --color-primary-muted:   #eff6ff;
+  --color-primary-subtle:  #dbeafe;
 
   /* 状态色同极简白（暖木底色够浅，状态色不需要特别适配） */
   --color-success:           #059669;
@@ -289,19 +276,19 @@
   --color-border-strong: #e8e7e3;
 
   /* ── 品牌蓝 ── */
-  --color-primary:         #4c6ef5;
-  --color-primary-hover:   #3b5bdb;
-  --color-primary-muted:   #edf2ff;
-  --color-primary-subtle:  #dbe4ff;
+  --color-primary:         #2563eb;
+  --color-primary-hover:   #1d4ed8;
+  --color-primary-muted:   #eff6ff;
+  --color-primary-subtle:  #dbeafe;
 
-  --color-success:           #059669;
-  --color-success-muted:     #ecfdf5;
-  --color-warning:           #d97706;
-  --color-warning-muted:     #fffbeb;
+  --color-success:           #16a34a;
+  --color-success-muted:     #f0fdf4;
+  --color-warning:           #ca8a04;
+  --color-warning-muted:     #fefce8;
   --color-destructive:       #dc2626;
   --color-destructive-muted: #fef2f2;
-  --color-info:              #4c6ef5;
-  --color-info-muted:        #edf2ff;
+  --color-info:              #2563eb;
+  --color-info-muted:        #eff6ff;
 
   --color-shadow: rgba(15, 15, 15, 0.04);
 
@@ -363,8 +350,8 @@
   --color-border-strong: #616e88;
 
   /* ── 品牌蓝 — Frost ── */
-  --color-primary:         #88c0d0;
-  --color-primary-hover:   #81a1c1;
+  --color-primary:         #5e81ac;
+  --color-primary-hover:   #4c6a93;
   --color-primary-muted:   #2e3440;
   --color-primary-subtle:  #3b4252;
 
@@ -424,10 +411,10 @@
   --color-border:        #292e42;
   --color-border-strong: #3b4261;
 
-  --color-primary:         #7aa2f7;
-  --color-primary-hover:   #5d82e0;
-  --color-primary-muted:   #1a2740;
-  --color-primary-subtle:  #1e2a45;
+  --color-primary:         #3b82f6;
+  --color-primary-hover:   #2563eb;
+  --color-primary-muted:   #1e3a5f;
+  --color-primary-subtle:  #172554;
 
   --color-success:           #9ece6a;
   --color-success-muted:     #1a2e1a;
@@ -482,8 +469,8 @@
   --color-border:        #3e4155;
   --color-border-strong: #44475a;
 
-  --color-primary:         #bd93f9;
-  --color-primary-hover:   #a37be0;
+  --color-primary:         #8b5cf6;
+  --color-primary-hover:   #7c3aed;
   --color-primary-muted:   #282a3a;
   --color-primary-subtle:  #2d2f42;
 
@@ -540,10 +527,10 @@
   --color-border:        #d3cbb8;
   --color-border-strong: #c5bdb0;
 
-  --color-primary:         #268bd2;
-  --color-primary-hover:   #1a6ea0;
-  --color-primary-muted:   #d5eaf8;
-  --color-primary-subtle:  #c4e1f4;
+  --color-primary:         #2563eb;
+  --color-primary-hover:   #1d4ed8;
+  --color-primary-muted:   #eff6ff;
+  --color-primary-subtle:  #dbeafe;
 
   --color-success:           #859900;
   --color-success-muted:     #ecf4d8;
