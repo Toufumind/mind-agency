@@ -5,7 +5,7 @@ import Sidebar from '@/components/sidebar';
 import { useSidebarData } from '@/components/sidebar-context';
 import { useNotifications } from '@/components/notification-provider';
 import Link from 'next/link';
-import { Hash, Users, Mail, ArrowRight, Activity, Clock, AlertCircle, DollarSign } from 'lucide-react';
+import { Hash, Users, Mail, ArrowRight, AlertCircle } from 'lucide-react';
 import { useT } from '@/components/i18n';
 import LogoCanvas from '@/components/logo-canvas';
 
@@ -20,7 +20,6 @@ export default function HomePage() {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [groups, setGroups] = useState<GroupInfo[]>([]);
   const [totalEmails, setTotalEmails] = useState(0);
-  const [todayCost, setTodayCost] = useState(0);
   const [pending, setPending] = useState<PendingItem[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [openTasks, setOpenTasks] = useState<OpenTask[]>([]);
@@ -30,7 +29,6 @@ export default function HomePage() {
   const load = useCallback(() => {
     fetch('/api/agents').then(r=>r.json()).then(d=>{ setAgents(d.agents||[]); let t=0; for(const a of d.agents||[]) t+=(a.emailCount||0); setTotalEmails(t||0); }).catch(()=>{});
     fetch('/api/groups/scan').then(r=>r.json()).then(d=>setGroups((d.groups||[]).map((g:string)=>({name:g})))).catch(()=>{});
-    fetch('/api/system/analytics').then(r=>r.json()).then(d=>setTodayCost(d.costs?.todayTotal || 0)).catch(()=>{});
     fetch('/api/system/pending').then(r=>r.json()).then(d=>setPending(d.items||[])).catch(()=>{});
     // v1.2: Fetch economy leaderboard
     fetch('http://127.0.0.1:3001/api/economy/leaderboard').then(r=>r.json()).then(d=>setLeaderboard(d.leaderboard||[])).catch(()=>{});

@@ -365,8 +365,12 @@ app.whenReady().then(async () => {
     }
 
     // Use system Node.js (Electron's bundled Node can't run ES modules)
-    const nodePath = 'C:\\Program Files\\nodejs\\node.exe';
-    console.log('[mind] Node:', nodePath, 'exists:', fs.existsSync(nodePath));
+    let nodePath = 'node';
+    try {
+      const { execSync } = require('child_process');
+      nodePath = execSync('where node', { encoding: 'utf8', windowsHide: true }).trim().split('\n')[0];
+    } catch {}
+    console.log('[mind] Node:', nodePath);
     const serverProc = spawn(nodePath, [serverJs], {
       cwd: serverDir,
       env: { ...process.env, PORT: String(PORT), HOSTNAME: '127.0.0.1', NODE_ENV: 'production' },

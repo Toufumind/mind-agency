@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* 防闪：在 React hydrate 前同步读取 localStorage 设置 data-theme */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('mind-theme');var v=["notion","minimal-white","warm-wood","deep-space"];if(t&&v.indexOf(t)!==-1){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('mind-theme');var v=["notion","minimal-white","warm-wood","deep-space","nord","tokyo-night","dracula","solarized-light"];if(t&&v.indexOf(t)!==-1){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();`,
           }}
         />
       </head>

@@ -44,7 +44,7 @@ const messages: Record<Lang, Record<string, string>> = {
     'no_workflows': '暂无 workflow。创建 Groups/&lt;name&gt;/workflow.yaml 开始使用。',
     'edit_yaml': '编辑 YAML',
     // Approval
-    'approval_pending': '等待审批', 'approval_required': '需要 {n} 人审批',
+    'approval_pending': '等待审批', 'pending': '待审批', 'approval_required': '需要 {n} 人审批',
     'approved': '已通过', 'rejected': '已拒绝',
     // Dashboard
     'welcome': '欢迎使用 Mind Agency',
@@ -136,7 +136,7 @@ const messages: Record<Lang, Record<string, string>> = {
     'no_workflows': 'No workflows yet. Create Groups/&lt;name&gt;/workflow.yaml to start.',
     'edit_yaml': 'Edit YAML',
     // Approval
-    'approval_pending': 'Pending Approval', 'approval_required': '{n} approvals needed',
+    'approval_pending': 'Pending Approval', 'pending': 'Pending', 'approval_required': '{n} approvals needed',
     'approved': 'Approved', 'rejected': 'Rejected',
     // Dashboard
     'welcome': 'Welcome to Mind Agency',
