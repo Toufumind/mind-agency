@@ -416,34 +416,15 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
 
   // ── Chat (via claude.exe) ──────────────────────────────
 
-  async chat(userMessage: string, groupName?: string): Promise<ChatResult> {
-    this.setStatus('chatting', 'Processing...');
-
-    try {
-      await this.loadSession();
-      await this.loadConfig();
-
-      if (!this._processReady) {
-        await this.startProcess();
-      }
-      if (!this._warmQuery) {
-        throw new Error(`claude.exe not available for ${this.name}`);
-      }
-
-      const systemPrompt = this.buildSystemPrompt(groupName);
-      const fullPrompt = groupName
-        ? this.buildGroupChatContext(groupName) + '\n\n---\n\n' + userMessage
-        : userMessage;
-
-      const mcpServers = this.buildMcpConfig();
-
-      const query = this._warmQuery.query(fullPrompt);
+  /** Parse streaming messages into reply + events */
+  private parseChatEvents(messages: AsyncIterable<any>): Promise<{ reply: string; events: ChatEvent[]; inputTokens: number; outputTokens: number }> {
+    return (async () => {
       let reply = '';
       const events: ChatEvent[] = [];
       let inputTokens = 0;
       let outputTokens = 0;
 
-      for await (const msg of query) {
+      for await (const msg of messages) {
         if (msg.type === 'assistant') {
           if (Array.isArray(msg.content)) {
             for (const block of msg.content) {
@@ -451,21 +432,9 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
                 reply += block.text || '';
                 events.push({ type: 'text', content: block.text, timestamp: new Date().toISOString() });
               } else if (block.type === 'tool_use') {
-                events.push({
-                  type: 'tool_use',
-                  content: block.name,
-                  toolName: block.name,
-                  toolInput: JSON.stringify(block.input, null, 2),
-                  timestamp: new Date().toISOString(),
-                });
+                events.push({ type: 'tool_use', content: block.name, toolName: block.name, toolInput: JSON.stringify(block.input, null, 2), timestamp: new Date().toISOString() });
               } else if (block.type === 'tool_result') {
-                events.push({
-                  type: 'tool_result',
-                  content: block.content,
-                  toolName: block.tool_use_id,
-                  toolOutput: typeof block.content === 'string' ? block.content.slice(0, 500) : '',
-                  timestamp: new Date().toISOString(),
-                });
+                events.push({ type: 'tool_result', content: block.content, toolName: block.tool_use_id, toolOutput: typeof block.content === 'string' ? block.content.slice(0, 500) : '', timestamp: new Date().toISOString() });
               }
             }
           } else if (typeof msg.content === 'string') {
@@ -473,33 +442,45 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
             events.push({ type: 'text', content: msg.content, timestamp: new Date().toISOString() });
           }
         } else if (msg.type === 'result') {
-          if (msg.usage) {
-            inputTokens = msg.usage.input_tokens || 0;
-            outputTokens = msg.usage.output_tokens || 0;
-          }
+          if (msg.usage) { inputTokens = msg.usage.input_tokens || 0; outputTokens = msg.usage.output_tokens || 0; }
           events.push({ type: 'done', timestamp: new Date().toISOString() });
         }
       }
+      return { reply, events, inputTokens, outputTokens };
+    })();
+  }
 
-      this._session.messages.push(
-        { role: 'user', content: userMessage, timestamp: new Date().toISOString() },
-        { role: 'assistant', content: reply, events, timestamp: new Date().toISOString() }
-      );
+  /** Append messages to session, truncate to 100, save */
+  private async persistChat(userMessage: string, reply: string, events: ChatEvent[], inputTokens: number, outputTokens: number): Promise<void> {
+    this._session.messages.push(
+      { role: 'user', content: userMessage, timestamp: new Date().toISOString() },
+      { role: 'assistant', content: reply, events, timestamp: new Date().toISOString() }
+    );
+    if (this._session.messages.length > 100) {
+      this._session.messages = this._session.messages.slice(-100);
+    }
+    await this.saveSession();
+    this.addTokenUsage(inputTokens, outputTokens);
+  }
 
-      if (this._session.messages.length > 100) {
-        this._session.messages = this._session.messages.slice(-100);
-      }
+  async chat(userMessage: string, groupName?: string): Promise<ChatResult> {
+    this.setStatus('chatting', 'Processing...');
 
-      await this.saveSession();
-      this.addTokenUsage(inputTokens, outputTokens);
+    try {
+      await this.loadSession();
+      await this.loadConfig();
+      if (!this._processReady) await this.startProcess();
+      if (!this._warmQuery) throw new Error(`claude.exe not available for ${this.name}`);
+
+      const fullPrompt = groupName
+        ? this.buildGroupChatContext(groupName) + '\n\n---\n\n' + userMessage
+        : userMessage;
+
+      const { reply, events, inputTokens, outputTokens } = await this.parseChatEvents(this._warmQuery.query(fullPrompt));
+      await this.persistChat(userMessage, reply, events, inputTokens, outputTokens);
       this.clearStatus();
 
-      return {
-        reply,
-        events,
-        sessionId: this._session.sessionId || '',
-        tokenUsage: { input: inputTokens, output: outputTokens },
-      };
+      return { reply, events, sessionId: this._session.sessionId || '', tokenUsage: { input: inputTokens, output: outputTokens } };
     } catch (err: any) {
       this.clearStatus();
       console.error(`[agent-proxy] ${this.name}: chat error:`, err.message);
