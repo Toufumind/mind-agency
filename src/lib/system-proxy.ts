@@ -173,11 +173,6 @@ export class SystemProxy {
     return summary;
   }
 
-  // ── Audit Logs ────────────────────────────────────────
-  // DEPRECATED: Use AuditProxy for all audit operations.
-  // These methods are kept for backward compatibility but should be migrated.
-  }
-
   // ── Pending Approvals ─────────────────────────────────
 
   async getPendingApprovals(): Promise<PendingApproval[]> {

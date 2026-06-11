@@ -44,3 +44,46 @@ export function listAgentAccounts(): AgentAccount[] {
     catch { return null; }
   }).filter(Boolean);
 }
+
+/** Get balance for an agent */
+export function getBalance(agent: string): number {
+  return getAgentAccount(agent).balance;
+}
+
+/** Transfer tokens from one agent to another */
+export function transfer(from: string, to: string, amount: number, reason?: string): boolean {
+  if (amount <= 0) return false;
+
+  const fromAccount = getAgentAccount(from);
+  const toAccount = getAgentAccount(to);
+
+  if (fromAccount.balance < amount) return false;
+
+  fromAccount.balance -= amount;
+  fromAccount.spent += amount;
+  fromAccount.transactions.push({ type: 'transfer-out', to, amount, reason, timestamp: Date.now() });
+
+  toAccount.balance += amount;
+  toAccount.earned += amount;
+  toAccount.transactions.push({ type: 'transfer-in', from, amount, reason, timestamp: Date.now() });
+
+  saveAgentAccount(fromAccount);
+  saveAgentAccount(toAccount);
+  return true;
+}
+
+/** Deposit tokens to an agent */
+export function deposit(agent: string, amount: number, reason?: string): number {
+  if (amount <= 0) return 0;
+  const account = getAgentAccount(agent);
+  account.balance += amount;
+  account.earned += amount;
+  account.transactions.push({ type: 'deposit', amount, reason, timestamp: Date.now() });
+  saveAgentAccount(account);
+  return account.balance;
+}
+
+/** Get leaderboard sorted by balance */
+export function getLeaderboard(): AgentAccount[] {
+  return listAgentAccounts().sort((a, b) => b.balance - a.balance);
+}
