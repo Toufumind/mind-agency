@@ -69,8 +69,7 @@ export async function sendAgentEmail(fromName: string, to: string, subject: stri
 
     return true;
   } catch (err) {
-    console.error(`[agent-email] sendAgentEmail(${fromName} -> ${to}):`, err);
-    return false;
+    throw new Error(`Failed to send email: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -85,7 +84,6 @@ export async function deleteAgentEmail(agentName: string, filename: string): Pro
     fs.unlinkSync(emailPath);
     return true;
   } catch (err) {
-    console.error(`[agent-email] deleteAgentEmail(${agentName}, ${filename}):`, err);
-    return false;
+    throw new Error(`Failed to delete email: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

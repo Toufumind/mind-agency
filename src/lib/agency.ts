@@ -166,16 +166,19 @@ export class Agency {
     groups: number;
     pendingTasks: number;
   }> {
-    let pendingTasks = 0;
-    for (const agent of this.getAgents()) {
-      const tasks = await this.getPendingTasks(agent.name);
-      pendingTasks += tasks.length;
-    }
+    // taste: parallel loading instead of sequential O(n*m)
+    const agents = this.getAgents();
+    const taskCounts = await Promise.all(
+      agents.map(async (a) => {
+        try { const tasks = await this.getPendingTasks(a.name); return tasks.length; }
+        catch { return 0; }
+      })
+    );
 
     return {
-      agents: this.getAgents().length,
+      agents: agents.length,
       groups: this.getGroups().length,
-      pendingTasks,
+      pendingTasks: taskCounts.reduce((sum, n) => sum + n, 0),
     };
   }
 

@@ -329,13 +329,21 @@ export class GroupProxy {
 
   async getStats(): Promise<GroupStats> {
     const members = await this.loadMembers();
-    const messages = await this.getMessages(1000);
+    // taste: don't load 1000 messages just to count — use readdirSync
+    const chatDir = path.join(GROUPS_DIR, this.name, 'chat');
+    let messageCount = 0;
+    let lastActivity: number | undefined;
+    if (fs.existsSync(chatDir)) {
+      const files = fs.readdirSync(chatDir).filter(f => f.endsWith('.md')).sort();
+      messageCount = files.length;
+      if (files.length > 0) {
+        const lastFile = fs.readFileSync(path.join(chatDir, files[files.length - 1]), 'utf-8');
+        const dateMatch = lastFile.match(/date:\s*(.+)/);
+        if (dateMatch) lastActivity = new Date(dateMatch[1].trim()).getTime();
+      }
+    }
 
-    return {
-      memberCount: members.length,
-      messageCount: messages.length,
-      lastActivity: messages.length > 0 ? new Date(messages[messages.length - 1].date).getTime() : undefined,
-    };
+    return { memberCount: members.length, messageCount, lastActivity };
   }
 
   // ── Existence ─────────────────────────────────────────
