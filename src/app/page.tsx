@@ -5,7 +5,7 @@ import Sidebar from '@/components/sidebar';
 import { useSidebarData } from '@/components/sidebar-context';
 import { useNotifications } from '@/components/notification-provider';
 import Link from 'next/link';
-import { Hash, Users, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { Hash, Users, Mail, ArrowRight, AlertCircle, Clock } from 'lucide-react';
 import { useT } from '@/components/i18n';
 import LogoCanvas from '@/components/logo-canvas';
 
@@ -27,16 +27,28 @@ export default function HomePage() {
   const { unreadGroups } = useNotifications();
 
   const load = useCallback(() => {
-    fetch('/api/agents').then(r=>r.json()).then(d=>{ setAgents(d.agents||[]); let t=0; for(const a of d.agents||[]) t+=(a.emailCount||0); setTotalEmails(t||0); }).catch(()=>{});
-    fetch('/api/groups/scan').then(r=>r.json()).then(d=>setGroups((d.groups||[]).map((g:string)=>({name:g})))).catch(()=>{});
-    fetch('/api/system/pending').then(r=>r.json()).then(d=>setPending(d.items||[])).catch(()=>{});
-    // v1.2: Fetch economy leaderboard
-    fetch('http://127.0.0.1:3001/api/economy/leaderboard').then(r=>r.json()).then(d=>setLeaderboard(d.leaderboard||[])).catch(()=>{});
-    // v1.2: Fetch open tasks across all groups
-    Promise.all((groups||[]).map(g=>fetch(`/api/tasks?group=${g.name}`).then(r=>r.json()).catch(()=>({tasks:[]}))))
-      .then(results=>{ const all=results.flatMap((r:any)=>(r.tasks||[]).filter((t:any)=>t.status==='open')); setOpenTasks(all); }).catch(()=>{});
+    fetch('/api/agents').then(r => r.json()).then(d => {
+      setAgents(d.agents || []);
+      const total = (d.agents || []).reduce((sum: number, a: any) => sum + (a.emailCount || 0), 0);
+      setTotalEmails(total);
+    }).catch(() => {});
+    fetch('/api/groups/scan').then(r => r.json()).then(d =>
+      setGroups((d.groups || []).map((g: string) => ({ name: g })))
+    ).catch(() => {});
+    fetch('/api/system/pending').then(r => r.json()).then(d => setPending(d.items || [])).catch(() => {});
+    fetch('http://127.0.0.1:3001/api/economy/leaderboard').then(r => r.json()).then(d =>
+      setLeaderboard(d.leaderboard || [])
+    ).catch(() => {});
+    Promise.all(
+      (groups || []).map(g =>
+        fetch(`/api/tasks?group=${g.name}`).then(r => r.json()).catch(() => ({ tasks: [] }))
+      )
+    ).then(results => {
+      const all = results.flatMap((r: any) => (r.tasks || []).filter((t: any) => t.status === 'open'));
+      setOpenTasks(all);
+    }).catch(() => {});
     sidebar.refresh();
-  },[]);
+  }, []);
   useEffect(()=>{load()},[load]);
 
   const nonMe = agents.filter(a => a.name !== 'me');

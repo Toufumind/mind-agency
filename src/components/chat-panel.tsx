@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useRouter } from 'next/navigation';
 import Markdown from '@/components/markdown';
 import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail, Users as UsersIcon, Cpu } from 'lucide-react';
@@ -290,34 +290,21 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
     return () => clearInterval(t);
   }, [checkEmails]);
 
-  // Auto-scroll: only when user hasn't manually scrolled up
+  // Auto-scroll: lock when user scrolls away from bottom
   const scrollLockedRef = useRef(false);
-
-  const isNearBottom = useCallback(() => {
-    const el = endRef.current?.parentElement;
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 30;
-  }, []);
-
-  // Track manual scroll — lock when user scrolls away from bottom
   useEffect(() => {
     const el = endRef.current?.parentElement;
     if (!el) return;
     const onScroll = () => {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
-      if (nearBottom) scrollLockedRef.current = false;
-      else scrollLockedRef.current = true;
+      scrollLockedRef.current = !nearBottom;
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
   useEffect(() => {
-    // Only auto-scroll if user is already near bottom AND not manually scrolled away.
-    // Never force-scroll just because messages are few — respect user's scroll position.
-    if (!scrollLockedRef.current && isNearBottom()) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
+    if (!scrollLockedRef.current) endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs]);
 
   // Expose imperative methods for session sidebar navigation
@@ -389,6 +376,15 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
 
   const selectCmd = (cmd: string) => { const v = cmd + ' '; setInput(v); inputValueRef.current = v; setShowCmds(false); inputRef.current?.focus(); };
 
+  // Helper: update the last message in the array immutably
+  const patchLastMsg = useCallback((mutate: (msg: Msg) => Msg) => {
+    setMsgs(prev => {
+      const next = [...prev];
+      next[next.length - 1] = mutate(next[next.length - 1]);
+      return next;
+    });
+  }, []);
+
   const send = async () => {
     const t = (inputValueRef.current || input).trim(); // ref has latest, state as fallback
     if (!t || busy) return;
@@ -426,13 +422,21 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
       if (needsFreshRef.current) { body.fresh = true; needsFreshRef.current = false; }
       if (thinkingMode) body.thinking = true;
       if (activeGroup) body.group = activeGroup;
-      const r = await fetch(`/api/agents/${agentName}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
-      const reader = r.body!.getReader(); const dec = new TextDecoder(); let buf = '', done = false, aborted = false;
+      const r = await fetch(`/api/agents/${agentName}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const reader = r.body!.getReader();
+      const dec = new TextDecoder();
+      let buf = '', done = false, aborted = false;
       while (!done) {
         const { done: d, value } = await reader.read();
         if (d) break;
         buf += dec.decode(value, { stream: true });
-        const parts = buf.split('\n\n'); buf = parts.pop() || '';
+        const parts = buf.split('\n\n');
+        buf = parts.pop() || '';
         for (const part of parts) {
           for (const line of part.split('\n')) {
             if (!line.startsWith('data: ')) continue;
@@ -440,20 +444,27 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
             if (p === '[DONE]') { done = true; continue; }
             try {
               const evt: ChatEvent = JSON.parse(p);
-              if (evt.type === 'error' && evt.content?.includes('abort')) { aborted = true; done = true; break; }
-              setMsgs(prev => { const n = [...prev]; const l = { ...n[n.length - 1] }; l.events = [...l.events, evt]; if (evt.type === 'text') l.content += evt.content || ''; n[n.length - 1] = l; return n; });
+              if (evt.type === 'error' && evt.content?.includes('abort')) {
+                aborted = true; done = true; break;
+              }
+              patchLastMsg(msg => ({
+                ...msg,
+                events: [...msg.events, evt],
+                content: evt.type === 'text' ? msg.content + (evt.content || '') : msg.content,
+              }));
             } catch {}
           }
         }
       }
-      if (aborted) {
-        setMsgs(p => { const n = [...p]; const l = { ...n[n.length - 1] }; l.content += '\n\n_[已中断]_'; n[n.length - 1] = l; return n; });
-      }
+      if (aborted) patchLastMsg(msg => ({ ...msg, content: msg.content + '\n\n_[已中断]_' }));
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        setMsgs(p => { const n = [...p]; const l = { ...n[n.length - 1] }; l.content += '\n\n_[已中断]_'; n[n.length - 1] = l; return n; });
+        patchLastMsg(msg => ({ ...msg, content: msg.content + '\n\n_[已中断]_' }));
       } else {
-        setMsgs(p => { const n = [...p]; const l = { ...n[n.length - 1] }; l.events = [...l.events, { type: 'error', content: String(e), timestamp: new Date().toISOString() }]; n[n.length - 1] = l; return n; });
+        patchLastMsg(msg => ({
+          ...msg,
+          events: [...msg.events, { type: 'error', content: String(e), timestamp: new Date().toISOString() }],
+        }));
       }
     } finally {
       abortRef.current = null;
@@ -643,13 +654,6 @@ const MdText = React.memo(function MdText({ text }: { text: string }) {
     </div>
   );
 });
-  const isLong = text.length > 500;
-  return (
-    <div className={`text-[14px] text-muted leading-relaxed ${isLong ? 'max-h-[300px] overflow-y-auto' : ''}`}>
-      <Markdown text={text} />
-    </div>
-  );
-}
 const Think = React.memo(function Think({ text }: { text: string }) {
   const [on, setOn] = useState(false);
   if (!text) return null;
@@ -661,7 +665,7 @@ const Think = React.memo(function Think({ text }: { text: string }) {
       {on && <div className="mt-1 ml-6 pl-3 border-l-2 border-primary/30 text-muted-foreground leading-relaxed whitespace-pre-wrap">{text}</div>}
     </div>
   );
-}
+});
 const Tool = React.memo(function Tool({ name, input }: { name: string; input: string }) {
   const [on, setOn] = useState(false);
   const short = name.replace(/^mcp__group-chat__/, '');
@@ -714,7 +718,7 @@ const Tool = React.memo(function Tool({ name, input }: { name: string; input: st
       )}
     </div>
   );
-}
+});
 const Result = React.memo(function Result({ output }: { output: string }) {
   const [on, setOn] = useState(false);
   if (!output) return null;
@@ -726,5 +730,5 @@ const Result = React.memo(function Result({ output }: { output: string }) {
       {on && <pre className="mt-1 ml-6 pl-3 border-l-2 border-success/30 text-[11px] text-muted-foreground whitespace-pre-wrap max-h-[200px] overflow-y-auto">{output}</pre>}
     </div>
   );
-}
+});
 const Err = React.memo(function Err({ text }: { text: string }) { return <div className="text-[13px] text-destructive">{text}</div>; });

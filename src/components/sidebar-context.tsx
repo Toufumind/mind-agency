@@ -29,7 +29,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   // Unified refresh — taste: one intent, one action
   const refresh = useCallback(() => {
     setLoading(true);
-    Promise.all([
+    return Promise.all([
       fetch('/api/agents').then(r => r.json()),
       fetch('/api/groups/scan').then(r => r.json()),
     ]).then(([a, g]) => {
@@ -40,10 +40,9 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
 
   const [loaded, setLoaded] = useState(false);
 
-  // Init — load once
+  // Init — load once, mark loaded after first fetch settles
   useEffect(() => {
-    refresh();
-    setTimeout(() => setLoaded(true), 1000);
+    refresh().finally(() => setLoaded(true));
   }, [refresh]);
 
   // Unified polling — taste: one interval, not four
