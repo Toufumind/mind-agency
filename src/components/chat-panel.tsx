@@ -10,46 +10,24 @@ interface ChatEvent { type: 'thinking' | 'tool_use' | 'tool_result' | 'text' | '
 interface Msg { role: 'user' | 'assistant' | 'system'; content: string; events: ChatEvent[]; timestamp: string; }
 interface AgentInfo { name: string; emailCount: number; }
 
-// All Claude Code slash commands with descriptions.
+// Mind Agency slash commands — only commands relevant to this platform.
 // LOCAL commands are handled in-browser (no AI involved).
 // The rest are passed through to the AI as messages.
 const COMMANDS: { cmd: string; desc: string; handler?: (agentName: string) => Promise<string> | string }[] = [
-  // ── Session & Context (LOCAL) ──
+  // ── Session (LOCAL) ──
   { cmd: '/clear', desc: 'Reset conversation', handler: () => '' },
-  { cmd: '/memory', desc: 'Show loaded rules and session info', handler: memoryCmd },
-  { cmd: '/context', desc: 'Show message/token stats', handler: contextCmd },
   { cmd: '/help', desc: 'Show available commands', handler: helpCmd },
-  { cmd: '/version', desc: 'Show version info', handler: () => '**Mind Agency** v0.2.0 · Claude Code CLI 2.1.158 · DeepSeek-V4-Pro · Next.js 15' },
+  { cmd: '/version', desc: 'Show version info', handler: () => '**Mind Agency** v0.8.0' },
   { cmd: '/status', desc: 'Show session state', handler: statusCmd },
-  { cmd: '/rename', desc: 'Name the current session' },
+  { cmd: '/context', desc: 'Show message/token stats', handler: contextCmd },
+  { cmd: '/memory', desc: 'Show loaded rules and session info', handler: memoryCmd },
 
-  // ── Code & Git ──
-  { cmd: '/review', desc: 'Review current changes' },
-  { cmd: '/commit', desc: 'Stage and commit with AI-generated message' },
-  { cmd: '/diff', desc: 'Show git diff' },
-  { cmd: '/init', desc: 'Initialize or improve CLAUDE.md' },
-  { cmd: '/security-review', desc: 'Security audit of pending changes' },
-
-  // ── Workflow & Automation ──
-  { cmd: '/compact', desc: 'Compress long context to save tokens' },
+  // ── Workflow & Agent ──
   { cmd: '/plan', desc: 'Enter plan mode' },
   { cmd: '/tasks', desc: 'Monitor background tasks' },
-  { cmd: '/batch', desc: 'Parallel worktree refactors' },
-  { cmd: '/loop', desc: 'Run a command on repeat interval' },
   { cmd: '/goal', desc: 'Set or review session goals' },
-  { cmd: '/insights', desc: 'Usage analytics and optimization report' },
-
-  // ── Code Quality ──
-  { cmd: '/code-review', desc: 'Code review the current diff' },
-  { cmd: '/simplify', desc: 'Detect and fix over-engineering' },
-  { cmd: '/debug', desc: 'Start debug logging' },
-  { cmd: '/verify', desc: 'Verify a change works correctly' },
-  { cmd: '/run', desc: 'Launch and test the app' },
-
-  // ── System & Config ──
-  { cmd: '/doctor', desc: 'Installation health check' },
-  { cmd: '/permissions', desc: 'View allow/deny rules' },
   { cmd: '/agents', desc: 'List configured sub-agents' },
+  { cmd: '/deploy', desc: 'Trigger deployment pipeline' },
   { cmd: '/hooks', desc: 'View active hook configs' },
   { cmd: '/mcp', desc: 'Manage MCP server connections' },
   { cmd: '/skills', desc: 'List installed skills', handler: skillsCmd },

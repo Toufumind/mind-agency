@@ -202,7 +202,7 @@ async function checkForUpdates() {
     console.log(`[update] New version available: ${latestVersion} (current: ${CURRENT_VERSION})`);
 
     // Find the exe asset
-    const asset = (data.assets || []).find(a => a.name.endsWith('.exe') && a.name.includes('Mind Agency'));
+    const asset = (data.assets || []).find(a => a.name.endsWith('.exe') && (a.name.includes('Mind Agency') || a.name.includes('Mind-Agency')));
     if (!asset) {
       console.log('[update] No exe asset found in release');
       return;
