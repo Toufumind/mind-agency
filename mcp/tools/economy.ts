@@ -24,6 +24,8 @@ export function economyTools(): ToolDef[] {
     { name: 'token_deposit', description: '给 agent 存入 token（仅群主或用户可用）。', inputSchema: { type: 'object', properties: { agent: { type: 'string', description: '存给谁' }, amount: { type: 'number', description: '数量' }, reason: { type: 'string', description: '原因' } }, required: ['agent', 'amount'] } },
     { name: 'token_transfer', description: '转账给其他 agent。', inputSchema: { type: 'object', properties: { to: { type: 'string', description: '转给谁' }, amount: { type: 'number', description: '数量' }, reason: { type: 'string', description: '原因' } }, required: ['to', 'amount'] } },
     { name: 'token_leaderboard', description: '查看团队 token 排行榜。', inputSchema: { type: 'object', properties: {}, required: [] } },
+    { name: 'token_history', description: '查看自己的交易历史记录。', inputSchema: { type: 'object', properties: { limit: { type: 'number', description: '显示最近几条（默认10）' } }, required: [] } },
+    { name: 'token_usage', description: '查看自己的 token 使用详情（今日/本周/本月）。', inputSchema: { type: 'object', properties: { period: { type: 'string', description: 'today/week/monthly（默认today）' } }, required: [] } },
     { name: 'task_post', description: '发布任务公告（含奖励），等待团队成员认领。', inputSchema: { type: 'object', properties: { group: { type: 'string', description: '群组名称' }, task_id: { type: 'string', description: '任务ID' }, title: { type: 'string', description: '任务标题' }, description: { type: 'string', description: '任务描述' }, reward: { type: 'number', description: '完成奖励 token 数（0=无奖励）' }, required_skills: { type: 'string', description: '需要的技能（逗号分隔）' }, max_claims: { type: 'number', description: '最多接受几个认领（默认1，群主只选1个）' } }, required: ['group', 'task_id', 'title', 'description'] } },
     { name: 'task_claim', description: '认领一个已发布的任务。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, task_id: { type: 'string', description: '任务ID' }, message: { type: 'string', description: '认领留言（为什么你适合做这个）' } }, required: ['group', 'task_id'] } },
     { name: 'task_select', description: '群主从认领者中选择一个执行任务。', inputSchema: { type: 'object', properties: { group: { type: 'string' }, task_id: { type: 'string' }, selected_agent: { type: 'string', description: '选中的 agent' } }, required: ['group', 'task_id', 'selected_agent'] } },
@@ -76,6 +78,47 @@ export async function handleEconomyTool(
       }
     } catch (e: any) {
       respond(id, { content: [{ type: 'text', text: `转账失败: ${e.message}` }] });
+    }
+    return true;
+  }
+
+  if (name === 'token_history') {
+    const limit = a.limit || 10;
+    try {
+      const data: any = await fetchJson(`${WS_BASE_URL}/api/economy/account?agent=${agentName}`);
+      const txs = (data.account?.transactions || []).slice(-limit).reverse();
+      if (txs.length === 0) {
+        respond(id, { content: [{ type: 'text', text: '暂无交易记录' }] });
+      } else {
+        let text = `📋 ${agentName} 最近 ${txs.length} 条交易:\n`;
+        for (const tx of txs) {
+          const sign = tx.amount > 0 ? '+' : '';
+          const date = new Date(tx.timestamp).toLocaleString('zh-CN');
+          text += `  ${date} | ${tx.type} | ${sign}${tx.amount} | ${tx.reason || ''}\n`;
+        }
+        respond(id, { content: [{ type: 'text', text }] });
+      }
+    } catch (e: any) {
+      respond(id, { content: [{ type: 'text', text: `查询失败: ${e.message}` }] });
+    }
+    return true;
+  }
+
+  if (name === 'token_usage') {
+    const period = a.period || 'today';
+    try {
+      const data: any = await fetchJson(`${WS_BASE_URL}/api/system/token`);
+      const summary = data.summary || {};
+      const byAgent = summary.byAgent || {};
+      const agentData = byAgent[agentName] || { tokensIn: 0, tokensOut: 0, cost: 0, calls: 0 };
+      let text = `📊 ${agentName} Token 使用详情 (${period}):\n`;
+      text += `  输入 tokens: ${agentData.tokensIn.toLocaleString()}\n`;
+      text += `  输出 tokens: ${agentData.tokensOut.toLocaleString()}\n`;
+      text += `  总消耗: ¥${agentData.cost.toFixed(4)}\n`;
+      text += `  调用次数: ${agentData.calls}`;
+      respond(id, { content: [{ type: 'text', text }] });
+    } catch (e: any) {
+      respond(id, { content: [{ type: 'text', text: `查询失败: ${e.message}` }] });
     }
     return true;
   }
