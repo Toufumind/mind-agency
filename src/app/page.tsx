@@ -50,17 +50,15 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2.5">
               <LogoCanvas size={28} />
-              <p className="text-[13px] text-muted-foreground">{t('dashboard')}</p>
+              <h1 className="text-[18px] font-bold text-foreground tracking-tight">{t('dashboard')}</h1>
             </div>
           </div>
 
-          {/* ── Stats row ── */}
-          <div className="grid grid-cols-5 gap-3 mb-8">
+          {/* ── Stats row — taste: one intent per screen, not 8-card wall ── */}
+          <div className="grid grid-cols-3 gap-4 mb-8">
             <StatCard icon={<Users size={15} className="text-info"/>} bg="bg-info-muted" value={nonMe.length} label={t('agents')} />
-            <StatCard icon={<Hash size={15} className="text-indigo-600"/>} bg="bg-indigo-50" value={groups.length} label={t('groups')} />
-            <StatCard icon={<Mail size={15} className="text-amber-600"/>} bg="bg-amber-50" value={totalEmails} label={t('emails')} />
-            <StatCard icon={<DollarSign size={15} className="text-success"/>} bg="bg-success-muted" value={`¥${(todayCost||0).toFixed(2)}`} label="今日消耗" />
-            <StatCard icon={<AlertCircle size={15} className="text-destructive"/>} bg="bg-destructive-muted" value={pending.length} label="待审批" />
+            <StatCard icon={<Hash size={15} className="text-info"/>} bg="bg-info-muted" value={groups.length} label={t('groups')} />
+            <StatCard icon={<AlertCircle size={15} className="text-destructive"/>} bg="bg-destructive-muted" value={pending.length} label={t('pending')} />
           </div>
 
           {/* ── Two-column: Agent cards + Pending/Activity ── */}
@@ -193,10 +191,10 @@ export default function HomePage() {
 
 function StatCard({ icon, bg, value, label }: { icon: React.ReactNode; bg: string; value: string | number; label: string }) {
   return (
-    <div className="bg-canvas border border-border rounded-2xl p-4">
-      <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center mb-2.5`}>{icon}</div>
-      <p className="text-[20px] font-semibold text-foreground">{value}</p>
-      <p className="text-[11px] text-muted-foreground mt-1">{label}</p>
+    <div className="bg-canvas border border-border rounded-xl p-5 hover:shadow-sm transition-all">
+      <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center mb-3`}>{icon}</div>
+      <p className="text-[24px] font-bold text-foreground tracking-tight">{value}</p>
+      <p className="text-[12px] text-muted-foreground mt-1">{label}</p>
     </div>
   );
 }
