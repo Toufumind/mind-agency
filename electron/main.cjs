@@ -109,6 +109,7 @@ function createWindow() {
     minWidth: 960, minHeight: 640,
     title: 'Mind Agency',
     frame: false,
+    icon: path.join(APP_ROOT, 'electron', 'icon.png'),
     backgroundColor: '#ffffff',
     show: false,
     webPreferences: {
@@ -322,22 +323,45 @@ app.whenReady().then(async () => {
     process.env.MIND_ELECTRON_EXE = process.execPath;
   }
 
-  // (3) Start Next.js dev server
-  console.log('[mind] Starting Next.js dev server...');
+  // (3) Extract standalone to writable dir and start server
+  console.log('[mind] Starting Next.js server...');
   try {
-    const nextBin = process.platform === 'win32'
-      ? path.join(APP_ROOT, 'node_modules', '.bin', 'next.cmd')
-      : path.join(APP_ROOT, 'node_modules', '.bin', 'next');
-    const nextDev = spawn(nextBin, ['dev', '-p', String(PORT), '-H', '127.0.0.1'], {
-      cwd: APP_ROOT,
-      env: { ...process.env, PORT: String(PORT), HOSTNAME: '127.0.0.1' },
+    // In packaged mode, extract standalone to DATA_DIR (writable)
+    const serverDir = isDev ? APP_ROOT : path.join(DATA_DIR, '.next-server');
+    const serverJs = path.join(serverDir, 'server.js');
+
+    if (!isDev) {
+      console.log('[mind] Extracting standalone server...');
+      // Copy standalone server
+      const srcStandalone = path.join(APP_ROOT, '.next', 'standalone');
+      if (!fs.existsSync(serverJs)) {
+        copyDir(srcStandalone, serverDir);
+      }
+      // Copy static files
+      const staticDest = path.join(serverDir, '.next', 'static');
+      if (!fs.existsSync(staticDest)) {
+        copyDir(path.join(APP_ROOT, '.next', 'static'), staticDest);
+      }
+      // Copy public files
+      const publicDest = path.join(serverDir, 'public');
+      if (!fs.existsSync(publicDest) && fs.existsSync(path.join(APP_ROOT, 'public'))) {
+        copyDir(path.join(APP_ROOT, 'public'), publicDest);
+      }
+      console.log('[mind] Standalone extracted to', serverDir);
+    }
+
+    // Use system Node.js (Electron's bundled Node can't run ES modules)
+    const nodePath = 'C:\\Program Files\\nodejs\\node.exe';
+    console.log('[mind] Node:', nodePath, 'exists:', fs.existsSync(nodePath));
+    const serverProc = spawn(nodePath, [serverJs], {
+      cwd: serverDir,
+      env: { ...process.env, PORT: String(PORT), HOSTNAME: '127.0.0.1', NODE_ENV: 'production' },
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false,
     });
-    nextDev.stdout.on('data', (d) => process.stdout.write(`[next] ${d}`));
-    nextDev.stderr.on('data', (d) => process.stderr.write(`[next] ${d}`));
-    nextDev.on('error', (e) => console.error('[mind] Next.js error:', e.message));
-    wsChild = nextDev;
+    serverProc.stdout.on('data', (d) => process.stdout.write(`[next] ${d}`));
+    serverProc.stderr.on('data', (d) => process.stderr.write(`[next] ${d}`));
+    serverProc.on('error', (e) => console.error('[mind] Server error:', e.message));
+    wsChild = serverProc;
   } catch (e) {
     console.error('[mind] Server start error:', e.message);
   }
