@@ -41,7 +41,7 @@ import { loadAgentSession, saveAgentSession, clearAgentSession } from './agent-s
 import { loadAgentTasks, saveAgentTasks, addAgentTask, completeAgentTask } from './agent-task';
 import { loadAgentEmails, sendAgentEmail, deleteAgentEmail } from './agent-email';
 import { loadAgentSkills, loadAgentSkillsContext } from './agent-skill';
-import { getAgentMemory, saveAgentMemory, searchAgentMemory, listAgentMemory } from './agent-memory';
+import { readMemory, writeMemory, searchMemory, listMemory } from './memory';
 
 // ── AgentProxy class ──────────────────────────────────────
 
@@ -115,6 +115,12 @@ export class AgentProxy {
 
   async saveState(): Promise<void> {
     await saveAgentState(this.name, this._state);
+  }
+
+  /** Public setter for state — handles cache invalidation internally */
+  setState(state: AgentState): void {
+    this._state = state;
+    this._stateLoaded = true;
   }
 
   // ── Activity ──────────────────────────────────────────
@@ -202,7 +208,6 @@ export class AgentProxy {
   }
 
   private parseEmailFile(content: string, filename: string): import('./agent-types').Email | null {
-    const { parseEmailFile } = require('./agent-email');
     return parseEmailFile(content, filename);
   }
 
@@ -247,19 +252,19 @@ export class AgentProxy {
   // ── Memory ────────────────────────────────────────────
 
   async getMemory(key: string): Promise<import('./memory').MemoryEntry | null> {
-    return getAgentMemory(this.name, key);
+    return readMemory(this.name, key);
   }
 
   async saveMemory(key: string, value: string): Promise<import('./memory').MemoryEntry> {
-    return saveAgentMemory(this.name, key, value);
+    return writeMemory(this.name, key, value);
   }
 
   async searchMemory(query: string): Promise<import('./memory').MemoryEntry[]> {
-    return searchAgentMemory(this.name, query);
+    return searchMemory(this.name, query);
   }
 
   async listMemory(): Promise<import('./memory').MemoryEntry[]> {
-    return listAgentMemory(this.name);
+    return listMemory(this.name);
   }
 
   // ── System Prompt Building ────────────────────────────

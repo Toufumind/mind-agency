@@ -22,19 +22,16 @@ const DEFAULT_STATE: AgentState = { emailCheck: 0, groups: {} };
 
 export function loadState(agent: string): AgentState {
   const proxy = getAgentRegistry().getOrCreate(agent);
-  // Synchronous wrapper — proxy.loadState() is async but we need sync for backward compat
-  // In practice, state is loaded once and cached
   const cached = proxy.state;
   if (cached && (cached.emailCheck > 0 || Object.keys(cached.groups).length > 0)) {
     return cached;
   }
-  // Force load (sync fallback)
+  // Sync fallback — load from disk directly
   try {
     const file = stateFile(agent);
     if (fs.existsSync(file)) {
       const data = { ...DEFAULT_STATE, ...JSON.parse(fs.readFileSync(file, 'utf-8')) };
-      (proxy as any)._state = data;
-      (proxy as any)._stateLoaded = true;
+      proxy.setState(data);
       return data;
     }
   } catch {}
@@ -43,8 +40,7 @@ export function loadState(agent: string): AgentState {
 
 export function saveState(agent: string, state: AgentState): void {
   const proxy = getAgentRegistry().getOrCreate(agent);
-  (proxy as any)._state = state;
-  (proxy as any)._stateLoaded = true;
+  proxy.setState(state);
 
   const file = stateFile(agent);
   const dir = path.dirname(file);

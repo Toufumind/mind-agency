@@ -181,40 +181,18 @@ export class Agency {
 
   // ── Error handling ────────────────────────────────────
 
+
   /**
-   * Execute an operation with unified error handling.
+   * Validate resource name (agent or group).
    */
-  async execute<T>(operation: () => Promise<T>, context?: string): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (error instanceof AgencyError) {
-        throw error;
-      }
-      throw new OperationError(
-        `${context || 'Operation'} failed: ${error instanceof Error ? error.message : String(error)}`,
-        { originalError: error }
-      );
+  private validateName(name: string, type: string): void {
+    if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+      throw new ValidationError(`Invalid ${type} name`, { name });
     }
   }
 
-  /**
-   * Validate agent name.
-   */
-  validateAgentName(name: string): void {
-    if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
-      throw new ValidationError('Invalid agent name', { name });
-    }
-  }
-
-  /**
-   * Validate group name.
-   */
-  validateGroupName(name: string): void {
-    if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
-      throw new ValidationError('Invalid group name', { name });
-    }
-  }
+  validateAgentName(name: string): void { this.validateName(name, 'agent'); }
+  validateGroupName(name: string): void { this.validateName(name, 'group'); }
 
   /**
    * Check if agent exists.

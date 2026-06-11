@@ -174,34 +174,8 @@ export class SystemProxy {
   }
 
   // ── Audit Logs ────────────────────────────────────────
-
-  async getAuditLogs(date?: string): Promise<AuditEntry[]> {
-    const targetDate = date || new Date().toISOString().slice(0, 10);
-    const auditFile = path.join(AUDIT_DIR, `${targetDate}.jsonl`);
-
-    try {
-      if (!fs.existsSync(auditFile)) return [];
-
-      const lines = fs.readFileSync(auditFile, 'utf-8').split('\n').filter(Boolean);
-      return lines
-        .map(line => {
-          try { return JSON.parse(line); } catch { return null; }
-        })
-        .filter(Boolean);
-    } catch {}
-    return [];
-  }
-
-  async addAuditEntry(entry: AuditEntry): Promise<void> {
-    try {
-      if (!fs.existsSync(AUDIT_DIR)) fs.mkdirSync(AUDIT_DIR, { recursive: true });
-
-      const date = entry.timestamp?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-      const auditFile = path.join(AUDIT_DIR, `${date}.jsonl`);
-      fs.appendFileSync(auditFile, JSON.stringify(entry) + '\n', 'utf-8');
-    } catch (err) {
-      console.error(`[system-proxy] addAuditEntry:`, err);
-    }
+  // DEPRECATED: Use AuditProxy for all audit operations.
+  // These methods are kept for backward compatibility but should be migrated.
   }
 
   // ── Pending Approvals ─────────────────────────────────
