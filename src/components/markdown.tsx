@@ -11,7 +11,7 @@ const mdComponents = {
     if (!className) return <code className="bg-destructive-muted text-destructive px-1.5 py-0.5 rounded text-[12px]" {...props}>{children}</code>;
     return <pre className="bg-surface border border-border rounded-xl p-4 my-2 overflow-x-auto text-[13px] leading-relaxed"><code className={className} {...props}>{children}</code></pre>;
   },
-  p({ children }: any) { return <p className="my-1 leading-relaxed">{children}</p>; },
+  p({ children }: any) { return <p className="my-0.5 leading-relaxed">{children}</p>; },
   ul({ children }: any) { return <ul className="list-disc pl-5 my-1 space-y-0.5">{children}</ul>; },
   li({ children }: any) { return <li className="text-[14px] text-muted">{children}</li>; },
   a({ children, href }: any) { return <a href={href} className="text-foreground underline underline-offset-2" target="_blank">{children}</a>; },

@@ -498,7 +498,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
               <div key={i} ref={(el) => { if (el) historyRefs.current.set(i, el); }}
                 className="flex justify-end" id={`msg-${i}`}>
                 <div className="max-w-[75%] bg-surface-alt rounded-2xl rounded-br-sm px-4 py-2.5">
-                  <p className="text-[14px] text-foreground leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                  <p className="text-[14px] text-foreground leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
                 </div>
               </div>
             );

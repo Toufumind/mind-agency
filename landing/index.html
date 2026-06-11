@@ -191,8 +191,8 @@
     <div class="nav__links">
       <a href="#features" data-i18n="feat_k">Features</a>
       <a href="#workflow" data-i18n="wf_k">Workflow</a>
-      <a href="#quickstart">上手</a>
-      <a href="#faq">FAQ</a>
+      <a href="#quickstart" data-i18n="nav_qs">上手</a>
+      <a href="#faq" data-i18n="nav_faq">FAQ</a>
       <a href="https://github.com/Toufumind/mind-agency">GitHub</a>
       <span class="lang-btn" data-lang="zh" onclick="setLang('zh')" style="cursor:pointer;font-weight:700;color:var(--text)">中</span>
       <span style="color:var(--text-3)">/</span>
@@ -235,18 +235,18 @@
       </div>
       <div class="product__body">
         <div class="product__side">
-          <div class="product__side-item active">总览</div>
-          <div class="product__side-item">审计</div>
-          <div class="product__side-item">群组</div>
-          <div class="product__side-item">成员</div>
-          <div class="product__side-item">配置</div>
+          <div class="product__side-item active" data-i18n="nav_overview">总览</div>
+          <div class="product__side-item" data-i18n="nav_audit">审计</div>
+          <div class="product__side-item" data-i18n="nav_groups">群组</div>
+          <div class="product__side-item" data-i18n="nav_members">成员</div>
+          <div class="product__side-item" data-i18n="nav_settings">配置</div>
         </div>
         <div class="product__main">
           <div class="product__stats">
-            <div class="product__stat"><div class="product__stat-n">4</div><div class="product__stat-l">Agents</div></div>
-            <div class="product__stat"><div class="product__stat-n">2</div><div class="product__stat-l">群组</div></div>
-            <div class="product__stat"><div class="product__stat-n">12</div><div class="product__stat-l">工作流</div></div>
-            <div class="product__stat"><div class="product__stat-n">¥0</div><div class="product__stat-l">今日消耗</div></div>
+            <div class="product__stat"><div class="product__stat-n">4</div><div class="product__stat-l" data-i18n="stat_agents">Agents</div></div>
+            <div class="product__stat"><div class="product__stat-n">2</div><div class="product__stat-l" data-i18n="stat_groups">群组</div></div>
+            <div class="product__stat"><div class="product__stat-n">12</div><div class="product__stat-l" data-i18n="stat_workflows">工作流</div></div>
+            <div class="product__stat"><div class="product__stat-n">¥0</div><div class="product__stat-l" data-i18n="stat_cost">今日消耗</div></div>
           </div>
           <div class="product__chat">
             <div class="product__chat-line"><span class="t">14:32</span> <b>你</b> @Alice 写注册接口</div>
@@ -498,7 +498,7 @@ DeepSeek 几毛钱一天</code>
     <div class="modal__info" id="tab-win">
       <div class="modal__info-row"><span>版本</span><span>v0.7.0</span></div>
       <div class="modal__info-row"><span>系统</span><span>Windows 10/11 (64-bit)</span></div>
-      <div class="modal__info-row"><span>大小</span><span>~220 MB</span></div>
+      <div class="modal__info-row"><span>大小</span><span>~355 MB</span></div>
       <div class="modal__info-row"><span>协议</span><span>Apache 2.0</span></div>
     </div>
     <div class="modal__info" id="tab-mac" style="display:none">
@@ -547,7 +547,9 @@ const I18N={
     cta_h:'现在就开始',cta_p:'免费下载，3 分钟上手，数据在你手里。',cta_dl:'下载 Windows 客户端',
     modal_h:'下载 Mind Agency',modal_p:'开源多 AI 协作平台，本地运行，数据不上传。',
     modal_confirm:'确认下载',modal_cancel:'取消',modal_coming:'即将推出',
-    nav_dl:'下载 v0.7.0'
+    nav_dl:'下载 v0.7.0',nav_qs:'上手',nav_faq:'FAQ',
+    nav_overview:'总览',nav_audit:'审计',nav_groups:'群组',nav_members:'成员',nav_settings:'配置',
+    stat_agents:'Agents',stat_groups:'群组',stat_workflows:'工作流',stat_cost:'今日消耗'
   },
   en:{
     badge:'v0.7.0 — Desktop client released',
@@ -575,7 +577,9 @@ const I18N={
     cta_h:'Get started now',cta_p:'Free download, 3 minutes to set up, data stays on your machine.',cta_dl:'Download for Windows',
     modal_h:'Download Mind Agency',modal_p:'Open source multi-AI collaboration platform. Local-first, data stays private.',
     modal_confirm:'Download',modal_cancel:'Cancel',modal_coming:'Coming soon',
-    nav_dl:'Download v0.7.0'
+    nav_dl:'Download v0.7.0',nav_qs:'Quickstart',nav_faq:'FAQ',
+    nav_overview:'Overview',nav_audit:'Audit',nav_groups:'Groups',nav_members:'Members',nav_settings:'Settings',
+    stat_agents:'Agents',stat_groups:'Groups',stat_workflows:'Workflows',stat_cost:'Today\'s Cost'
   }
 };
 let lang=localStorage.getItem('lang')||'zh';
