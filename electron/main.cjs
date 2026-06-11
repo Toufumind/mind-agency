@@ -48,12 +48,26 @@ function seedDataDir() {
   for (const m of ['Agents', 'Groups']) {
     const src = path.join(APP_ROOT, m);
     const dest = path.join(DATA_DIR, m);
+
+    // Clean old data
     if (fs.existsSync(dest)) {
-      try { fs.rmSync(dest, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(dest, { recursive: true, force: true }); } catch (e) {
+        console.log(`[mind]   ⚠ Failed to clean ${m}/: ${e.message}`);
+      }
     }
+
+    // Copy fresh data from bundled app (asar)
     if (fs.existsSync(src)) {
-      copyDir(src, dest);
-      console.log(`[mind]   ✓ ${m}/ seeded (clean)`);
+      try {
+        copyDir(src, dest);
+        console.log(`[mind]   ✓ ${m}/ seeded (clean)`);
+      } catch (e) {
+        console.log(`[mind]   ⚠ Failed to copy ${m}/: ${e.message}`);
+      }
+    } else {
+      // Create empty directory if source doesn't exist
+      fs.mkdirSync(dest, { recursive: true });
+      console.log(`[mind]   ✓ ${m}/ created (empty)`);
     }
   }
   // Create .audit/.mind if absent (preserve agent memories between runs)
