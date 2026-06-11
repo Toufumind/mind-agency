@@ -322,10 +322,25 @@ app.whenReady().then(async () => {
     process.env.MIND_ELECTRON_EXE = process.execPath;
   }
 
-  // (3) Wait for Next.js server (user must start it manually)
-  console.log('[mind] Waiting for Next.js server...');
-  // The server should already be running from the launch script
-  // If not, try to connect and wait
+  // (3) Start Next.js dev server
+  console.log('[mind] Starting Next.js dev server...');
+  try {
+    const nextBin = process.platform === 'win32'
+      ? path.join(APP_ROOT, 'node_modules', '.bin', 'next.cmd')
+      : path.join(APP_ROOT, 'node_modules', '.bin', 'next');
+    const nextDev = spawn(nextBin, ['dev', '-p', String(PORT), '-H', '127.0.0.1'], {
+      cwd: APP_ROOT,
+      env: { ...process.env, PORT: String(PORT), HOSTNAME: '127.0.0.1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+    });
+    nextDev.stdout.on('data', (d) => process.stdout.write(`[next] ${d}`));
+    nextDev.stderr.on('data', (d) => process.stderr.write(`[next] ${d}`));
+    nextDev.on('error', (e) => console.error('[mind] Next.js error:', e.message));
+    wsChild = nextDev;
+  } catch (e) {
+    console.error('[mind] Server start error:', e.message);
+  }
 
   // (4) Wait for server ready
   console.log('[mind] Waiting for server...');

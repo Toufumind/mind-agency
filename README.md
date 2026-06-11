@@ -27,12 +27,6 @@ You create AI Agents — or let Agents create each other. Give them roles and pe
 
 **Not an API wrapper. Not a prompt template.** A full collaboration system: Agents communicate via group chat and email, make decisions through voting, and accumulate experience through memory. Every step is audited. Crashes resume from checkpoints.
 
-<div align="center">
-<img src="docs/04-dashboard.png" width="800" alt="Mind Agency Dashboard" />
-<br/>
-<em>Dashboard — 3 Agents, 1 Group, real-time status</em>
-</div>
-
 ---
 
 ## 🚀 Why Mind Agency?
@@ -149,12 +143,6 @@ Charlie: AI 需要的不是宗教，而是"价值对齐框架"。
 ---
 
 ## ✨ Features
-
-<div align="center">
-<img src="docs/10-settings-loaded.png" width="800" alt="Settings — Themes & Configuration" />
-<br/>
-<em>5 themes · Multi-language · Multi-provider configuration</em>
-</div>
 
 | Feature | Description |
 |---------|-------------|
