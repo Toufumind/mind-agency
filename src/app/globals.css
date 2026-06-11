@@ -321,10 +321,10 @@
   --code-text: var(--color-destructive);
 }
 
-/* ══════ Notion 无边框 — 全局覆盖 ══════ */
-[data-theme="notion"] * {
-  border-color: transparent !important;
-}
+/* ══════ Notion 无边框 — taste: targeted overrides, not universal selector ══════ */
+[data-theme="notion"] .bg-canvas { border-color: transparent; }
+[data-theme="notion"] .bg-surface { border-color: transparent; }
+[data-theme="notion"] input, [data-theme="notion"] textarea, [data-theme="notion"] select { border-color: transparent; }
 
 
 /* ═══════════════════════════════════════════════════════════

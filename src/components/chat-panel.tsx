@@ -634,7 +634,15 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
 
 export default ChatPanel;
 
-function MdText({ text }: { text: string }) {
+// taste: React.memo prevents re-render on every SSE chunk
+const MdText = React.memo(function MdText({ text }: { text: string }) {
+  const isLong = text.length > 500;
+  return (
+    <div className={`text-[14px] text-muted leading-relaxed ${isLong ? 'max-h-[300px] overflow-y-auto' : ''}`}>
+      <Markdown text={text} />
+    </div>
+  );
+});
   const isLong = text.length > 500;
   return (
     <div className={`text-[14px] text-muted leading-relaxed ${isLong ? 'max-h-[300px] overflow-y-auto' : ''}`}>
@@ -642,7 +650,7 @@ function MdText({ text }: { text: string }) {
     </div>
   );
 }
-function Think({ text }: { text: string }) {
+const Think = React.memo(function Think({ text }: { text: string }) {
   const [on, setOn] = useState(false);
   if (!text) return null;
   return (
@@ -654,7 +662,7 @@ function Think({ text }: { text: string }) {
     </div>
   );
 }
-function Tool({ name, input }: { name: string; input: string }) {
+const Tool = React.memo(function Tool({ name, input }: { name: string; input: string }) {
   const [on, setOn] = useState(false);
   const short = name.replace(/^mcp__group-chat__/, '');
 
@@ -707,7 +715,7 @@ function Tool({ name, input }: { name: string; input: string }) {
     </div>
   );
 }
-function Result({ output }: { output: string }) {
+const Result = React.memo(function Result({ output }: { output: string }) {
   const [on, setOn] = useState(false);
   if (!output) return null;
   return (
@@ -719,4 +727,4 @@ function Result({ output }: { output: string }) {
     </div>
   );
 }
-function Err({ text }: { text: string }) { return <div className="text-[13px] text-destructive">{text}</div>; }
+const Err = React.memo(function Err({ text }: { text: string }) { return <div className="text-[13px] text-destructive">{text}</div>; });

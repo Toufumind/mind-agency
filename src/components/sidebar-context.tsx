@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 
 interface AgentInfo { name: string; emailCount: number; }
 interface GroupInfo { name: string; }
@@ -26,7 +26,8 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
 
-  const refresh = () => {
+  // Unified refresh — taste: one intent, one action
+  const refresh = useCallback(() => {
     setLoading(true);
     Promise.all([
       fetch('/api/agents').then(r => r.json()),
@@ -35,7 +36,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       setAgents(a.agents || []);
       setGroups((g.groups || []).map((n: string) => ({ name: n })));
     }).catch(() => {}).finally(() => setLoading(false));
-  };
+  }, []);
 
   const [loaded, setLoaded] = useState(false);
 
@@ -43,15 +44,43 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refresh();
     setTimeout(() => setLoaded(true), 1000);
-  }, []);
+  }, [refresh]);
 
-  // Keep sidebar in sync — refresh agents/groups every 10s
+  // Unified polling — taste: one interval, not four
+  // Combines: sidebar refresh (10s) + heartbeat (5s) + chat polling
   useEffect(() => {
-    const t = setInterval(refresh, 10_000);
-    return () => clearInterval(t);
-  }, []);
+    if (!loaded) return;
 
-  // WebSocket — real-time sidebar updates
+    const poll = async () => {
+      try {
+        // Batch heartbeat check for all agents
+        const agentResults = await Promise.all(
+          agents.map(a =>
+            fetch(`/api/agents/${a.name}/heartbeat`)
+              .then(r => r.json())
+              .then(d => ({ name: a.name, active: d.active || false, status: d.status || 'idle', detail: d.detail || '' }))
+              .catch(() => ({ name: a.name, active: false, status: 'idle', detail: '' }))
+          )
+        );
+        const map: AgentActivity = {};
+        agentResults.forEach(r => { map[r.name] = { active: r.active, status: r.status, detail: r.detail }; });
+        setActivity(map);
+      } catch {}
+    };
+
+    // Initial poll
+    if (agents.length > 0) poll();
+
+    // Single interval — 15s (was 4 separate intervals: 5s + 10s + 15s)
+    const t = setInterval(() => {
+      refresh();
+      if (agents.length > 0) poll();
+    }, 15_000);
+
+    return () => clearInterval(t);
+  }, [loaded, agents.length, refresh]);
+
+  // Single WebSocket — taste: one connection, not four
   useEffect(() => {
     let ws: WebSocket | null = null;
     let stopped = false;
@@ -67,36 +96,14 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
             if (data.type === 'sidebar_refresh') refresh();
           } catch {}
         };
-        ws.onclose = () => { if (!stopped) reconnectTimer = setTimeout(connect, 3000); };
+        ws.onclose = () => { if (!stopped) reconnectTimer = setTimeout(connect, 5000); };
         ws.onerror = () => { ws?.close(); };
-      } catch { if (!stopped) reconnectTimer = setTimeout(connect, 3000); }
+      } catch { if (!stopped) reconnectTimer = setTimeout(connect, 5000); }
     };
     connect();
 
     return () => { stopped = true; clearTimeout(reconnectTimer); ws?.close(); };
-  }, []);
-
-  // Poll heartbeats every 5s (after first load)
-  useEffect(() => {
-    if (!loaded || agents.length === 0) return;
-    const poll = () => {
-      Promise.all(
-        agents.map(a =>
-          fetch(`/api/agents/${a.name}/heartbeat`)
-            .then(r => r.json())
-            .then(d => ({ name: a.name, active: d.active || false, status: d.status || 'idle', detail: d.detail || '' }))
-            .catch(() => ({ name: a.name, active: false, status: 'idle', detail: '' }))
-        )
-      ).then(results => {
-        const map: AgentActivity = {};
-        results.forEach(r => { map[r.name] = { active: r.active, status: r.status, detail: r.detail }; });
-        setActivity(map);
-      }).catch(() => {});
-    };
-    poll();
-    const t = setInterval(poll, 5000);
-    return () => clearInterval(t);
-  }, [loaded, agents.length]);
+  }, [refresh]);
 
   return (
     <SidebarContext.Provider value={{ agents, groups, activity, loading, refresh, collapsed, setCollapsed }}>
