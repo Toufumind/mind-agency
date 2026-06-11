@@ -21,7 +21,7 @@ function ensureDir(dir: string) {
 export function economyTools(): ToolDef[] {
   return [
     { name: 'token_balance', description: '查看自己或他人的 token 余额。', inputSchema: { type: 'object', properties: { agent: { type: 'string', description: '查看谁的余额（默认自己）' } }, required: [] } },
-    { name: 'token_deposit', description: '给自己或他人存入 token。', inputSchema: { type: 'object', properties: { agent: { type: 'string', description: '存给谁（默认自己）' }, amount: { type: 'number', description: '数量' }, reason: { type: 'string', description: '原因' } }, required: ['amount'] } },
+    { name: 'token_deposit', description: '给 agent 充值 token（仅用户可用）。', inputSchema: { type: 'object', properties: { agent: { type: 'string', description: '充给谁' }, amount: { type: 'number', description: '数量' }, reason: { type: 'string', description: '原因' } }, required: ['agent', 'amount'] } },
     { name: 'token_transfer', description: '转账给其他 agent。', inputSchema: { type: 'object', properties: { to: { type: 'string', description: '转给谁' }, amount: { type: 'number', description: '数量' }, reason: { type: 'string', description: '原因' } }, required: ['to', 'amount'] } },
     { name: 'token_leaderboard', description: '查看团队 token 排行榜。', inputSchema: { type: 'object', properties: {}, required: [] } },
     { name: 'token_history', description: '查看自己的交易历史记录。', inputSchema: { type: 'object', properties: { limit: { type: 'number', description: '显示最近几条（默认10）' } }, required: [] } },
@@ -55,14 +55,17 @@ export async function handleEconomyTool(
   }
 
   if (name === 'token_deposit') {
+    if (agentName !== 'me') {
+      respond(id, { content: [{ type: 'text', text: '❌ 只有用户（me）可以充值 token' }] });
+      return true;
+    }
     const { agent, amount, reason } = a;
-    const target = agent || agentName;
-    if (!amount) { respond(id, { content: [{ type: 'text', text: 'amount required' }], isError: true }); return true; }
+    if (!agent || !amount) { respond(id, { content: [{ type: 'text', text: 'agent and amount required' }], isError: true }); return true; }
     try {
-      const data: any = await postJson(`${WS_BASE_URL}/api/economy/deposit`, { agent: target, amount, from: agentName, reason });
-      respond(id, { content: [{ type: 'text', text: `✅ 已给 ${target} 存入 ${amount} tokens (余额: ${data.balance})` }] });
+      const data: any = await postJson(`${WS_BASE_URL}/api/economy/deposit`, { agent, amount, from: agentName, reason });
+      respond(id, { content: [{ type: 'text', text: `✅ 已给 ${agent} 充值 ${amount} tokens (余额: ${data.balance})` }] });
     } catch (e: any) {
-      respond(id, { content: [{ type: 'text', text: `存款失败: ${e.message}` }] });
+      respond(id, { content: [{ type: 'text', text: `充值失败: ${e.message}` }] });
     }
     return true;
   }
