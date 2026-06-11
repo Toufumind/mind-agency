@@ -469,18 +469,33 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     try {
       await this.loadSession();
       await this.loadConfig();
-      if (!this._processReady) await this.startProcess();
-      if (!this._warmQuery) throw new Error(`claude.exe not available for ${this.name}`);
 
-      const fullPrompt = groupName
-        ? this.buildGroupChatContext(groupName) + '\n\n---\n\n' + userMessage
-        : userMessage;
+      // Route through relay (RAG + token billing)
+      const { relay } = await import('./relay');
+      const messages = [
+        ...this._session.messages.slice(-20).map(m => ({ role: m.role, content: m.content })),
+        { role: 'user', content: userMessage },
+      ];
 
-      const { reply, events, inputTokens, outputTokens } = await this.parseChatEvents(this._warmQuery.query(fullPrompt));
-      await this.persistChat(userMessage, reply, events, inputTokens, outputTokens);
+      const result = await relay({ agent: this.name, messages });
+
+      // Persist to session
+      this._session.messages.push(
+        { role: 'user', content: userMessage, timestamp: new Date().toISOString() },
+        { role: 'assistant', content: result.content, events: [], timestamp: new Date().toISOString() }
+      );
+      if (this._session.messages.length > 100) {
+        this._session.messages = this._session.messages.slice(-100);
+      }
+      await this.saveSession();
       this.clearStatus();
 
-      return { reply, events, sessionId: this._session.sessionId || '', tokenUsage: { input: inputTokens, output: outputTokens } };
+      return {
+        reply: result.content,
+        events: [],
+        sessionId: this._session.sessionId || '',
+        tokenUsage: result.usage,
+      };
     } catch (err: any) {
       this.clearStatus();
       console.error(`[agent-proxy] ${this.name}: chat error:`, err.message);

@@ -555,7 +555,47 @@ export async function createChatStream(agentName: string, userMessage: string, g
   const agentDir = path.join(AGENTS_DIR, agentName);
   if (!fs.existsSync(agentDir)) return quickError(`Agent "${agentName}" not found`);
 
-  // v0.5: Default to claude-proxy (RAG-enabled) unless explicitly set to 'claude'
+  // ── Route ALL requests through relay (RAG + token billing) ──
+  // Agent → Relay → RAG → AI Provider
+  try {
+    const { relay } = await import('./relay');
+
+    // Build conversation context for relay
+    const history = getChatHistory(agentName);
+    const messages = [
+      ...history.messages.slice(-20).map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: userMessage },
+    ];
+
+    const result = await relay({
+      agent: agentName,
+      messages,
+      model: modelOverride,
+    });
+
+    // Convert relay response to ReadableStream<ChatEvent>
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send text event
+        controller.enqueue(encoder.encode(JSON.stringify({
+          type: 'text', content: result.content, timestamp: new Date().toISOString()
+        }) + '\n'));
+        // Send done event
+        controller.enqueue(encoder.encode(JSON.stringify({
+          type: 'done', timestamp: new Date().toISOString()
+        }) + '\n'));
+        controller.close();
+      }
+    });
+
+    return stream;
+  } catch (err: any) {
+    console.error(`[chat] ${agentName}: relay error:`, err.message);
+    return quickError(`Relay error: ${err.message}`);
+  }
+
+  // Fallback: direct provider call (should not be reached)
   const agentConfig = loadAgentConfig(agentName);
   const providerName = (agentConfig?.provider as string) || 'claude-proxy';
   if (providerName !== 'claude') {

@@ -7,7 +7,8 @@
 
 import { searchMemory } from './memory';
 import { getAgentAccount, saveAgentAccount, AgentAccount } from './token-economy';
-import { loadSettings } from './provider-profiles';
+import { readFileSync } from 'fs';
+import { MIND_DIR } from './data-dir';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -44,6 +45,17 @@ function getModelPricing(model: string): { input: number; output: number } {
 }
 
 // ── RAG: Search relevant memories ────────────────────────
+
+/** Load settings from .mind/settings.json */
+function loadSettingsSync(): { apiKey?: string; baseUrl?: string; model?: string } {
+  try {
+    const settingsPath = require('path').join(MIND_DIR, 'settings.json');
+    if (require('fs').existsSync(settingsPath)) {
+      return JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    }
+  } catch {}
+  return {};
+}
 
 async function ragSearch(agent: string, query: string): Promise<string> {
   try {
@@ -106,7 +118,7 @@ export async function relay(req: RelayRequest): Promise<RelayResponse> {
   const { agent, messages, model: reqModel, maxTokens = 4096 } = req;
 
   // 1. Load settings
-  const settings = await loadSettings();
+  const settings = loadSettingsSync();
   const baseUrl = settings.baseUrl || 'https://api.anthropic.com';
   const apiKey = settings.apiKey;
   const model = reqModel || settings.model || 'claude-sonnet-4-20250514';
