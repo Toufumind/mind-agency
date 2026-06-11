@@ -104,3 +104,4 @@ workflow-page.pdf
 test-agency.ts
 test-browser.ts
 test-world-model*.ts
+installer/
