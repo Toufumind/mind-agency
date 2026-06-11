@@ -58,19 +58,37 @@ function loadSettingsSync(): { apiKey?: string; baseUrl?: string; model?: string
 }
 
 async function ragSearch(agent: string, query: string): Promise<string> {
+  const parts: string[] = [];
+
+  // 1. Search long-term memory (.mind/agents/<name>/memory/*.md)
   try {
-    const results = await searchMemory(agent, query);
-    if (results.length === 0) return '';
+    const memResults = await searchMemory(agent, query);
+    if (memResults.length > 0) {
+      const memContext = memResults
+        .slice(0, 3)
+        .map(r => `[记忆: ${r.key}] ${r.content.slice(0, 150)}`)
+        .join('\n');
+      parts.push(memContext);
+    }
+  } catch {}
 
-    const context = results
-      .slice(0, 5)
-      .map(r => `[${r.key}] ${r.content.slice(0, 200)}`)
-      .join('\n');
+  // 2. Search recent conversation history (session.json)
+  try {
+    const sessionPath = require('path').join(AGENTS_DIR, agent, 'chat', 'session.json');
+    if (require('fs').existsSync(sessionPath)) {
+      const session = JSON.parse(readFileSync(sessionPath, 'utf-8'));
+      const recentMsgs = (session.messages || []).slice(-10);
+      if (recentMsgs.length > 0) {
+        const convContext = recentMsgs
+          .map(m => `[${m.role}] ${(m.content || '').slice(0, 100)}`)
+          .join('\n');
+        parts.push(`[最近对话]\n${convContext}`);
+      }
+    }
+  } catch {}
 
-    return `\n\n--- Relevant memories ---\n${context}\n--- End memories ---`;
-  } catch {
-    return '';
-  }
+  if (parts.length === 0) return '';
+  return `\n\n--- RAG Context ---\n${parts.join('\n---\n')}\n--- End RAG ---`;
 }
 
 // ── Forward to AI provider ───────────────────────────────
