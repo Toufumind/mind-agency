@@ -197,7 +197,7 @@
       <span class="lang-btn" data-lang="zh" onclick="setLang('zh')" style="cursor:pointer;font-weight:700;color:var(--text)">中</span>
       <span style="color:var(--text-3)">/</span>
       <span class="lang-btn" data-lang="en" onclick="setLang('en')" style="cursor:pointer;font-weight:400;color:var(--text-3)">En</span>
-      <button class="nav__dl" onclick="openModal()">下载 v0.7.0</button>
+      <button class="nav__dl" onclick="openModal()">下载 v0.8.0</button>
     </div>
   </div>
 </nav>
@@ -205,7 +205,7 @@
 <!-- Hero -->
 <section class="hero">
   <div class="r" style="display:flex;flex-direction:column;align-items:center">
-    <div class="hero__badge"><span class="dot"></span> <span data-i18n="badge">v0.7.0 — 桌面客户端已发布</span></div>
+    <div class="hero__badge"><span class="dot"></span> <span data-i18n="badge">v0.8.0 — 桌面客户端已发布</span></div>
     <h1 class="hero__h">From <em style="font-style:normal;color:var(--blue)">Agent</em><br>to <em style="font-style:normal;color:var(--blue)">Agency</em></h1>
     <p class="hero__p" data-i18n="hero_p">开源、本地运行、数据不上传。创建 Agent，组建群组，编排工作流——像人类团队一样工作。</p>
     <div class="hero__btns">
@@ -496,9 +496,9 @@ DeepSeek 几毛钱一天</code>
       <div class="modal__tab" onclick="switchTab(this,'linux')" style="flex:1;text-align:center;padding:10px 0;font-size:.85rem;color:var(--text-3);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s">Linux</div>
     </div>
     <div class="modal__info" id="tab-win">
-      <div class="modal__info-row"><span>版本</span><span>v0.7.0</span></div>
+      <div class="modal__info-row"><span>版本</span><span>v0.8.0</span></div>
       <div class="modal__info-row"><span>系统</span><span>Windows 10/11 (64-bit)</span></div>
-      <div class="modal__info-row"><span>大小</span><span>~355 MB</span></div>
+      <div class="modal__info-row"><span>大小</span><span>~216 MB</span></div>
       <div class="modal__info-row"><span>协议</span><span>Apache 2.0</span></div>
     </div>
     <div class="modal__info" id="tab-mac" style="display:none">
@@ -512,7 +512,7 @@ DeepSeek 几毛钱一天</code>
       <div class="modal__info-row"><span>协议</span><span>Apache 2.0</span></div>
     </div>
     <div class="modal__btns">
-      <a href="https://github.com/Toufumind/mind-agency/releases/download/v0.7.0/Mind-Agency-Setup-0.7.0.exe" class="btn btn--dark" onclick="closeModal()">确认下载</a>
+      <a href="https://github.com/Toufumind/mind-agency/releases/download/v0.8.0/Mind-Agency-Setup-0.7.0.exe" class="btn btn--dark" onclick="closeModal()">确认下载</a>
       <button class="btn btn--light" onclick="closeModal()">取消</button>
     </div>
   </div>
@@ -522,11 +522,11 @@ DeepSeek 几毛钱一天</code>
 // i18n
 const I18N={
   zh:{
-    badge:'v0.7.0 — 桌面客户端已发布',
+    badge:'v0.8.0 — 桌面客户端已发布',
     hero_p:'开源、本地运行、数据不上传。创建 Agent，组建群组，编排工作流——像人类团队一样工作。',
     hero_dl:'免费下载',
     hero_sub:'<span>No signup</span><span>·</span><span>Local-first</span><span>·</span><span>Multiple models</span>',
-    dl_btn:'下载 v0.7.0',
+    dl_btn:'下载 v0.8.0',
     feat_k:'Features',feat_h:'你需要的一切',feat_p:'不是单个 AI，而是一个完整的协作系统。',
     f1_h:'多 Agent 协作',f1_p:'创建任意数量的 Agent，各有角色和性格。Alice 写代码，Bob 审查，Charlie 测试。有分歧投票决定。',
     f2_h:'工作流引擎',f2_p:'YAML 定义步骤和依赖。失败自动重试，崩溃从检查点恢复。支持人工审批门。',
@@ -547,16 +547,16 @@ const I18N={
     cta_h:'现在就开始',cta_p:'免费下载，3 分钟上手，数据在你手里。',cta_dl:'下载 Windows 客户端',
     modal_h:'下载 Mind Agency',modal_p:'开源多 AI 协作平台，本地运行，数据不上传。',
     modal_confirm:'确认下载',modal_cancel:'取消',modal_coming:'即将推出',
-    nav_dl:'下载 v0.7.0',nav_qs:'上手',nav_faq:'FAQ',
+    nav_dl:'下载 v0.8.0',nav_qs:'上手',nav_faq:'FAQ',
     nav_overview:'总览',nav_audit:'审计',nav_groups:'群组',nav_members:'成员',nav_settings:'配置',
     stat_agents:'Agents',stat_groups:'群组',stat_workflows:'工作流',stat_cost:'今日消耗'
   },
   en:{
-    badge:'v0.7.0 — Desktop client released',
+    badge:'v0.8.0 — Desktop client released',
     hero_p:'Open source, local-first, data stays on your machine. Create Agents, form groups, orchestrate workflows — like a real team.',
     hero_dl:'Free Download',
     hero_sub:'<span>No signup</span><span>·</span><span>Local-first</span><span>·</span><span>Open source</span>',
-    dl_btn:'Download v0.7.0',
+    dl_btn:'Download v0.8.0',
     feat_k:'Features',feat_h:'Everything you need',feat_p:'Not a single AI — a complete collaboration system.',
     f1_h:'Multi-Agent Collaboration',f1_p:'Create agents with roles. Alice codes, Bob reviews, Charlie tests. Disagreements go to vote.',
     f2_h:'Workflow Engine',f2_p:'YAML-defined steps and dependencies. Auto-retry on failure, checkpoint recovery. Human approval gates.',
@@ -577,7 +577,7 @@ const I18N={
     cta_h:'Get started now',cta_p:'Free download, 3 minutes to set up, data stays on your machine.',cta_dl:'Download for Windows',
     modal_h:'Download Mind Agency',modal_p:'Open source multi-AI collaboration platform. Local-first, data stays private.',
     modal_confirm:'Download',modal_cancel:'Cancel',modal_coming:'Coming soon',
-    nav_dl:'Download v0.7.0',nav_qs:'Quickstart',nav_faq:'FAQ',
+    nav_dl:'Download v0.8.0',nav_qs:'Quickstart',nav_faq:'FAQ',
     nav_overview:'Overview',nav_audit:'Audit',nav_groups:'Groups',nav_members:'Members',nav_settings:'Settings',
     stat_agents:'Agents',stat_groups:'Groups',stat_workflows:'Workflows',stat_cost:'Today\'s Cost'
   }
