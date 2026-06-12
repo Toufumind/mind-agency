@@ -1,12 +1,12 @@
 /**
- * POST /api/relay — AI API relay with RAG + token billing
+ * POST /api/relay — AI API relay proxy
+ * GET /api/relay — Relay usage logs
  *
- * Agents call this instead of directly calling AI providers.
- * Flow: Agent → Relay → RAG → AI Provider → Track tokens → Return
+ * Flow: Agent → Relay → RAG → AI Provider → Log → Return
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { relay } from '@/lib/relay';
+import { relay, readLogs } from '@/lib/relay';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +22,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (err: any) {
     console.error('[relay] Error:', err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get('date') || undefined;
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const logs = readLogs(date, limit);
+
+    // Aggregate by agent
+    const byAgent: Record<string, { calls: number; tokensIn: number; tokensOut: number; cost: number }> = {};
+    let totalCost = 0;
+    for (const log of logs) {
+      if (!byAgent[log.agent]) byAgent[log.agent] = { calls: 0, tokensIn: 0, tokensOut: 0, cost: 0 };
+      byAgent[log.agent].calls++;
+      byAgent[log.agent].tokensIn += log.tokensIn;
+      byAgent[log.agent].tokensOut += log.tokensOut;
+      byAgent[log.agent].cost += log.cost;
+      totalCost += log.cost;
+    }
+
+    return NextResponse.json({ logs: logs.slice(-50), byAgent, totalCost: +totalCost.toFixed(4), totalCalls: logs.length });
+  } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
