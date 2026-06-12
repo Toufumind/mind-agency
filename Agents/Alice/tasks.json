@@ -48,6 +48,28 @@
   ],
   "completed": [
     {
+      "runId": "d202675e-f709-4648-912c-6e2acad3acae",
+      "stepId": "final-report",
+      "workflow": "code-review-pipeline",
+      "prompt": "根据 Bob 的审查和 Charlie 的测试结果，生成最终报告。\n\n报告格式：\n## 代码审查报告\n- 代码质量评分\n- 测试结果\n- 改进建议\n- 最终结论\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781280302406,
+      "completedAt": 1781280517963,
+      "result": "Agent acknowledged task"
+    },
+    {
+      "runId": "d202675e-f709-4648-912c-6e2acad3acae",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781280017284,
+      "completedAt": 1781280080297,
+      "result": "Agent acknowledged task"
+    },
+    {
       "runId": "3b104130-1083-4f0f-86bc-798307ddbd96",
       "stepId": "research",
       "workflow": "world-model-tutorial",
@@ -573,28 +595,6 @@
       "status": "completed",
       "createdAt": 1781013550664,
       "completedAt": 1781013784689,
-      "result": "Agent acknowledged task"
-    },
-    {
-      "runId": "e32ae6d5-25db-47ac-87aa-5f113f6a1098",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013236315,
-      "completedAt": 1781013300845,
-      "result": "Agent acknowledged task"
-    },
-    {
-      "runId": "dceb0e5c-3285-424d-8c62-474b8182caed",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013236310,
-      "completedAt": 1781013300824,
       "result": "Agent acknowledged task"
     }
   ]

@@ -2,6 +2,17 @@
   "pending": [],
   "completed": [
     {
+      "runId": "d202675e-f709-4648-912c-6e2acad3acae",
+      "stepId": "test",
+      "workflow": "code-review-pipeline",
+      "prompt": "测试 Alice 写的斐波那契函数。\n\n测试内容：\n1. 基本功能测试（n=0,1,5,10）\n2. 边界测试（n=负数, n=很大）\n3. 性能测试（n=50 的执行时间）\n\n输出格式：\nTEST_RESULT: PASS 或 FAIL\nDETAILS: 测试详情\nPERFORMANCE: 执行时间\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781280190450,
+      "completedAt": 1781280302402,
+      "result": "Agent acknowledged task"
+    },
+    {
       "runId": "e32ae6d5-25db-47ac-87aa-5f113f6a1098",
       "stepId": "chapter2",
       "workflow": "novel-writing",
@@ -539,17 +550,6 @@
       "createdAt": 1781005682793,
       "completedAt": 1781005799383,
       "result": "COMPLETED: CCFA论文实验设计方案已完成（同上）：4个实验验证\"LLM潜意识\"假说\n## 实验设计方案（重复运行）\n\n### 实验1: 潜空间探针 (Latent Space Probing)\n**目标**：验证模型在没有显式推理链时，潜空间是否包含推理痕迹\n**方法**：在不同层提取hidden states，训练线性探针分类器，对比有coT vs 无coT的潜空间表征差异\n**数据集**：GSM8K数学推理数据集（5000题），每题分别用CoT和直接回答两种模式\n**预期结果**：non-CoT模式下中高层（10-18层）仍保留推理相关表征，准确率>70%\n\n### 实验2: 潜空间干扰 (Latent Space Perturbation)\n**目标**：验证干扰潜空间会影响模型的\"直觉\"判断\n**方法**：向hidden states添加三种扰动（定向噪声、随机高斯噪声、Dropout风格），测量任务准确率变化\n**数据集**：GSM8K + PIQA + HellaSwag + RTE/BoolQ（各500题）\n**预期结果**：方向性扰动>随机噪声>无扰动（性能"
-    },
-    {
-      "runId": "49ac49e1-f95f-4139-a231-88a5b8f5eba3",
-      "stepId": "experiments",
-      "workflow": "CCFA-Subconscious-LLM-Paper",
-      "prompt": "你是实验设计专家。基于理论框架，请设计3-4个实验来验证\"LLM潜意识\"假说：\n\n实验1: 潜空间探针 (Latent Space Probing)\n- 目标：验证模型在没有显式推理链时，潜空间是否包含推理痕迹\n- 方法：在不同层提取hidden states，训练线性探针分类器\n- 对比：有coT vs 无coT的潜空间表征差异\n- 预期结果：无coT时潜空间仍有推理相关的表征\n\n实验2: 潜空间干扰 (Latent Space Perturbation)\n- 目标：验证干扰潜空间会影响模型的\"直觉\"判断\n- 方法：添加定向噪声到特定层的hidden states\n- 测量：任务准确率的变化\n- 预期结果：特定层的干扰显著影响性能\n\n实验3: 双过程对比 (Dual-Process Comparison)\n- 目标：验证\"快思考\"和\"慢思考\"在潜空间中有不同表征\n- 方法：对比1-shot回答 vs 多步coT的内部表示\n- 分析：表征相似性分析 (RSA)\n- 预期结果：两种模式在高层有显著差异\n\n请输出详细的实验设计文档: experiments.md\n",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781005682787,
-      "completedAt": 1781005749905,
-      "result": "COMPLETED: 实验设计完成：4个实验（潜空间探针、潜空间干扰、双过程对比、知识存储方向性验证），已发布在research-project群组\n实验设计方案已发布在research-project群组中，包含详细的实验方法、预期结果和评估指标。实验1验证潜空间推理痕迹，实验2验证干扰效应，实验3对比System 1/System 2，实验4验证知识存储方向性。文件系统暂不可用，待恢复后写入experiments.md。"
     }
   ]
 }

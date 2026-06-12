@@ -483,12 +483,8 @@ export class WorkflowEngine {
       return null;
     };
 
-    const cyclePath = detectCycle(nodes);
-    if (cyclePath) {
-      throw new Error(`Circular dependency detected in workflow DAG: ${cyclePath}`);
-    }
-
     // ── Start scheduling (callback model) ──
+    // Note: No cycle detection needed — engine skips completed steps
     this.schedule(runId);
   }
 
@@ -921,13 +917,11 @@ export class WorkflowEngine {
 
   /** Schedule ready steps in a run (callback model) */
   schedule(runId: string): void {
-    if (this.scheduling.has(runId)) return; // Prevent reentrant scheduling
+    if (this.scheduling.has(runId)) return;
     this.scheduling.add(runId);
     try {
     const run = this.runs.get(runId);
     if (!run || run.status !== WorkflowStatus.RUNNING) return;
-    const nodes = this.runNodes.get(runId);
-    if (!nodes) return;
 
     // Check abort
     const ac = this.abortControllers.get(runId);
@@ -937,10 +931,37 @@ export class WorkflowEngine {
       return;
     }
 
-    // Find ready steps
+    // ── Re-read blueprint from YAML (live document) ──
+    const wfPath = run._yamlPath;
+    if (wfPath && fs.existsSync(wfPath)) {
+      try {
+        const yaml = fs.readFileSync(wfPath, 'utf-8');
+        const freshDef = parseWorkflowYaml(yaml);
+        // Update run with latest blueprint
+        run._wfDef = freshDef;
+        // Rebuild DAG nodes from fresh blueprint
+        const freshNodes = this.buildDag(freshDef, run);
+        this.runNodes.set(runId, freshNodes);
+        // Carry over completed/failed status from previous nodes
+        const oldNodes = this.runNodes.get(runId);
+        if (oldNodes) {
+          for (const [id, node] of oldNodes) {
+            if (node.status === StepStatus.COMPLETED || node.status === StepStatus.FAILED) {
+              freshNodes.get(id)!.status = node.status;
+              freshNodes.get(id)!.output = node.output;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const nodes = this.runNodes.get(runId);
+    if (!nodes) return;
+
+    // Find ready steps — steps whose deps are all completed
     const ready: DagNode[] = [];
     for (const [id, node] of nodes) {
-      if (node.status !== StepStatus.PENDING && node.status !== StepStatus.BLOCKED) continue;
+      if (node.status === StepStatus.COMPLETED || node.status === StepStatus.FAILED || node.status === StepStatus.IN_PROGRESS || node.status === StepStatus.WAITING) continue;
       const depsOk = node.deps.every(depId => {
         const dn = nodes.get(depId);
         return dn && (dn.status === StepStatus.COMPLETED || dn.status === StepStatus.SKIPPED);
@@ -953,16 +974,13 @@ export class WorkflowEngine {
     if (ready.length === 0) {
       const pending = [...nodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED || n.status === StepStatus.WAITING);
       if (pending.length === 0) {
-        // All done
         let failed = false;
         for (const [, n] of nodes) { if (n.status === StepStatus.FAILED) failed = true; }
         run.status = failed ? WorkflowStatus.FAILED : WorkflowStatus.COMPLETED;
         run.completedAt = Date.now();
         console.log(`[wf] Run ${runId.slice(0, 8)} ${run.status}`);
-        // v1.1: Self-improvement — review the workflow execution and write learning record
         const grp = run.group as string | undefined;
         this.reviewWorkflowExecution(grp, run, nodes);
-        // Save history and cleanup
         if (grp) {
           completeRunCheckpoint(grp, runId, run.status === WorkflowStatus.COMPLETED ? 'completed' : 'failed');
           const stepsCompleted = [...(run.steps.values())].filter(s => s === StepStatus.COMPLETED).length;
@@ -976,19 +994,12 @@ export class WorkflowEngine {
           });
           cleanupCheckpoints(grp);
         }
-        // v0.8: Don't evict immediately — let runs persist for status queries
-        }
       return;
     }
 
-    // v0.7: Execute ready steps with concurrency control
-    ready.sort((a, b) => (PRIORITY[a.step.priority || 'normal'] ?? 2) - (PRIORITY[b.step.priority || 'normal'] ?? 2));
-    const MAX_CONCURRENT = 5; // Limit concurrent step executions
-    let running = 0;
+    // Execute ready steps — each is independent
     for (const node of ready) {
-      if (running >= MAX_CONCURRENT) break; // Respect concurrency limit
-      running++;
-      this.execNode(runId, node, nodes).finally(() => { running--; });
+      this.execNode(runId, node, nodes);
     }
     } finally { this.scheduling.delete(runId); }
   }

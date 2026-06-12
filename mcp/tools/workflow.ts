@@ -182,24 +182,53 @@ export async function handleWorkflowTool(
     if (!group || !step_id || !agent || !action || !prompt) {
       respondError(respond, id, 'group, step_id, agent, action, prompt required'); return true;
     }
-    httpPost(`${WS_BASE_URL}/workflows/add-step`, { group, step_id, agent, action, prompt, depends_on, reviewer, onReject, maxRejectRetries });
-    respondOk(respond, id, `step ${step_id} added to ${group} workflow`);
+    // Write to YAML blueprint
+    const yaml = require('js-yaml');
+    const wfPath = path.join(PROJECT_ROOT, 'Groups', group, 'workflow.yaml');
+    if (!fs.existsSync(wfPath)) { respondError(respond, id, `workflow.yaml not found in ${group}`); return true; }
+    const def = yaml.load(fs.readFileSync(wfPath, 'utf-8'));
+    const newStep: any = { id: step_id, agent, action, prompt };
+    if (depends_on) newStep.dependsOn = depends_on.split(',').map((s: string) => s.trim());
+    if (reviewer) newStep.reviewer = reviewer;
+    if (onReject) newStep.onReject = onReject;
+    if (maxRejectRetries) newStep.maxRejectRetries = maxRejectRetries;
+    def.steps.push(newStep);
+    fs.writeFileSync(wfPath, yaml.dump(def, { lineWidth: -1 }), 'utf-8');
+    respondOk(respond, id, `step ${step_id} added to ${group} workflow (blueprint updated)`);
     return true;
   }
 
   if (name === 'workflow_delete_step') {
     const { group, step_id } = a;
     if (!group || !step_id) { respondError(respond, id, 'group and step_id required'); return true; }
-    httpPost(`${WS_BASE_URL}/workflows/delete-step`, { group, step_id });
-    respondOk(respond, id, `step ${step_id} deleted from ${group} workflow`);
+    const yaml = require('js-yaml');
+    const wfPath = path.join(PROJECT_ROOT, 'Groups', group, 'workflow.yaml');
+    if (!fs.existsSync(wfPath)) { respondError(respond, id, `workflow.yaml not found in ${group}`); return true; }
+    const def = yaml.load(fs.readFileSync(wfPath, 'utf-8'));
+    const before = def.steps.length;
+    def.steps = def.steps.filter((s: any) => s.id !== step_id);
+    if (def.steps.length === before) { respondError(respond, id, `step ${step_id} not found`); return true; }
+    fs.writeFileSync(wfPath, yaml.dump(def, { lineWidth: -1 }), 'utf-8');
+    respondOk(respond, id, `step ${step_id} deleted from ${group} workflow (blueprint updated)`);
     return true;
   }
 
   if (name === 'workflow_modify_step') {
     const { group, step_id, agent, action, prompt, reviewer, onReject } = a;
     if (!group || !step_id) { respondError(respond, id, 'group and step_id required'); return true; }
-    httpPost(`${WS_BASE_URL}/workflows/modify-step`, { group, step_id, agent, action, prompt, reviewer, onReject });
-    respondOk(respond, id, `step ${step_id} modified in ${group} workflow`);
+    const yaml = require('js-yaml');
+    const wfPath = path.join(PROJECT_ROOT, 'Groups', group, 'workflow.yaml');
+    if (!fs.existsSync(wfPath)) { respondError(respond, id, `workflow.yaml not found in ${group}`); return true; }
+    const def = yaml.load(fs.readFileSync(wfPath, 'utf-8'));
+    const step = def.steps.find((s: any) => s.id === step_id);
+    if (!step) { respondError(respond, id, `step ${step_id} not found`); return true; }
+    if (agent) step.agent = agent;
+    if (action) step.action = action;
+    if (prompt) step.prompt = prompt;
+    if (reviewer) step.reviewer = reviewer;
+    if (onReject) step.onReject = onReject;
+    fs.writeFileSync(wfPath, yaml.dump(def, { lineWidth: -1 }), 'utf-8');
+    respondOk(respond, id, `step ${step_id} modified in ${group} workflow (blueprint updated)`);
     return true;
   }
 
