@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Hash, Users, Activity, Bot, Trash2, X, Shield, User, BarChart3, FileText, Settings, Plus, ChevronDown, PanelLeftClose, PanelLeftOpen, TrendingUp } from 'lucide-react';
+import { Hash, Users, Activity, Bot, Trash2, X, Shield, User, BarChart3, FileText, Settings, Plus, ChevronDown, PanelLeftClose, PanelLeftOpen, TrendingUp, DollarSign } from 'lucide-react';
 import { useSidebarData } from './sidebar-context';
 import { useNotifications } from './notification-provider';
 import { useT } from './i18n';
@@ -238,6 +238,7 @@ export default function Sidebar() {
           {!collapsed ? (
             <>
               <NavItem href="/me" icon={User} label={t('me')} badge={unreadEmails} />
+              <NavItem href="/economy" icon={DollarSign} label="经济" />
               <NavItem href="/analytics" icon={BarChart3} label={t('usage')} />
               <NavItem href="/learning" icon={TrendingUp} label="学习" />
               <NavItem href="/settings" icon={Settings} label={t('settings')} />
