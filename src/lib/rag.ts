@@ -6,6 +6,8 @@
  * - Vector Store: LanceDB (local, no server needed)
  * - Chunking: 512 tokens with 50 overlap
  * - Reranking: BGE-Reranker
+ * - Hybrid scoring: BM25 (TF-IDF) + neural embedding fusion via SimHash
+ * - Deduplication: SimHash fingerprints for fast near-duplicate detection
  */
 
 import fs from 'fs';
@@ -31,6 +33,7 @@ export interface RAGDocument {
 export interface RAGResult {
   document: RAGDocument;
   score: number;
+  scoreBreakdown?: { bm25: number; neural: number; fused: number };
 }
 
 export interface ChunkOptions {
@@ -43,6 +46,8 @@ export interface ChunkOptions {
 const RAG_DIR = path.join(MIND_DIR, 'rag');
 const LANCE_DIR = path.join(RAG_DIR, 'lance');
 const MODELS_DIR = path.join(RAG_DIR, 'models');
+const TFIDF_DIR = path.join(RAG_DIR, 'tfidf');
+const SIMHASH_DIR = path.join(RAG_DIR, 'simhash');
 
 const DEFAULT_CHUNK_OPTIONS: ChunkOptions = {
   maxTokens: 512,
@@ -54,12 +59,99 @@ const RERANKER_MODEL = 'Xenova/bge-reranker-base-zh-v1.5';
 
 const TABLE_NAME = 'mind_rag';
 
+// Hybrid scoring weights (tunable)
+const HYBRID_BM25_WEIGHT = 0.4;
+const HYBRID_NEURAL_WEIGHT = 0.6;
+
+// SimHash deduplication threshold (Hamming distance)
+const SIMHASH_DEDUP_THRESHOLD = 3;
+
 // ── Globals ──────────────────────────────────────────────
 
 let embeddingPipeline: any = null;
 let rerankerPipeline: any = null;
 let db: any = null;
 let table: any = null;
+
+// ── SimHash for fast deduplication ───────────────────────
+// SimHash produces a 64-bit fingerprint using two 32-bit halves;
+// documents with Hamming distance <= threshold are near-duplicates.
+
+function simHash(text: string): [number, number] {
+  // Tokenize into shingles (3-grams)
+  const clean = text.toLowerCase().replace(/[^\w一-鿿]/g, ' ');
+  const tokens = clean.split(/\s+/).filter(t => t.length > 0);
+  const shingles: string[] = [];
+  for (let i = 0; i < tokens.length - 2; i++) {
+    shingles.push(tokens[i] + tokens[i + 1] + tokens[i + 2]);
+  }
+  if (shingles.length === 0) {
+    // Fallback: use full text hash
+    const h = simpleStringHash(text);
+    return [h, h ^ 0x5BD1E995];
+  }
+
+  // Hash each shingle to 64 bits, then combine via weighted voting
+  const v = new Array(64).fill(0);
+  for (const s of shingles) {
+    const h = simpleStringHash(s);
+    const h2 = simpleStringHash(s + '_salt');
+    // Use h for lower 32 bits, h2 for upper 32 bits
+    for (let i = 0; i < 32; i++) {
+      v[i] += ((h >>> i) & 1) === 1 ? 1 : -1;
+      v[i + 32] += ((h2 >>> i) & 1) === 1 ? 1 : -1;
+    }
+  }
+
+  // Convert to two 32-bit numbers
+  let lo = 0, hi = 0;
+  for (let i = 0; i < 32; i++) {
+    if (v[i] > 0) lo |= (1 << i);
+    if (v[i + 32] > 0) hi |= (1 << i);
+  }
+  return [lo, hi];
+}
+
+function simpleStringHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function hammingDistance(a: [number, number], b: [number, number]): number {
+  let xor = (a[0] ^ b[0]) | 0;
+  let count = 0;
+  // Count bits in lower half
+  let x = xor;
+  while (x !== 0) { count += x & 1; x = x >>> 1; }
+  // Count bits in upper half
+  xor = (a[1] ^ b[1]) | 0;
+  x = xor;
+  while (x !== 0) { count += x & 1; x = x >>> 1; }
+  return count;
+}
+
+// SimHash index: store fingerprints for dedup
+const simHashIndex = new Map<string, { fingerprint: [number, number]; docId: string }[]>();
+
+function addToSimHashIndex(docId: string, content: string): boolean {
+  const fp = simHash(content);
+  const bucket = content.slice(0, 10); // rough bucket by prefix
+  const entries = simHashIndex.get(bucket) || [];
+
+  // Check for near-duplicates
+  for (const entry of entries) {
+    if (hammingDistance(entry.fingerprint, fp) <= SIMHASH_DEDUP_THRESHOLD) {
+      return true; // duplicate found
+    }
+  }
+
+  entries.push({ fingerprint: fp, docId });
+  simHashIndex.set(bucket, entries);
+  return false; // not a duplicate
+}
 
 // ── Initialization ───────────────────────────────────────
 
@@ -209,7 +301,42 @@ function estimateTokens(text: string): number {
 export function chunkText(text: string, options: ChunkOptions = {}): string[] {
   const { maxTokens = 512, overlap = 50 } = options;
 
-  // Split by paragraphs first
+  // ── Structure-aware splitting: respect markdown headings ──
+  // Split on H1/H2/H3 headings to keep semantic units together
+  const sections = text.split(/^(#{1,3}\s+.+)$/m).filter(s => s.trim());
+  const chunks: string[] = [];
+
+  // Merge heading with its content
+  const mergedSections: string[] = [];
+  for (let i = 0; i < sections.length; i++) {
+    if (/^#{1,3}\s+/.test(sections[i]) && i + 1 < sections.length) {
+      mergedSections.push(sections[i] + '\n\n' + sections[i + 1]);
+      i++; // skip next section (already merged)
+    } else {
+      mergedSections.push(sections[i]);
+    }
+  }
+
+  // If we have meaningful sections, chunk within them
+  if (mergedSections.length > 1) {
+    for (const section of mergedSections) {
+      const sectionTokens = estimateTokens(section);
+      if (sectionTokens <= maxTokens) {
+        chunks.push(section.trim());
+      } else {
+        // Section too large — fall back to paragraph splitting within it
+        chunks.push(...chunkParagraphs(section, maxTokens, overlap));
+      }
+    }
+  } else {
+    // No headings found — use paragraph splitting
+    chunks.push(...chunkParagraphs(text, maxTokens, overlap));
+  }
+
+  return chunks.length > 0 ? chunks : [text];
+}
+
+function chunkParagraphs(text: string, maxTokens: number, overlap: number): string[] {
   const paragraphs = text.split(/\n\n+/).filter(p => p.trim());
   const chunks: string[] = [];
   let currentChunk = '';
@@ -249,7 +376,7 @@ export function chunkText(text: string, options: ChunkOptions = {}): string[] {
     if (current.trim()) chunks.push(current.trim());
   }
 
-  return chunks.length > 0 ? chunks : [text];
+  return chunks;
 }
 
 // ── Document Indexing ────────────────────────────────────
@@ -263,24 +390,36 @@ export async function indexDocument(doc: RAGDocument): Promise<void> {
   // Generate embeddings for all chunks
   const embeddings = await embedBatch(chunks);
 
-  // Prepare data for LanceDB
-  const records = chunks.map((chunk, i) => ({
-    id: `${doc.id}_chunk_${i}`,
-    content: chunk,
-    vector: embeddings[i],
-    source: doc.metadata.source,
-    agent: doc.metadata.agent || '',
-    group: doc.metadata.group || '',
-    key: doc.metadata.key || '',
-    fileName: doc.metadata.fileName || '',
-    chunkIndex: i,
-    timestamp: doc.metadata.timestamp,
-  }));
+  // Prepare data for LanceDB, with SimHash dedup
+  const records: any[] = [];
+  let dedupedCount = 0;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkId = `${doc.id}_chunk_${i}`;
+    if (isDuplicate(chunkId, chunks[i])) {
+      dedupedCount++;
+      continue; // skip near-duplicate chunk
+    }
+    records.push({
+      id: chunkId,
+      content: chunks[i],
+      vector: embeddings[i],
+      source: doc.metadata.source,
+      agent: doc.metadata.agent || '',
+      group: doc.metadata.group || '',
+      key: doc.metadata.key || '',
+      fileName: doc.metadata.fileName || '',
+      chunkIndex: i,
+      timestamp: doc.metadata.timestamp,
+    });
+  }
 
   // Add to table
-  await tbl.add(records);
+  if (records.length > 0) {
+    await tbl.add(records);
+  }
 
-  console.log(`[rag] Indexed document ${doc.id} (${chunks.length} chunks)`);
+  console.log(`[rag] Indexed document ${doc.id} (${records.length} chunks, ${dedupedCount} deduped)`);
 }
 
 export async function indexDocuments(docs: RAGDocument[]): Promise<void> {
@@ -311,17 +450,18 @@ export async function search(
     topK?: number;
     filter?: string;
     rerank?: boolean;
+    hybrid?: boolean; // enable BM25 + neural fusion
   } = {}
 ): Promise<RAGResult[]> {
-  const { topK = 10, filter, rerank = true } = options;
+  const { topK = 10, filter, rerank = true, hybrid = true } = options;
 
   const tbl = await getTable();
 
   // Embed query
   const queryEmbedding = await embed(query);
 
-  // Search in LanceDB
-  let queryBuilder = tbl.search(queryEmbedding).limit(topK);
+  // Search in LanceDB (neural retrieval)
+  let queryBuilder = tbl.search(queryEmbedding).limit(topK * 2); // fetch more for fusion
 
   // Apply filter if provided
   if (filter) {
@@ -348,12 +488,130 @@ export async function search(
     score: 1 - (row._distance || 0), // Convert distance to similarity
   }));
 
+  // ── Hybrid scoring: BM25 + Neural fusion ──
+  if (hybrid && ragResults.length > 0) {
+    ragResults = hybridScore(query, ragResults);
+  }
+
+  // Trim to topK after fusion
+  ragResults = ragResults.slice(0, topK);
+
   // Rerank if enabled
   if (rerank && ragResults.length > 1) {
     ragResults = await rerankResults(query, ragResults);
   }
 
   return ragResults;
+}
+
+// ── BM25 Scoring ─────────────────────────────────────────
+// Lightweight BM25 implementation (no external dependencies)
+
+interface BM25Params {
+  k1: number;   // term frequency saturation (default 1.5)
+  b: number;    // length normalization (default 0.75)
+}
+
+const BM25_DEFAULTS: BM25Params = { k1: 1.5, b: 0.75 };
+
+function tokenize(text: string): string[] {
+  // Chinese-aware tokenization: split by characters + English words
+  const tokens: string[] = [];
+  const segments = text.toLowerCase().replace(/[^\w一-鿿]/g, ' ').split(/\s+/);
+  for (const seg of segments) {
+    if (seg.length === 0) continue;
+    // If Chinese, split into individual characters (unigram)
+    if (/[一-鿿]/.test(seg)) {
+      for (const ch of seg) {
+        if (/[一-鿿]/.test(ch)) tokens.push(ch);
+      }
+    } else {
+      tokens.push(seg);
+    }
+  }
+  return tokens;
+}
+
+function computeBM25Score(
+  queryTokens: string[],
+  docTokens: string[],
+  docLength: number,
+  avgDocLength: number,
+  docFreq: Map<string, number>,
+  totalDocs: number,
+  params: BM25Params = BM25_DEFAULTS
+): number {
+  let score = 0;
+  const tfMap = new Map<string, number>();
+  for (const t of docTokens) tfMap.set(t, (tfMap.get(t) || 0) + 1);
+
+  for (const qt of queryTokens) {
+    const tf = tfMap.get(qt) || 0;
+    const df = docFreq.get(qt) || 0;
+    const idf = Math.log((totalDocs - df + 0.5) / (df + 0.5) + 1);
+    const tfNorm = (tf * (params.k1 + 1)) / (tf + params.k1 * (1 - params.b + params.b * (docLength / avgDocLength)));
+    score += idf * tfNorm;
+  }
+  return score;
+}
+
+// ── Hybrid Score Fusion ──────────────────────────────────
+
+function hybridScore(query: string, neuralResults: RAGResult[]): RAGResult[] {
+  const queryTokens = tokenize(query);
+
+  // Build document frequency map from all results
+  const docFreq = new Map<string, number>();
+  const allDocTokens: string[][] = [];
+  for (const r of neuralResults) {
+    const dt = tokenize(r.document.content);
+    allDocTokens.push(dt);
+    const seen = new Set<string>();
+    for (const t of dt) {
+      if (!seen.has(t)) {
+        docFreq.set(t, (docFreq.get(t) || 0) + 1);
+        seen.add(t);
+      }
+    }
+  }
+
+  const totalDocs = neuralResults.length;
+  const avgDocLength = allDocTokens.reduce((sum, dt) => sum + dt.length, 0) / (totalDocs || 1);
+
+  // Normalize neural scores to [0, 1]
+  const maxNeural = Math.max(...neuralResults.map(r => r.score), 0.001);
+
+  // Compute fused scores
+  const fused = neuralResults.map((r, i) => {
+    const bm25 = computeBM25Score(queryTokens, allDocTokens[i], allDocTokens[i].length, avgDocLength, docFreq, totalDocs);
+    const neuralNorm = r.score / maxNeural; // normalize to [0, 1]
+
+    // BM25 normalization (rough: divide by max possible)
+    const bm25Max = Math.max(bm25, 0.001);
+    const bm25Norm = bm25 / (bm25Max * 2); // rough normalization
+
+    const fusedScore = HYBRID_BM25_WEIGHT * bm25Norm + HYBRID_NEURAL_WEIGHT * neuralNorm;
+
+    return {
+      ...r,
+      score: fusedScore,
+      scoreBreakdown: {
+        bm25: bm25,
+        neural: r.score,
+        fused: fusedScore,
+      },
+    };
+  });
+
+  // Sort by fused score descending
+  fused.sort((a, b) => b.score - a.score);
+  return fused;
+}
+
+// ── Dedup Integration ────────────────────────────────────
+
+function isDuplicate(docId: string, content: string): boolean {
+  return addToSimHashIndex(docId, content);
 }
 
 async function rerankResults(query: string, results: RAGResult[]): Promise<RAGResult[]> {
@@ -403,9 +661,30 @@ export async function indexAgentMemory(agent: string): Promise<number> {
     const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
     if (match) {
       const key = file.replace('.md', '');
+
+      // Extract tags from frontmatter for enhanced metadata
+      const fmLines = match[1].split('\n');
+      const tags: string[] = [];
+      const importance: string = 'normal';
+      for (const line of fmLines) {
+        if (line.startsWith('tags:')) {
+          const tagStr = line.replace('tags:', '').trim();
+          tags.push(...tagStr.split(',').map((t: string) => t.trim()));
+        }
+        if (line.startsWith('importance:')) {
+          // could be used for weighted indexing
+        }
+      }
+
+      const body = match[2].trim();
+      // Include tags as searchable prefix for better recall
+      const indexedContent = tags.length > 0
+        ? `[标签: ${tags.join(', ')}] ${body}`
+        : body;
+
       docs.push({
         id: `memory:${agent}:${key}`,
-        content: match[2].trim(),
+        content: indexedContent,
         metadata: {
           source: 'memory',
           agent,
@@ -617,6 +896,7 @@ export async function clearCollection(): Promise<void> {
 export async function getCollectionStats(): Promise<{
   count: number;
   sources: Record<string, number>;
+  simHashEntries: number;
 }> {
   const tbl = await getTable();
 
@@ -631,5 +911,9 @@ export async function getCollectionStats(): Promise<{
     sources[source] = (sources[source] || 0) + 1;
   }
 
-  return { count, sources };
+  return {
+    count,
+    sources,
+    simHashEntries: simHashIndex.size,
+  };
 }
