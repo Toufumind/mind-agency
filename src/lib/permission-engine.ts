@@ -91,16 +91,14 @@ function formatDescription(template: string, ctx: Record<string, string>): strin
   return s;
 }
 
-// Cache for approved requests (5 min TTL, matches the approval window)
-const approvedRequestCache = new Map<string, { data: string | null; ts: number }>();
-const APPROVED_CACHE_TTL = 30_000; // 30s cache (shorter than 5min approval window)
+// Cache for approved requests (using unified cache)
+import { agentCache } from './cache';
 
 function findApprovedRequest(agentName: string, toolName: string, context: Record<string, string>): string | null {
   const group = context.group || '_global';
   const cacheKey = `${group}:${agentName}:${toolName}`;
-  const cached = approvedRequestCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < APPROVED_CACHE_TTL) return cached.data;
+  const cached = agentCache.get<string | null>('permissions', cacheKey);
+  if (cached !== undefined) return cached;
 
   const dir = path.join(GROUPS_DIR, group, '.consensus');
   let result: string | null = null;
@@ -114,15 +112,17 @@ function findApprovedRequest(agentName: string, toolName: string, context: Recor
           data.action === toolName &&
           data.requestedBy === agentName &&
           data.status === 'approved' &&
-          now - data.createdAt < 300_000 // 5 min window
+          Date.now() - data.createdAt < 300_000 // 5 min window
         ) {
           result = data.id;
           break;
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`[permission-engine] Failed to check approved requests:`, err);
+    }
   }
 
-  approvedRequestCache.set(cacheKey, { data: result, ts: now });
+  agentCache.set('permissions', cacheKey, result);
   return result;
 }

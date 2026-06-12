@@ -3,21 +3,14 @@ import path from 'path';
 import matter from 'gray-matter';
 import type { Agent, Email, AgentStats, AgentConfig } from '@/types';
 import { AGENTS_DIR } from './data-dir';
-
-// ── Cache ─────────────────────────────────────────────────
-const agentsCache = new Map<string, { data: Agent[]; ts: number }>();
-const AGENTS_CACHE_TTL = 30_000; // 30s
-
-const emailsCache = new Map<string, { data: Email[]; ts: number }>();
-const EMAILS_CACHE_TTL = 10_000; // 10s
+import { agentCache } from './cache';
 
 /** 扫描 Agents/ 目录，返回所有 Agent 列表 — cached */
 export function getAgents(): Agent[] {
   // Check cache first
   const cacheKey = '__all__';
-  const cached = agentsCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < AGENTS_CACHE_TTL) return cached.data;
+  const cached = agentCache.get<Agent[]>('agents', cacheKey);
+  if (cached) return cached;
 
   if (!fs.existsSync(AGENTS_DIR)) {
     return [];
@@ -70,16 +63,15 @@ export function getAgents(): Agent[] {
   }
 
   // Cache the result
-  agentsCache.set(cacheKey, { data: agents, ts: Date.now() });
+  agentCache.set('agents', cacheKey, agents);
   return agents;
 }
 
 /** 获取某个 Agent 的收件箱邮件列表 — cached */
 export function getAgentEmails(agentName: string): Email[] {
   // Check cache first
-  const cached = emailsCache.get(agentName);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < EMAILS_CACHE_TTL) return cached.data;
+  const cached = agentCache.get<Email[]>('emails', agentName);
+  if (cached) return cached;
 
   const agentDir = path.join(AGENTS_DIR, agentName);
   const emailDir = path.join(agentDir, 'email');
@@ -160,7 +152,7 @@ export function getAgentEmails(agentName: string): Email[] {
   emails.sort((a, b) => b.filename.localeCompare(a.filename));
 
   // Cache the result
-  emailsCache.set(agentName, { data: emails, ts: Date.now() });
+  agentCache.set('emails', agentName, emails);
   return emails;
 }
 
@@ -225,7 +217,10 @@ export function getStats(): AgentStats {
 
 /** Invalidate agents cache (call after agent creation/deletion) */
 export function invalidateAgentsCache(agentName?: string): void {
-  agentsCache.clear(); // Always clear the full list
-  if (agentName) emailsCache.delete(agentName);
-  else emailsCache.clear();
+  agentCache.invalidateRegion('agents'); // Always clear the full list
+  if (agentName) {
+    agentCache.invalidate('emails', agentName);
+  } else {
+    agentCache.invalidateRegion('emails');
+  }
 }

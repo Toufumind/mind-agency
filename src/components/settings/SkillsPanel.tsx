@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Search, Download, Trash2, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import { Search, Download, Trash2, Loader2, ExternalLink, RefreshCw, Check, X } from 'lucide-react';
 
 interface Skill {
   id: string;
@@ -10,6 +10,7 @@ interface Skill {
   installedAt: number;
   version: string;
   status: string;
+  enabled?: boolean;
 }
 
 interface SearchResult {
@@ -19,25 +20,27 @@ interface SearchResult {
   stars: number;
 }
 
-export default function SkillsPanel({ lang }: { lang: string }) {
+export default function SkillsPanel({ lang, agent }: { lang: string; agent?: string }) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   const loadSkills = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/system/skills');
+      const url = agent ? `/api/system/skills?agent=${agent}` : '/api/system/skills';
+      const res = await fetch(url);
       const data = await res.json();
       setSkills(data.skills || []);
     } catch {}
     setLoading(false);
   };
 
-  useEffect(() => { loadSkills(); }, []);
+  useEffect(() => { loadSkills(); }, [agent]);
 
   const search = async () => {
     if (!searchQuery.trim()) return;
@@ -71,6 +74,24 @@ export default function SkillsPanel({ lang }: { lang: string }) {
     } catch {}
   };
 
+  const toggleSkill = async (skillName: string, enabled: boolean) => {
+    if (!agent) return;
+    setToggling(skillName);
+    try {
+      await fetch('/api/system/skills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: enabled ? 'enable' : 'disable',
+          agent,
+          skillName,
+        }),
+      });
+      await loadSkills();
+    } catch {}
+    setToggling(null);
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -78,7 +99,10 @@ export default function SkillsPanel({ lang }: { lang: string }) {
           {lang === 'zh' ? 'Skills 技能包' : 'Skills'}
         </h3>
         <p className="text-[11px] text-muted-foreground">
-          {lang === 'zh' ? '从 GitHub 安装 AI 技能包，注入到 Agent 的 system prompt' : 'Install AI skill packs from GitHub, inject into agent system prompts'}
+          {agent
+            ? (lang === 'zh' ? `为 ${agent} 启用/禁用技能包` : `Enable/disable skills for ${agent}`)
+            : (lang === 'zh' ? '从 GitHub 安装 AI 技能包，注入到 Agent 的 system prompt' : 'Install AI skill packs from GitHub, inject into agent system prompts')
+          }
         </p>
       </div>
 
@@ -150,11 +174,46 @@ export default function SkillsPanel({ lang }: { lang: string }) {
                         {lang === 'zh' ? '有更新' : 'Update'}
                       </span>
                     )}
+                    {agent && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        s.enabled
+                          ? 'bg-green-500/10 text-green-600'
+                          : 'bg-gray-500/10 text-gray-600'
+                      }`}>
+                        {s.enabled
+                          ? (lang === 'zh' ? '已启用' : 'Enabled')
+                          : (lang === 'zh' ? '已禁用' : 'Disabled')
+                        }
+                      </span>
+                    )}
                   </div>
                   <p className="text-[11px] text-muted-foreground truncate mt-0.5">{s.description}</p>
                   <p className="text-[10px] text-muted-foreground/60 mt-0.5 font-mono">{s.repo}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {agent && (
+                    <button
+                      onClick={() => toggleSkill(s.name, !s.enabled)}
+                      disabled={toggling === s.name}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        s.enabled
+                          ? 'text-green-600 hover:text-red-500 hover:bg-red-500/10'
+                          : 'text-gray-400 hover:text-green-500 hover:bg-green-500/10'
+                      }`}
+                      title={s.enabled
+                        ? (lang === 'zh' ? '点击禁用' : 'Click to disable')
+                        : (lang === 'zh' ? '点击启用' : 'Click to enable')
+                      }
+                    >
+                      {toggling === s.name ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : s.enabled ? (
+                        <Check size={14} />
+                      ) : (
+                        <X size={14} />
+                      )}
+                    </button>
+                  )}
                   <a href={`https://github.com/${s.repo}`} target="_blank" rel="noopener"
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-alt">
                     <ExternalLink size={14} />

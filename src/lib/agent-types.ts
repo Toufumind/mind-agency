@@ -33,6 +33,8 @@ export interface AgentConfig {
   allowedTools?: string[];
   disallowedTools?: string[];
   maxTurns?: number;
+  // Skills config
+  enabledSkills?: string[]; // List of enabled skill names
 }
 
 export interface GroupState {

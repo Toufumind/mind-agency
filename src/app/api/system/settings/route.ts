@@ -5,6 +5,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAgency } from '@/lib/agency';
+import { encryptApiKey } from '@/lib/crypto';
+import { validateApiKey, validateUrl } from '@/lib/validation';
 
 interface MindSettings {
   apiKey?: string;
@@ -20,7 +22,7 @@ export async function GET() {
   await agency.system.loadSettings();
 
   const s = agency.system.settings;
-  // Mask API key
+  // Mask API key - never send full key to frontend
   const masked = { ...s, apiKey: s.apiKey ? '••••••••' + s.apiKey.slice(-4) : undefined };
   return NextResponse.json(masked);
 }
@@ -34,7 +36,15 @@ export async function PUT(request: NextRequest) {
     const current = agency.system.settings;
 
     // Only update non-undefined fields. API key: only update if not masked.
-    if (body.apiKey && !body.apiKey.startsWith('••••')) current.apiKey = body.apiKey;
+    if (body.apiKey && !body.apiKey.startsWith('••••')) {
+      // Validate API key
+      const validation = validateApiKey(body.apiKey);
+      if (!validation.valid) {
+        return NextResponse.json({ error: validation.errors.join(', ') }, { status: 400 });
+      }
+      // Encrypt API key before storing
+      current.apiKey = encryptApiKey(body.apiKey);
+    }
     else if (body.apiKey && body.apiKey.startsWith('••••') && body.apiKey.length === 12) {
       // User re-entered masked value — keep existing
     } else if (body.apiKey === '') {
@@ -42,7 +52,16 @@ export async function PUT(request: NextRequest) {
     }
 
     if (body.baseUrl !== undefined) {
-      if (body.baseUrl) current.baseUrl = body.baseUrl; else delete current.baseUrl;
+      if (body.baseUrl) {
+        // Validate URL
+        const validation = validateUrl(body.baseUrl);
+        if (!validation.valid) {
+          return NextResponse.json({ error: validation.errors.join(', ') }, { status: 400 });
+        }
+        current.baseUrl = body.baseUrl;
+      } else {
+        delete current.baseUrl;
+      }
     }
     if (body.model !== undefined) {
       if (body.model) current.model = body.model; else delete current.model;

@@ -20,6 +20,7 @@ function ensureDir(dir: string) {
 
 export function economyTools(): ToolDef[] {
   return [
+    { name: 'relay_key', description: '查看或重新生成自己的 relay API Key。', inputSchema: { type: 'object', properties: { action: { type: 'string', description: 'get 或 regenerate' } }, required: [] } },
     { name: 'token_balance', description: '查看自己或他人的 token 余额。', inputSchema: { type: 'object', properties: { agent: { type: 'string', description: '查看谁的余额（默认自己）' } }, required: [] } },
     { name: 'token_deposit', description: '给 agent 充值 token（仅用户可用）。', inputSchema: { type: 'object', properties: { agent: { type: 'string', description: '充给谁' }, amount: { type: 'number', description: '数量' }, reason: { type: 'string', description: '原因' } }, required: ['agent', 'amount'] } },
     { name: 'token_transfer', description: '转账给其他 agent。', inputSchema: { type: 'object', properties: { to: { type: 'string', description: '转给谁' }, amount: { type: 'number', description: '数量' }, reason: { type: 'string', description: '原因' } }, required: ['to', 'amount'] } },
@@ -41,6 +42,24 @@ export async function handleEconomyTool(
   respond: (id: string, msg: any) => void, id: string
 ): Promise<boolean> {
   const a = args;
+
+  if (name === 'relay_key') {
+    try {
+      const { getRelayKey, generateRelayKey } = await import('../lib/relay.js');
+      const action = a.action || 'get';
+      if (action === 'regenerate') {
+        const key = generateRelayKey(agentName);
+        respond(id, { content: [{ type: 'text', text: `🔑 新 relay key 已生成:\n${key}\n\n请保存此 key，用于 API 调用认证。` }] });
+      } else {
+        const { getRelayKey } = await import('../lib/relay.js');
+        const key = getRelayKey(agentName);
+        respond(id, { content: [{ type: 'text', text: `🔑 ${agentName} 的 relay key:\n${key}` }] });
+      }
+    } catch (e: any) {
+      respond(id, { content: [{ type: 'text', text: `操作失败: ${e.message}` }] });
+    }
+    return true;
+  }
 
   if (name === 'token_balance') {
     const target = a.agent || agentName;

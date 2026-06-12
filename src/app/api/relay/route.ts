@@ -6,15 +6,23 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { relay, readLogs } from '@/lib/relay';
+import { relay, readLogs, validateRelayKey } from '@/lib/relay';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { agent, messages, model, maxTokens } = body;
+    const { agent, messages, model, maxTokens, relayKey } = body;
 
     if (!agent || !messages) {
       return NextResponse.json({ error: 'agent and messages required' }, { status: 400 });
+    }
+
+    // Authenticate: relayKey must match agent's key
+    if (relayKey) {
+      const authenticatedAgent = validateRelayKey(relayKey);
+      if (!authenticatedAgent || authenticatedAgent !== agent) {
+        return NextResponse.json({ error: 'Invalid relay key' }, { status: 401 });
+      }
     }
 
     const result = await relay({ agent, messages, model, maxTokens });

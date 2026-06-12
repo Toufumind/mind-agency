@@ -87,3 +87,42 @@ export function deposit(agent: string, amount: number, reason?: string): number 
 export function getLeaderboard(): AgentAccount[] {
   return listAgentAccounts().sort((a, b) => b.balance - a.balance);
 }
+
+/** Reward tokens to an agent */
+export function reward(agent: string, amount: number, task?: string, quality: 'normal' | 'bonus' = 'normal'): AgentAccount {
+  if (amount <= 0) return getAgentAccount(agent);
+  const account = getAgentAccount(agent);
+  const actualAmount = quality === 'bonus' ? amount * 1.5 : amount;
+  account.balance += actualAmount;
+  account.earned += actualAmount;
+  account.transactions.push({
+    type: 'reward',
+    amount: actualAmount,
+    task,
+    quality,
+    timestamp: Date.now(),
+  });
+  saveAgentAccount(account);
+  return account;
+}
+
+/** Withdraw tokens from an agent (penalty) */
+export function withdraw(agent: string, amount: number, reason?: string): AgentAccount {
+  if (amount <= 0) return getAgentAccount(agent);
+  const account = getAgentAccount(agent);
+  account.balance = Math.max(0, account.balance - amount);
+  account.spent += amount;
+  account.transactions.push({
+    type: 'withdraw',
+    amount,
+    reason,
+    timestamp: Date.now(),
+  });
+  saveAgentAccount(account);
+  return account;
+}
+
+/** Penalize an agent (alias for withdraw) */
+export function penalize(agent: string, amount: number, reason?: string): AgentAccount {
+  return withdraw(agent, amount, reason);
+}

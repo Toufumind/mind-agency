@@ -37,16 +37,19 @@ import { DEFAULT_CONFIG, DEFAULT_STATE, DEFAULT_ACTIVITY } from './agent-types';
 import type { AgentConfig, AgentState, AgentActivity, ChatHistory, ChatEvent, ChatResult, AgentTask, AgentStatus } from './agent-types';
 import { loadAgentConfig, saveAgentConfig } from './agent-config';
 import { loadAgentState, saveAgentState } from './agent-state';
-import { loadAgentSession, saveAgentSession, clearAgentSession } from './agent-session';
+import { loadSession, saveSession, clearSession } from './session-manager';
 import { loadAgentTasks, saveAgentTasks, addAgentTask, completeAgentTask } from './agent-task';
-import { loadAgentEmails, sendAgentEmail, deleteAgentEmail } from './agent-email';
+import { loadAgentEmails, sendAgentEmail, deleteAgentEmail, parseEmailFile } from './agent-email';
 import { loadAgentSkills, loadAgentSkillsContext } from './agent-skill';
 import { readMemory, writeMemory, searchMemory, listMemory } from './memory';
+import { AgentIdentity, getAgentIdentity } from './agent-identity';
+import { scheduleFullIndex, scheduleSessionIndex } from './rag-indexer';
 
 // ── AgentProxy class ──────────────────────────────────────
 
 export class AgentProxy {
   readonly name: string;
+  readonly identity: AgentIdentity;
 
   private _config: AgentConfig = { ...DEFAULT_CONFIG };
   private _state: AgentState = { ...DEFAULT_STATE, groups: {} };
@@ -68,6 +71,7 @@ export class AgentProxy {
 
   constructor(name: string) {
     this.name = name;
+    this.identity = getAgentIdentity(name);
   }
 
   // ── Config ────────────────────────────────────────────
@@ -146,27 +150,19 @@ export class AgentProxy {
   async loadSession(): Promise<ChatHistory> {
     if (this._sessionLoaded) return this._session;
 
-    const cached = agentCache.get<ChatHistory>('session', this.name);
-    if (cached) {
-      this._session = JSON.parse(JSON.stringify(cached));
-      this._sessionLoaded = true;
-      return this._session;
-    }
-
-    this._session = await loadAgentSession(this.name);
+    this._session = loadSession(this.name);
     this._sessionLoaded = true;
-    agentCache.set('session', this.name, this._session);
     return this._session;
   }
 
-  async saveSession(): Promise<void> {
-    await saveAgentSession(this.name, this._session);
+  async saveSession(expectedVersion?: number): Promise<void> {
+    saveSession(this.name, this._session, expectedVersion);
   }
 
   clearSession(): void {
     this._session = { sessionId: null, messages: [], _version: 0 };
     this._sessionLoaded = true;
-    clearAgentSession(this.name);
+    clearSession(this.name);
   }
 
   // ── Tasks ─────────────────────────────────────────────
@@ -494,7 +490,10 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
         reply: result.content,
         events: [],
         sessionId: this._session.sessionId || '',
-        tokenUsage: result.usage,
+        tokenUsage: {
+          input: result.usage.tokensIn,
+          output: result.usage.tokensOut,
+        },
       };
     } catch (err: any) {
       this.clearStatus();

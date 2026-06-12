@@ -26,10 +26,9 @@ export interface AuditEntry {
 
 // ── AuditProxy class ──────────────────────────────────────
 
-export class AuditProxy {
-  private _logCache: Map<string, AuditEntry[]> = new Map();
-  private _loaded: Map<string, boolean> = new Map();
+import { agentCache } from './cache';
 
+export class AuditProxy {
   constructor() {}
 
   // ── Read Logs ────────────────────────────────────────
@@ -41,16 +40,14 @@ export class AuditProxy {
   async getAuditLogs(date?: string): Promise<AuditEntry[]> {
     const targetDate = date || new Date().toISOString().slice(0, 10);
 
-    if (this._loaded.get(targetDate)) {
-      return this._logCache.get(targetDate) || [];
-    }
+    const cached = agentCache.get<AuditEntry[]>('audit', targetDate);
+    if (cached) return cached;
 
     const entries: AuditEntry[] = [];
     try {
       const auditFile = path.join(AUDIT_DIR, `${targetDate}.jsonl`);
       if (!fs.existsSync(auditFile)) {
-        this._logCache.set(targetDate, entries);
-        this._loaded.set(targetDate, true);
+        agentCache.set('audit', targetDate, entries);
         return entries;
       }
 
@@ -58,12 +55,15 @@ export class AuditProxy {
       for (const line of lines) {
         try {
           entries.push(JSON.parse(line));
-        } catch {}
+        } catch (err) {
+          console.warn(`[audit-proxy] Failed to parse audit line:`, err);
+        }
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`[audit-proxy] Failed to load audit logs for ${targetDate}:`, err);
+    }
 
-    this._logCache.set(targetDate, entries);
-    this._loaded.set(targetDate, true);
+    agentCache.set('audit', targetDate, entries);
     return entries;
   }
 
@@ -81,8 +81,7 @@ export class AuditProxy {
       fs.appendFileSync(auditFile, JSON.stringify(entry) + '\n', 'utf-8');
 
       // Invalidate cache for this date
-      this._logCache.delete(date);
-      this._loaded.delete(date);
+      agentCache.invalidate('audit', date);
     } catch (err) {
       console.error(`[audit-proxy] addAuditEntry:`, err);
     }
@@ -95,11 +94,9 @@ export class AuditProxy {
    */
   invalidateCache(date?: string): void {
     if (date) {
-      this._logCache.delete(date);
-      this._loaded.delete(date);
+      agentCache.invalidate('audit', date);
     } else {
-      this._logCache.clear();
-      this._loaded.clear();
+      agentCache.invalidateRegion('audit');
     }
   }
 
@@ -107,8 +104,7 @@ export class AuditProxy {
    * Cleanup resources.
    */
   destroy(): void {
-    this._logCache.clear();
-    this._loaded.clear();
+    agentCache.invalidateRegion('audit');
   }
 }
 

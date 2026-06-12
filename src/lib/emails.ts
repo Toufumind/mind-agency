@@ -1,3 +1,4 @@
+import { atomicWrite } from "./atomic";
 import path from 'path';
 import { AGENTS_DIR } from './data-dir';
 import { getAgency } from './agency';
@@ -49,7 +50,7 @@ export async function sendEmail(params: SendEmailParams): Promise<{ success: boo
       if (!fs.existsSync(senderEmailDir)) fs.mkdirSync(senderEmailDir, { recursive: true });
 
       // Re-read the sent file and copy it
-      const { atomicWrite } = require('./atomic');
+      
       const sentFile = path.join(senderEmailDir, `sent_${filename}`);
       const content = `---\nfrom: ${from}\nto: ${to}\nsubject: ${subject}\ndate: ${dateStr}\n---\n\n${body}\n`;
       atomicWrite(sentFile, content);

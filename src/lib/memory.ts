@@ -14,6 +14,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { MIND_DIR, AGENTS_DIR, GROUPS_DIR } from './data-dir';
 import { agentCache } from './cache';
+import { atomicWrite } from './atomic';
 
 function agentMemDir(agentName: string): string {
   return path.join(MIND_DIR, 'agents', agentName, 'memory');
@@ -56,7 +57,6 @@ updated: ${new Date(now).toISOString()}
 
 ${content}
 `;
-  const { atomicWrite } = require('./atomic');
   atomicWrite(mp, body);
   // Invalidate all caches
   invalidateMemoryCache(agentName);
@@ -100,28 +100,13 @@ function scoreMatchPreTokenized(queryTokens: string[], keyTokens: Set<string>, c
   return score;
 }
 
-// ── Search cache (with size limit) ──────────────────────
-const searchCache = new Map<string, { results: MemoryEntry[]; ts: number }>();
-const SEARCH_CACHE_TTL = 30_000; // 30s
-const SEARCH_CACHE_MAX = 100; // max 100 cached queries
-
 /** Invalidate search cache for an agent */
 export function invalidateSearchCache(agentName?: string): void {
   if (agentName) {
-    for (const key of searchCache.keys()) {
-      if (key.startsWith(agentName + ':')) searchCache.delete(key);
-    }
+    agentCache.invalidateRegion('memory');
   } else {
-    searchCache.clear();
+    agentCache.invalidateRegion('memory');
   }
-}
-
-/** Evict oldest search cache entries if over limit */
-function evictSearchCache(): void {
-  if (searchCache.size <= SEARCH_CACHE_MAX) return;
-  const entries = [...searchCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
-  const toDelete = entries.slice(0, entries.length - SEARCH_CACHE_MAX);
-  for (const [key] of toDelete) searchCache.delete(key);
 }
 
 /** v0.4: Semantic search with local embedding model — cached */
@@ -129,9 +114,8 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
   // Use hash of query to reduce memory usage
   const queryHash = crypto.createHash('md5').update(query).digest('hex').slice(0, 8);
   const cacheKey = `${agentName}:${queryHash}`;
-  const cached = searchCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < SEARCH_CACHE_TTL) return cached.results;
+  const cached = agentCache.get<MemoryEntry[]>('memory', cacheKey);
+  if (cached) return cached;
 
   const dir = agentMemDir(agentName);
   if (!fs.existsSync(dir)) return [];
@@ -176,10 +160,10 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
       .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
       .slice(0, 10)
       .map(r => r.entry);
-    searchCache.set(cacheKey, { results: finalResults, ts: Date.now() });
-    evictSearchCache();
+    agentCache.set('memory', cacheKey, finalResults);
     return finalResults;
-  } catch {
+  } catch (err) {
+    console.warn(`[memory] Embedding search failed, falling back to TF-IDF:`, err);
     // Fallback to TF-IDF if embedding model not available
     const queryTokens = tokenize(query);
     const results = entries
@@ -188,8 +172,7 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
       .sort((a, b) => b.score - a.score || b.entry.updated - a.entry.updated)
       .slice(0, 10);
     const finalResults = results.map(r => r.entry);
-    searchCache.set(cacheKey, { results: finalResults, ts: Date.now() });
-    evictSearchCache();
+    agentCache.set('memory', cacheKey, finalResults);
     return finalResults;
   }
 }
@@ -222,23 +205,13 @@ export function deleteMemory(agentName: string, key: string): boolean {
   return true;
 }
 
-// ── Memory context cache (with size limit) ──────────────
-const memoryContextCache = new Map<string, { data: string; ts: number }>();
-const MEMORY_CACHE_TTL = 60_000; // 1 min
-const MEMORY_CACHE_MAX = 200; // max 200 agents
-
 /** Invalidate memory cache for an agent (or all agents) */
 export function invalidateMemoryCache(agentName?: string): void {
-  if (agentName) memoryContextCache.delete(agentName);
-  else memoryContextCache.clear();
-}
-
-/** Evict oldest memory cache entries if over limit */
-function evictMemoryCache(): void {
-  if (memoryContextCache.size <= MEMORY_CACHE_MAX) return;
-  const entries = [...memoryContextCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
-  const toDelete = entries.slice(0, entries.length - MEMORY_CACHE_MAX);
-  for (const [key] of toDelete) memoryContextCache.delete(key);
+  if (agentName) {
+    agentCache.invalidate('memoryContext', agentName);
+  } else {
+    agentCache.invalidateRegion('memoryContext');
+  }
 }
 
 /** Estimate token count (1 Chinese char ≈ 1.5 tokens, 1 English word ≈ 1 token) */
@@ -250,13 +223,12 @@ function estimateTokens(text: string): number {
 
 /** Get memory context for injection into chat prompt — with token budget */
 export function getMemoryContext(agentName: string, maxTokens: number = 800): string {
-  const cached = memoryContextCache.get(agentName);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < MEMORY_CACHE_TTL) return cached.data;
+  const cached = agentCache.get<string>('memoryContext', agentName);
+  if (cached !== null) return cached;
 
   const mems = listMemory(agentName);
   if (mems.length === 0) {
-    memoryContextCache.set(agentName, { data: '', ts: now });
+    agentCache.set('memoryContext', agentName, '');
     return '';
   }
 
@@ -276,13 +248,12 @@ export function getMemoryContext(agentName: string, maxTokens: number = 800): st
 
   // v0.5: If memory context changed, invalidate baseOptions
   // Always invalidate baseOptions when memory context is rebuilt (ensures sync)
-  const prev = cached?.data;
+  const prev = cached;
   if (prev !== result) {
     agentCache.invalidate('config', agentName + ':baseOptions');
   }
 
-  memoryContextCache.set(agentName, { data: result, ts: now });
-  evictMemoryCache();
+  agentCache.set('memoryContext', agentName, result);
   return result;
 }
 

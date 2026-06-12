@@ -103,7 +103,9 @@ rl.on('line', async (line: string) => {
       for (const handler of modHandlers) {
         try {
           if (await handler(name, a, agentName, respond, id)) return;
-        } catch {}
+        } catch (e) {
+          console.error(`[mcp] handler error for ${name}:`, e);
+        }
       }
 
       // ──────────────────────────────────────────────────────────────────────

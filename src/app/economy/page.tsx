@@ -23,6 +23,8 @@ export default function EconomyPage() {
   const [transferAmount, setTransferAmount] = useState('');
   const [transferReason, setTransferReason] = useState('');
   const [msg, setMsg] = useState('');
+  const [relayLogs, setRelayLogs] = useState<any[]>([]);
+  const [relayStats, setRelayStats] = useState({ totalCost: 0, totalCalls: 0, byAgent: {} as Record<string, any> });
 
   const load = useCallback(async () => {
     try {
@@ -47,6 +49,14 @@ export default function EconomyPage() {
       } catch {}
     }
     setAccounts(results);
+
+    // Load relay logs
+    try {
+      const res = await fetch('/api/relay?limit=50');
+      const data = await res.json();
+      setRelayLogs(data.logs || []);
+      setRelayStats({ totalCost: data.totalCost || 0, totalCalls: data.totalCalls || 0, byAgent: data.byAgent || {} });
+    } catch {}
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -132,6 +142,50 @@ export default function EconomyPage() {
               ))}
             </div>
           </div>
+
+          {/* Relay Stats */}
+          {relayStats.totalCalls > 0 && (
+            <div className="mb-8">
+              <h2 className="text-[14px] font-semibold text-foreground mb-3 flex items-center gap-2"><TrendingUp size={14}/> 中转站统计</h2>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="bg-canvas border border-border rounded-xl p-4 text-center">
+                  <p className="text-[20px] font-bold text-foreground">{relayStats.totalCalls}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">总调用</p>
+                </div>
+                <div className="bg-canvas border border-border rounded-xl p-4 text-center">
+                  <p className="text-[20px] font-bold text-foreground">¥{relayStats.totalCost.toFixed(4)}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">总消耗</p>
+                </div>
+                <div className="bg-canvas border border-border rounded-xl p-4 text-center">
+                  <p className="text-[20px] font-bold text-foreground">{Object.keys(relayStats.byAgent).length}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">活跃 Agent</p>
+                </div>
+              </div>
+              {/* Per-agent breakdown */}
+              <div className="bg-canvas border border-border rounded-xl overflow-hidden">
+                <table className="w-full text-[12px]">
+                  <thead><tr className="border-b border-border bg-surface">
+                    <th className="text-left px-4 py-2 font-medium">Agent</th>
+                    <th className="text-right px-4 py-2 font-medium">调用</th>
+                    <th className="text-right px-4 py-2 font-medium">输入</th>
+                    <th className="text-right px-4 py-2 font-medium">输出</th>
+                    <th className="text-right px-4 py-2 font-medium">消耗</th>
+                  </tr></thead>
+                  <tbody>
+                    {Object.entries(relayStats.byAgent).map(([agent, stats]: [string, any]) => (
+                      <tr key={agent} className="border-b border-border/50 last:border-0">
+                        <td className="px-4 py-2 font-medium">{agent}</td>
+                        <td className="text-right px-4 py-2 font-mono">{stats.calls}</td>
+                        <td className="text-right px-4 py-2 font-mono">{stats.tokensIn.toLocaleString()}</td>
+                        <td className="text-right px-4 py-2 font-mono">{stats.tokensOut.toLocaleString()}</td>
+                        <td className="text-right px-4 py-2 font-mono">¥{stats.cost.toFixed(4)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Deposit */}
           <div className="grid grid-cols-2 gap-6">

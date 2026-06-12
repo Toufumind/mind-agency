@@ -1088,9 +1088,11 @@ export class WorkflowEngine {
         const failAgent = node.step.agent || 'unknown';
         try {
           const { penalize } = await import('./token-economy');
-          penalize(failAgent, Math.floor(node.step.reward * 0.2), sid, msg.slice(0, 100));
+          penalize(failAgent, Math.floor(node.step.reward * 0.2), msg.slice(0, 100));
           console.log(`[wf] Penalized ${failAgent} with ${Math.floor(node.step.reward * 0.2)} tokens for failed ${sid}`);
-        } catch {}
+        } catch (err) {
+          console.warn(`[workflow-engine] Failed to penalize ${failAgent}:`, err);
+        }
       }
     }
   }

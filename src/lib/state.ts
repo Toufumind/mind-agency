@@ -62,14 +62,12 @@ export function ensureGroup(state: AgentState, group: string): GroupState {
   return state.groups[group];
 }
 
-/** List all group directories the agent belongs to. Cached for 300s. */
-const groupsCache = new Map<string, { ts: number; groups: string[] }>();
-const GROUPS_CACHE_TTL = 300_000;
+/** List all group directories the agent belongs to. Cached. */
+import { agentCache } from './cache';
 
 export function getAgentGroups(agent: string): string[] {
-  const cached = groupsCache.get(agent);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < GROUPS_CACHE_TTL) return cached.groups;
+  const cached = agentCache.get<string[]>('groups', agent);
+  if (cached) return cached;
 
   const groups: string[] = [];
   if (fs.existsSync(GROUPS_DIR)) {
@@ -85,11 +83,15 @@ export function getAgentGroups(agent: string): string[] {
     }
   }
 
-  groupsCache.set(agent, { ts: now, groups });
+  agentCache.set('groups', agent, groups);
   return groups;
 }
 
 /** Invalidate cache when agent joins/leaves a group */
 export function invalidateGroupsCache(agent?: string): void {
-  if (agent) { groupsCache.delete(agent); } else { groupsCache.clear(); }
+  if (agent) {
+    agentCache.invalidate('groups', agent);
+  } else {
+    agentCache.invalidateRegion('groups');
+  }
 }

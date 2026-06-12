@@ -1,3 +1,4 @@
+import { atomicWrite } from "./atomic";
 /**
  * Chat Message Index — in-memory with JSON persistence.
  *
@@ -115,7 +116,7 @@ export function saveIndex(): void {
 
   // Compact: deduplicate message IDs in inverted index arrays
   const compact = JSON.parse(JSON.stringify(index));
-  const { atomicWrite } = require('./atomic');
+  
   atomicWrite(INDEX_FILE, JSON.stringify(compact));
   console.log(`[index] saved to ${INDEX_FILE} (${index.messages.length} msgs)`);
   dirty = false;

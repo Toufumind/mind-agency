@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { GROUPS_DIR } from './data-dir';
 import { GroupProxy } from './group-proxy';
+import { atomicWrite } from './atomic';
 
 export interface GroupAnnouncement {
   title: string;
@@ -59,37 +60,40 @@ export function setMemberRole(group: string, agent: string, role: MemberRole): b
   return true;
 }
 
-// ── Group config cache ──────────────────────────────────
-const groupConfigCache = new Map<string, { data: GroupConfig | null; ts: number }>();
-const GROUP_CONFIG_TTL = 60_000; // 1 min
+// ── Group config cache (using unified cache) ─────────────
+import { agentCache } from './cache';
 
 export function loadGroupConfig(group: string): GroupConfig | null {
-  const cached = groupConfigCache.get(group);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < GROUP_CONFIG_TTL) return cached.data;
+  const cached = agentCache.get<GroupConfig | null>('groupConfig', group);
+  if (cached !== undefined) return cached;
 
   const fp = configFile(group);
   let data: GroupConfig | null = null;
   try {
     if (fs.existsSync(fp)) data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  } catch {}
+  } catch (err) {
+    console.warn(`[group-config] Failed to load config for ${group}:`, err);
+  }
 
-  groupConfigCache.set(group, { data, ts: now });
+  agentCache.set('groupConfig', group, data);
   return data;
 }
 
 export function saveGroupConfig(group: string, config: GroupConfig): void {
   const fp = configFile(group);
-  const { atomicWrite } = require('./atomic');
+  
   atomicWrite(fp, JSON.stringify(config, null, 2));
   // Invalidate cache after write
-  groupConfigCache.delete(group);
+  agentCache.invalidate('groupConfig', group);
 }
 
 /** Invalidate group config cache */
 export function invalidateGroupConfigCache(group?: string): void {
-  if (group) groupConfigCache.delete(group);
-  else groupConfigCache.clear();
+  if (group) {
+    agentCache.invalidate('groupConfig', group);
+  } else {
+    agentCache.invalidateRegion('groupConfig');
+  }
 }
 
 export function ensureGroupConfig(group: string, owner: string): GroupConfig {

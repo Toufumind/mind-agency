@@ -148,7 +148,7 @@ async function ragSearch(agent: string, query: string): Promise<string> {
       const session = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
       const recent = (session.messages || []).slice(-8);
       if (recent.length > 0) {
-        parts.push(recent.map(m => `[${m.role}] ${(m.content || '').slice(0, 100)}`).join('\n'));
+        parts.push(recent.map((m: any) => `[${m.role}] ${(m.content || '').slice(0, 100)}`).join('\n'));
       }
     }
   } catch {}
@@ -165,6 +165,50 @@ function loadSettings(): { apiKey?: string; baseUrl?: string; model?: string } {
     if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf-8'));
   } catch {}
   return {};
+}
+
+// ── Agent API Key Management ─────────────────────────────
+// Each agent has a unique relay key for authentication.
+// Stored in .mind/agent-keys/<agent>.json
+
+const KEYS_DIR = path.join(MIND_DIR, 'agent-keys');
+
+function ensureKeysDir(): void {
+  if (!fs.existsSync(KEYS_DIR)) fs.mkdirSync(KEYS_DIR, { recursive: true });
+}
+
+/** Generate a relay API key for an agent */
+export function generateRelayKey(agent: string): string {
+  ensureKeysDir();
+  const key = `ma_${agent}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  const fp = path.join(KEYS_DIR, `${agent}.json`);
+  fs.writeFileSync(fp, JSON.stringify({ agent, key, createdAt: Date.now() }), 'utf-8');
+  return key;
+}
+
+/** Validate a relay API key */
+export function validateRelayKey(key: string): string | null {
+  try {
+    const files = fs.readdirSync(KEYS_DIR).filter(f => f.endsWith('.json'));
+    for (const f of files) {
+      const data = JSON.parse(fs.readFileSync(path.join(KEYS_DIR, f), 'utf-8'));
+      if (data.key === key) return data.agent;
+    }
+  } catch {}
+  return null;
+}
+
+/** Get or create relay key for an agent */
+export function getRelayKey(agent: string): string {
+  ensureKeysDir();
+  const fp = path.join(KEYS_DIR, `${agent}.json`);
+  try {
+    if (fs.existsSync(fp)) {
+      const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+      return data.key;
+    }
+  } catch {}
+  return generateRelayKey(agent);
 }
 
 // ── Forward to AI Provider ───────────────────────────────

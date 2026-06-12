@@ -1,3 +1,4 @@
+import { atomicWrite } from "./atomic";
 /**
  * Unified Consensus Engine v2 — deliberation + adversarial verify + behavior profiles.
  *
@@ -149,7 +150,7 @@ export function createRequest(opts: {
     adversary: opts.adversary, target: opts.target,
   };
 
-  const { atomicWrite } = require('./atomic');
+  
   atomicWrite(path.join(dir, `${id}.json`), JSON.stringify(request, null, 2));
   return id;
 }
@@ -538,7 +539,7 @@ export function initConsensusHandlers(): void {
     const invDir = path.join(GROUPS_DIR, req.group, '.invitations');
     if (!fs.existsSync(invDir)) fs.mkdirSync(invDir, { recursive: true });
     const invFile = path.join(invDir, `${target}.json`);
-    const { atomicWrite } = require('./atomic');
+    
     atomicWrite(invFile, JSON.stringify({ invitedBy: req.requestedBy, invitedAt: Date.now() }));
     // Post system message to chat
     const chatDir = path.join(GROUPS_DIR, req.group, 'chat');
@@ -561,7 +562,7 @@ export function initConsensusHandlers(): void {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     if (!config.admins) config.admins = [];
     if (!config.admins.includes(target)) config.admins.push(target);
-    const { atomicWrite } = require('./atomic');
+    
     atomicWrite(configPath, JSON.stringify(config, null, 2));
     // Post system message to chat
     const chatDir = path.join(GROUPS_DIR, req.group, 'chat');

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { createChatStream, getChatHistory, clearChat, savePartialState } from '@/lib/chat';
 import { writeAudit } from '@/lib/audit';
 import { handleCliCommand } from '@/lib/cli-commands';
+import { validateAgentName, validateMessage } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,8 +44,11 @@ export async function POST(
   { params }: { params: Promise<{ name: string }> }
 ) {
   const { name } = await params;
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    return new Response(JSON.stringify({ error: 'Invalid agent name' }), { status: 400 });
+
+  // Validate agent name
+  const nameValidation = validateAgentName(name);
+  if (!nameValidation.valid) {
+    return new Response(JSON.stringify({ error: nameValidation.errors.join(', ') }), { status: 400 });
   }
 
   let message = '';
@@ -61,8 +65,10 @@ export async function POST(
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
   }
 
-  if (!message) {
-    return new Response(JSON.stringify({ error: 'Empty message' }), { status: 400 });
+  // Validate message
+  const messageValidation = validateMessage(message);
+  if (!messageValidation.valid) {
+    return new Response(JSON.stringify({ error: messageValidation.errors.join(', ') }), { status: 400 });
   }
 
   // ── Idempotency check ──

@@ -601,7 +601,7 @@ export async function createChatStream(agentName: string, userMessage: string, g
   if (providerName !== 'claude') {
     const provider = getProvider(providerName);
     if (provider) {
-      return createProviderStream(provider, agentName, userMessage, groupName, modelOverride, agentConfig);
+      return createProviderStream(provider as AgentProvider, agentName, userMessage, groupName, modelOverride, agentConfig || null);
     }
   }
 

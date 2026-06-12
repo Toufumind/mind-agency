@@ -13,6 +13,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { MIND_DIR, AGENTS_DIR } from './data-dir';
 import { randomUUID } from 'crypto';
+import { atomicWrite } from './atomic';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ function loadSkills(): Skill[] {
 
 function saveSkills(skills: Skill[]): void {
   ensureDirs();
-  const { atomicWrite } = require('./atomic');
+  
   atomicWrite(SKILLS_FILE, JSON.stringify(skills, null, 2));
 }
 
@@ -167,7 +168,7 @@ export async function installSkill(repo: string, repoPath?: string): Promise<Ski
     // Strip repoPath prefix if present
     const relativePath = repoPath ? filePath.replace(repoPath + '/', '') : filePath;
     const fullPath = path.join(skillDir, relativePath);
-    const { atomicWrite } = require('./atomic');
+    
     atomicWrite(fullPath, content);
   }
 
@@ -286,7 +287,7 @@ export async function updateSkill(id: string): Promise<Skill | null> {
   for (const [filePath, content] of files) {
     const relativePath = skill.repoPath ? filePath.replace(skill.repoPath + '/', '') : filePath;
     const fullPath = path.join(skillDir, relativePath);
-    const { atomicWrite } = require('./atomic');
+    
     atomicWrite(fullPath, content);
   }
 
@@ -309,34 +310,45 @@ export async function updateSkill(id: string): Promise<Skill | null> {
 
 // ── Distribution to agent directories ────────────────────
 
-function distributeToAgents(skillName: string): void {
+function distributeToAgent(skillName: string, agentName: string): void {
   const srcDir = path.join(SKILLS_DIR, skillName);
   if (!fs.existsSync(srcDir)) return;
 
-  // Distribute to each agent's skills directory
+  const destDir = path.join(AGENTS_DIR, agentName, 'skills', skillName);
+  const destParent = path.dirname(destDir);
+  if (!fs.existsSync(destParent)) fs.mkdirSync(destParent, { recursive: true });
+  if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true });
+  fs.cpSync(srcDir, destDir, { recursive: true });
+}
+
+function removeFromAgent(skillName: string, agentName: string): void {
+  const skillDir = path.join(AGENTS_DIR, agentName, 'skills', skillName);
+  if (fs.existsSync(skillDir)) fs.rmSync(skillDir, { recursive: true });
+}
+
+function distributeToAgents(skillName: string): void {
+  // Distribute to all agents that have this skill enabled
   if (!fs.existsSync(AGENTS_DIR)) return;
   const agents = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
     .filter(e => e.isDirectory() && !e.name.startsWith('.'))
     .map(e => e.name);
 
   for (const agent of agents) {
-    const destDir = path.join(AGENTS_DIR, agent, 'skills', skillName);
-    const destParent = path.dirname(destDir);
-    if (!fs.existsSync(destParent)) fs.mkdirSync(destParent, { recursive: true });
-    if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true });
-    fs.cpSync(srcDir, destDir);
+    if (isSkillEnabled(agent, skillName)) {
+      distributeToAgent(skillName, agent);
+    }
   }
 }
 
 function removeFromAgents(skillName: string): void {
+  // Remove from all agents
   if (!fs.existsSync(AGENTS_DIR)) return;
   const agents = fs.readdirSync(AGENTS_DIR, { withFileTypes: true })
     .filter(e => e.isDirectory() && !e.name.startsWith('.'))
     .map(e => e.name);
 
   for (const agent of agents) {
-    const skillDir = path.join(AGENTS_DIR, agent, 'skills', skillName);
-    if (fs.existsSync(skillDir)) fs.rmSync(skillDir, { recursive: true });
+    removeFromAgent(skillName, agent);
   }
 }
 
@@ -475,4 +487,92 @@ export function getInstalledSkills(): Skill[] {
 
 export function getSkill(id: string): Skill | undefined {
   return loadSkills().find(s => s.id === id);
+}
+
+// ── Skill Enable/Disable ─────────────────────────────────
+
+function loadAgentConfigForSkill(agentName: string): any {
+  const configPath = path.join(AGENTS_DIR, agentName, 'config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    }
+  } catch {}
+  return {};
+}
+
+function saveAgentConfigForSkill(agentName: string, config: any): void {
+  const configPath = path.join(AGENTS_DIR, agentName, 'config.json');
+  
+  atomicWrite(configPath, JSON.stringify(config, null, 2));
+}
+
+export function isSkillEnabled(agentName: string, skillName: string): boolean {
+  const config = loadAgentConfigForSkill(agentName);
+  const enabledSkills = config.enabledSkills || [];
+  return enabledSkills.includes(skillName);
+}
+
+export function enableSkill(agentName: string, skillName: string): boolean {
+  // Check if skill exists globally
+  const skills = loadSkills();
+  if (!skills.find(s => s.name === skillName)) {
+    return false;
+  }
+
+  // Update agent config
+  const config = loadAgentConfigForSkill(agentName);
+  if (!config.enabledSkills) {
+    config.enabledSkills = [];
+  }
+  if (!config.enabledSkills.includes(skillName)) {
+    config.enabledSkills.push(skillName);
+    saveAgentConfigForSkill(agentName, config);
+  }
+
+  // Distribute skill to agent
+  distributeToAgent(skillName, agentName);
+
+  console.log(`[skills] Enabled ${skillName} for ${agentName}`);
+  return true;
+}
+
+export function disableSkill(agentName: string, skillName: string): boolean {
+  // Update agent config
+  const config = loadAgentConfigForSkill(agentName);
+  if (config.enabledSkills) {
+    config.enabledSkills = config.enabledSkills.filter((s: string) => s !== skillName);
+    saveAgentConfigForSkill(agentName, config);
+  }
+
+  // Remove skill from agent
+  removeFromAgent(skillName, agentName);
+
+  console.log(`[skills] Disabled ${skillName} for ${agentName}`);
+  return true;
+}
+
+export function getEnabledSkills(agentName: string): string[] {
+  const config = loadAgentConfigForSkill(agentName);
+  return config.enabledSkills || [];
+}
+
+export function setEnabledSkills(agentName: string, skillNames: string[]): void {
+  const config = loadAgentConfigForSkill(agentName);
+  config.enabledSkills = skillNames;
+  saveAgentConfigForSkill(agentName, config);
+
+  // Sync skills to agent directory
+  const skills = loadSkills();
+  const skillNames_set = new Set(skillNames);
+
+  for (const skill of skills) {
+    if (skillNames_set.has(skill.name)) {
+      distributeToAgent(skill.name, agentName);
+    } else {
+      removeFromAgent(skill.name, agentName);
+    }
+  }
+
+  console.log(`[skills] Set enabled skills for ${agentName}:`, skillNames);
 }

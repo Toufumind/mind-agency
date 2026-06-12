@@ -16,6 +16,7 @@
 import { renameSession } from '@anthropic-ai/claude-agent-sdk';
 import fs from 'fs';
 import path from 'path';
+import { atomicWrite } from './atomic';
 
 const AGENTS_DIR = process.env.MIND_DATA_DIR
   ? path.join(process.env.MIND_DATA_DIR, 'Agents')
@@ -37,7 +38,7 @@ function loadGoals(agentName: string): string[] {
 }
 
 function saveGoals(agentName: string, goals: string[]): void {
-  const { atomicWrite } = require('./atomic');
+  
   atomicWrite(goalsFile(agentName), JSON.stringify(goals, null, 2));
 }
 
@@ -78,13 +79,15 @@ export function handleCliCommand(agentName: string, message: string, sessionId: 
   }
 }
 
-// ── Goals context cache ──────────────────────────────────
-const goalsCache = new Map<string, { data: string; ts: number }>();
-const GOALS_TTL = 60_000; // 1 min
+// ── Goals context cache (using unified cache) ────────────
+import { agentCache } from './cache';
 
 export function invalidateGoalsCache(agentName?: string): void {
-  if (agentName) goalsCache.delete(agentName);
-  else goalsCache.clear();
+  if (agentName) {
+    agentCache.invalidate('goals', agentName);
+  } else {
+    agentCache.invalidateRegion('goals');
+  }
 }
 
 /**
@@ -92,15 +95,14 @@ export function invalidateGoalsCache(agentName?: string): void {
  * Called from chat.ts during stream setup. Cached for performance.
  */
 export function loadGoalContext(agentName: string): string {
-  const cached = goalsCache.get(agentName);
-  const now = Date.now();
-  if (cached && (now - cached.ts) < GOALS_TTL) return cached.data;
+  const cached = agentCache.get<string>('goals', agentName);
+  if (cached !== null) return cached;
 
   const goals = loadGoals(agentName);
   const result = goals.length === 0 ? '' :
     `\n[当前会话目标]\n${goals.map((g, i) => `${i + 1}. ${g}`).join('\n')}`;
 
-  goalsCache.set(agentName, { data: result, ts: now });
+  agentCache.set('goals', agentName, result);
   return result;
 }
 

@@ -1,3 +1,4 @@
+import { atomicWrite } from "./atomic";
 /**
  * Workflow Bridge — unified workflow execution (v1.0).
  *
@@ -195,7 +196,7 @@ function loadWorkflowState(group: string): GroupWorkflowState | null {
 
 function saveWorkflowState(group: string, state: GroupWorkflowState): void {
   const fp = path.join(GROUPS_DIR, group, 'workflow-state.json');
-  const { atomicWrite } = require('./atomic');
+  
   atomicWrite(fp, JSON.stringify(state, null, 2));
 }
 

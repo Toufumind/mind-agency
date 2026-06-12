@@ -1,30 +1,13 @@
 /**
- * WebSocket notification server for Mind Agency — v0.3 Event Bus + Workflow integration.
+ * Unified server for Mind Agency — combines WebSocket and HTTP in single process.
  *
- * Runs alongside `next dev` on port 3001. Provides:
- *   - ws://localhost:3001           Browser clients connect here
- *   - POST /broadcast               Legacy group-chat push (scope-aware routing)
- *   - POST /events                  Event Bus emit endpoint (internal)
- *   - GET  /events/stats            Monitoring + DLQ stats
- *   - GET  /events/dlq              Dead Letter Queue inspection
- *   - POST /events/dlq/retry        Manual DLQ retry trigger
- *   - POST /events/dlq/purge        Clear DLQ
- *   - POST /workflows/run           Execute a workflow definition
- *   - GET  /workflows/stats         Workflow engine stats
- *
- * Clients send JSON over WS:
- *   → { type: "subscribe", filter?: {...}, options?: {...} }
- *   ← { type: "subscribed", subId: "uuid" }
- *   → { type: "unsubscribe", subId: "uuid" }
- *   ← { type: "unsubscribed", subId: "uuid" }
- *   ← { type: "event", ...EventMessage }  (pushed by server)
- *   ← { type: "error", code: "E_...", message: "..." }
+ * This replaces the dual-process architecture with a single unified server
+ * that shares EventBus and IPC state.
  *
  * Start: npx tsx server.ts   (or via `npm run dev:ws`)
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'crypto';
 import { EventBus, EventType, EventBusError, createEvent, WorkflowEngine, parseWorkflowYaml, setEventBus } from './src/lib/event-bus.js';
 import type { EventMessage, WorkflowRunRecord } from './src/lib/event-bus.js';
@@ -33,8 +16,47 @@ import { killAllClaudeProcesses } from './src/lib/chat.js';
 import { closeDb } from './src/lib/workflow-checkpoint.js';
 import { cancelAllWatchers } from './src/lib/workflow-bridge.js';
 import { initConsensusHandlers } from './src/lib/consensus.js';
+import { ipcStore, getIPCLock } from './src/lib/ipc.js';
+import { EmbeddedWebSocketServer } from './src/lib/ws-server.js';
 
 const PORT = parseInt(process.env.WS_PORT || '3001', 10);
+const SERVER_SECRET = process.env.MIND_SERVER_SECRET || '';
+const MAX_BODY_SIZE = 1024 * 1024; // 1MB limit for request bodies
+
+// ── Auth helper ──────────────────────────────────────────────────────────
+
+function checkAuth(req: IncomingMessage, res: ServerResponse): boolean {
+  // Skip auth if no secret configured (dev mode)
+  if (!SERVER_SECRET) return true;
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || authHeader !== `Bearer ${SERVER_SECRET}`) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+    return false;
+  }
+  return true;
+}
+
+function readBody(req: IncomingMessage, res: ServerResponse): Promise<string | null> {
+  return new Promise((resolve) => {
+    let body = '';
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Request body too large' }));
+        req.destroy();
+        resolve(null);
+        return;
+      }
+      body += chunk.toString();
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', () => resolve(null));
+  });
+}
 
 // ── EventBus singleton ───────────────────────────────────────────────────
 
@@ -46,7 +68,7 @@ setEventBus(bus); // v0.4: register singleton for in-process subscribers
 import { ChatStepExecutor } from './src/lib/event-bus.js';
 import { getEngine } from './src/lib/workflow-bridge.js';
 const workflowEngine = getEngine(bus);
-console.log('[ws] WorkflowEngine using shared singleton from workflow-bridge');
+console.log('[server] WorkflowEngine using shared singleton from workflow-bridge');
 initConsensusHandlers();
 
 // v1.2: Timeout monitoring — check every 30s for stuck WAITING steps
@@ -54,25 +76,17 @@ setInterval(() => {
   try { workflowEngine.checkTimeouts(); } catch {}
 }, 30_000);
 
-// ── Per-client state ─────────────────────────────────────────────────────
+// ── Embedded WebSocket Server ─────────────────────────────────────────────
 
-interface ClientState {
-  clientId: string;
-  ws: WebSocket;
-  subscribed: boolean; // whether client has sent 'subscribe' at least once
-  scope?: 'events' | 'messages' | 'all'; // derived from first subscribe
-  connectedAt: number;
-}
+const wsServer = new EmbeddedWebSocketServer(bus, PORT);
 
-const clients = new Map<WebSocket, ClientState>();
-
-// ── HTTP server ──────────────────────────────────────────────────────────
+// ── HTTP Server ──────────────────────────────────────────────────────────
 
 const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -94,56 +108,37 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // Absent Origin is allowed (non-browser clients like curl, MCP)
   }
 
+  // ── GET /health ─────────────────────────────────────────────────────
+
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      uptime: process.uptime(),
+      wsClients: wsServer.getClientCount(),
+      timestamp: new Date().toISOString(),
+    }));
+    return;
+  }
+
   // ── GET /events/stats ──────────────────────────────────────────────
 
   if (req.method === 'GET' && req.url === '/events/stats') {
     const stats = bus.getStats();
-    const clientList = [...clients.entries()].map(([ws, state]) => ({
-      clientId: state.clientId.slice(0, 8),
-      subscribed: state.subscribed,
-      scope: state.scope,
-      connectedSec: Math.round((Date.now() - state.connectedAt) / 1000),
-      readyState: ws.readyState,
-    }));
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ...stats, clients: clientList }, null, 2));
+    res.end(JSON.stringify({ ...stats, wsClients: wsServer.getClientCount() }, null, 2));
     return;
   }
 
   // ── POST /broadcast (legacy group chat) ────────────────────────────
 
   if (req.method === 'POST' && req.url === '/broadcast') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => {
-      body += chunk.toString();
-    });
-    req.on('end', () => {
+    if (!checkAuth(req, res)) return;
+    readBody(req, res).then(body => {
+      if (body === null) return;
       try {
         const msg = JSON.parse(body);
-        const payload = JSON.stringify(msg);
-        let sent = 0;
-        let skipped = 0;
-
-        clients.forEach((state, ws) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-
-          // Scope routing: send to legacy clients + scope "messages" or "all"
-          const scope = state.scope;
-          if (!state.subscribed || scope === 'messages' || scope === 'all') {
-            ws.send(payload);
-            sent++;
-          } else {
-            // scope === "events" — skip group chat messages
-            skipped++;
-          }
-        });
-
-        if (skipped > 0) {
-          console.log(
-            `[ws] /broadcast: sent to ${sent}, skipped ${skipped} (events-only)`
-          );
-        }
-
+        const sent = wsServer.broadcast(msg, 'messages');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, clients: sent }));
       } catch {
@@ -157,11 +152,9 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   // ── POST /events (EventBus emit) ───────────────────────────────────
 
   if (req.method === 'POST' && req.url === '/events') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => {
-      body += chunk.toString();
-    });
-    req.on('end', () => {
+    if (!checkAuth(req, res)) return;
+    readBody(req, res).then(body => {
+      if (body === null) return;
       try {
         const eventInput = JSON.parse(body);
 
@@ -174,372 +167,13 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
           id: eventInput.id || randomUUID(),
         };
 
-        try {
-          bus.emit(event);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true }));
-        } catch (e: any) {
-          // Known EventBus errors → 400; unknowns → 500
-          const isKnownError = Object.values(EventBusError).some((code) =>
-            e.message.includes(code)
-          );
-          res.writeHead(isKnownError ? 400 : 500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: e.message }));
-        }
-      } catch {
+        bus.emit(event);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, eventId: event.id }));
+      } catch (e: any) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'invalid json' }));
-      }
-    });
-    return;
-  }
-
-  // ── GET /events/dlq ──────────────────────────────────────────────
-
-  if (req.method === 'GET' && req.url === '/events/dlq') {
-    const dlq = bus.getDeadLetters();
-    const dlqStats = bus.getDLQStats();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ...dlqStats, entries: dlq }, null, 2));
-    return;
-  }
-
-  // ── POST /events/dlq/retry ────────────────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/events/dlq/retry') {
-    const retried = bus.retryDeadLetters();
-    const stats = bus.getDLQStats();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, retried, remaining: stats.size }));
-    return;
-  }
-
-  // ── POST /events/dlq/purge ────────────────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/events/dlq/purge') {
-    const purged = bus.purgeDeadLetters();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, purged }));
-    return;
-  }
-
-  // ── GET /events/outbox ────────────────────────────────────────────
-
-  if (req.method === 'GET' && req.url === '/events/outbox') {
-    const stats = bus.getOutboxStats();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(stats, null, 2));
-    return;
-  }
-
-  // ── GET /events/load ──────────────────────────────────────────────
-
-  if (req.method === 'GET' && req.url === '/events/load') {
-    const load = workflowEngine.getSystemLoad();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(load, null, 2));
-    return;
-  }
-
-  // ── POST /workflows/approve ───────────────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/workflows/approve') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-    req.on('end', () => {
-      try {
-        const { approvalId, decision, comment } = JSON.parse(body);
-        if (!approvalId || !decision || !['APPROVED', 'REJECTED'].includes(decision)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'requires approvalId and decision (APPROVED|REJECTED)' }));
-          return;
-        }
-        const ok = workflowEngine.submitApproval(approvalId, decision, comment);
-        res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(ok ? { ok: true, approvalId, decision } : { ok: false, error: 'approval not found' }));
-      } catch {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'invalid json' }));
-      }
-    });
-    return;
-  }
-
-  // ── GET /workflows/approvals ──────────────────────────────────────
-
-  if (req.method === 'GET' && req.url === '/workflows/approvals') {
-    const pending = workflowEngine.listPendingApprovals();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ count: pending.length, pending }, null, 2));
-    return;
-  }
-
-  // ── POST /workflows/callback (v0.5) ────────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/workflows/callback') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-    req.on('end', () => {
-      try {
-        const { runId, stepId, output } = JSON.parse(body);
-        if (!runId || !stepId || !output) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'runId, stepId, output required' }));
-          return;
-        }
-        const ok = workflowEngine.callback(runId, stepId, output);
-        res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(ok ? { ok: true, runId, stepId } : { ok: false, error: 'run/step not found or not waiting' }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: e.message }));
       }
-    });
-    return;
-  }
-
-  // ── POST /workflows/cancel (v0.4) ───────────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/workflows/cancel') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-    req.on('end', () => {
-      try {
-        const { runId } = JSON.parse(body);
-        if (!runId) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'runId required' }));
-          return;
-        }
-        const ok = workflowEngine.cancel(runId);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok, message: ok ? `cancelled ${runId.slice(0, 8)}` : 'run not found' }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── POST /workflows/add-step (v0.4) ────────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/workflows/add-step') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-    req.on('end', () => {
-      try {
-        const { group, step_id, agent, action, prompt, depends_on, reviewer, onReject, maxRejectRetries } = JSON.parse(body);
-        if (!group || !step_id || !agent || !action || !prompt) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'group, step_id, agent, action, prompt required' }));
-          return;
-        }
-        const ok = workflowEngine.addStep(group, { id: step_id, agent, action, prompt, dependsOn: depends_on ? depends_on.split(',').map((s: string) => s.trim()) : [], reviewer, onReject, maxRejectRetries });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok, message: ok ? `added step ${step_id}` : 'no running workflow found' }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── POST /workflows/delete-step (v0.4) ─────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/workflows/delete-step') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-    req.on('end', () => {
-      try {
-        const { group, step_id } = JSON.parse(body);
-        if (!group || !step_id) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'group and step_id required' }));
-          return;
-        }
-        const ok = workflowEngine.deleteStep(group, step_id);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok, message: ok ? `deleted step ${step_id}` : 'step not found or running' }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── POST /workflows/modify-step (v0.4) ─────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/workflows/modify-step') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
-    req.on('end', () => {
-      try {
-        const { group, step_id, agent, action, prompt, reviewer, onReject } = JSON.parse(body);
-        if (!group || !step_id) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'group and step_id required' }));
-          return;
-        }
-        const ok = workflowEngine.modifyStep(group, step_id, { agent, action, prompt, reviewer, onReject });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok, message: ok ? `modified step ${step_id}` : 'step not found or already running' }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── POST /workflows/run ───────────────────────────────────────────
-
-  if (req.method === 'POST' && req.url === '/workflows/run') {
-    let body = '';
-    req.on('data', (chunk: Buffer) => {
-      body += chunk.toString();
-    });
-    req.on('end', async () => {
-      try {
-        const input = JSON.parse(body);
-        // Accept raw YAML string or pre-parsed definition
-        const def = typeof input.yaml === 'string' ? parseWorkflowYaml(input.yaml) : input;
-        if (!def.name || !def.steps?.length) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'workflow requires name and steps' }));
-          return;
-        }
-        const run = await workflowEngine.execute(def, input.group);
-        // v1.1: Set group metadata so findRunByGroup works for dynamic modifications
-        if (input.group) run.group = input.group;
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, runId: run.runId, status: run.status, stepsCompleted: run.steps.size }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── GET /workflows/stats ──────────────────────────────────────────
-
-  if (req.method === 'GET' && req.url === '/workflows/stats') {
-    const stats = workflowEngine.getStats();
-    const runs = workflowEngine.listRuns().map((r: WorkflowRunRecord) => ({
-      runId: r.runId,
-      workflowName: r.workflowName,
-      status: r.status,
-      stepCount: r.steps.size,
-      startedAt: r.startedAt,
-      completedAt: r.completedAt,
-    }));
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ...stats, runs }, null, 2));
-    return;
-  }
-
-
-  // ── GET /api/workflows (dashboard: per-group latest run) ─────────
-
-  if (req.method === 'GET' && req.url === '/api/workflows') {
-    const byGroup = workflowEngine.getRunsByGroup();
-    const groups = Object.keys(byGroup);
-    const summary = {
-      groupCount: groups.length,
-      activeGroups: groups.filter(g => byGroup[g].status === 'running').length,
-      completedGroups: groups.filter(g => byGroup[g].status === 'completed').length,
-      failedGroups: groups.filter(g => byGroup[g].status === 'failed').length,
-    };
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, summary, workflows: byGroup }, null, 2));
-    return;
-  }
-
-  // ── POST /api/economy/deposit ──────────────────────────────────────
-  if (req.method === 'POST' && req.url === '/api/economy/deposit') {
-    let body = '';
-    req.on('data', (c: Buffer) => body += c.toString());
-    req.on('end', async () => {
-      try {
-        const { agent, amount, from, reason } = JSON.parse(body);
-        const { deposit } = await import('./src/lib/token-economy.js');
-        const acc = deposit(agent, amount, from || 'user', reason);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, balance: acc.balance }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── GET /api/economy/account?agent=X ───────────────────────────────
-  if (req.method === 'GET' && req.url?.startsWith('/api/economy/account')) {
-    const url = new URL(req.url, 'http://localhost');
-    const agent = url.searchParams.get('agent');
-    if (!agent) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: 'agent required' })); return; }
-    import('./src/lib/token-economy.js').then(({ getAccount }) => {
-      const acc = getAccount(agent);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, account: acc }));
-    }).catch(e => {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
-    });
-    return;
-  }
-
-  // ── POST /api/economy/transfer ─────────────────────────────────────
-  if (req.method === 'POST' && req.url === '/api/economy/transfer') {
-    let body = '';
-    req.on('data', (c: Buffer) => body += c.toString());
-    req.on('end', async () => {
-      try {
-        const { from, to, amount, reason } = JSON.parse(body);
-        const { transfer, getBalance } = await import('./src/lib/token-economy.js');
-        const ok = transfer(from, to, amount, reason);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok, balance: ok ? undefined : getBalance(from) }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── POST /api/economy/reward ───────────────────────────────────────
-  if (req.method === 'POST' && req.url === '/api/economy/reward') {
-    let body = '';
-    req.on('data', (c: Buffer) => body += c.toString());
-    req.on('end', async () => {
-      try {
-        const { agent, task, amount, quality } = JSON.parse(body);
-        const { reward } = await import('./src/lib/token-economy.js');
-        const acc = reward(agent, amount, task, quality || 'normal');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, balance: acc.balance }));
-      } catch (e: any) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // ── GET /api/economy/leaderboard ───────────────────────────────────
-  if (req.method === 'GET' && req.url === '/api/economy/leaderboard') {
-    import('./src/lib/token-economy.js').then(({ getLeaderboard }) => {
-      const leaderboard = getLeaderboard();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, leaderboard }));
-    }).catch(e => {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
     });
     return;
   }
@@ -549,271 +183,71 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   res.end(JSON.stringify({ ok: false, error: 'Not Found', path: req.url, method: req.method }));
 });
 
-// ── WebSocket server ─────────────────────────────────────────────────────
+// ── Start Server ─────────────────────────────────────────────────────────
 
-const wss = new WebSocketServer({ server });
-
-wss.on('connection', (ws: WebSocket) => {
-  const clientId = randomUUID();
-  const remote = (ws as any)._socket?.remoteAddress || 'unknown';
-
-  // Track client state
-  const state: ClientState = {
-    clientId,
-    ws,
-    subscribed: false,
-    connectedAt: Date.now(),
-  };
-  clients.set(ws, state);
-
-  console.log(`[ws] client ${clientId.slice(0, 8)}... connected (${remote}), total: ${wss.clients.size}`);
-
-  // ── Emit ws.connect event ──────────────────────────────────────────
-
-  bus.emit(
-    createEvent(EventType.WS_CONNECT, { clientId, since: Date.now() }, 'system')
-  );
-
-  // ── Welcome message (legacy compat) ────────────────────────────────
-
-  ws.send(
-    JSON.stringify({
-      type: 'connected',
-      clientId,
-      timestamp: new Date().toISOString(),
-    })
-  );
-
-  // ── Handle client messages ─────────────────────────────────────────
-
-  ws.on('message', (data: Buffer) => {
-    let msg: any;
-    try {
-      msg = JSON.parse(data.toString());
-    } catch {
-      ws.send(
-        JSON.stringify({
-          type: 'error',
-          code: 'E_PARSE',
-          message: 'Invalid JSON',
-        })
-      );
-      return;
-    }
-
-    // ── subscribe ────────────────────────────────────────────────────
-
-    if (msg.type === 'subscribe') {
-      try {
-        const subId = bus.subscribe(
-          msg.filter,
-          msg.options,
-          clientId,
-          (event: EventMessage) => {
-            // Only send if WS is still open
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(
-                JSON.stringify({
-                  type: 'event',
-                  ...event,
-                })
-              );
-            }
-          }
-        );
-
-        // Mark client as subscribed and derive scope
-        state.subscribed = true;
-        const scope = msg.options?.scope || 'events';
-        if (!state.scope || state.scope === 'events') {
-          // First sub defines scope; "all" overrides
-          state.scope = scope;
-        } else if (scope === 'all') {
-          state.scope = 'all';
-        }
-
-        ws.send(
-          JSON.stringify({
-            type: 'subscribed',
-            subId,
-            scope: state.scope,
-          })
-        );
-
-        console.log(
-          `[ws] client ${clientId.slice(0, 8)}... subscribed (${subId.slice(0, 8)}...), scope=${state.scope}, filter=${JSON.stringify(msg.filter || 'all')}`
-        );
-      } catch (e: any) {
-        ws.send(
-          JSON.stringify({
-            type: 'error',
-            code: e.message.includes('E_INVALID_FILTER')
-              ? EventBusError.E_INVALID_FILTER
-              : 'E_SUBSCRIBE_FAILED',
-            message: e.message,
-          })
-        );
-      }
-      return;
-    }
-
-    // ── unsubscribe ──────────────────────────────────────────────────
-
-    if (msg.type === 'unsubscribe') {
-      try {
-        bus.unsubscribe(msg.subId);
-        ws.send(
-          JSON.stringify({
-            type: 'unsubscribed',
-            subId: msg.subId,
-          })
-        );
-      } catch (e: any) {
-        ws.send(
-          JSON.stringify({
-            type: 'error',
-            code: e.message.includes('E_SUB_NOT_FOUND')
-              ? EventBusError.E_SUB_NOT_FOUND
-              : 'E_UNSUBSCRIBE_FAILED',
-            message: e.message,
-          })
-        );
-      }
-      return;
-    }
-
-    // ── ping/pong (keepalive) ────────────────────────────────────────
-
-    if (msg.type === 'ping') {
-      ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
-      return;
-    }
-
-    // ── unknown ──────────────────────────────────────────────────────
-
-    ws.send(
-      JSON.stringify({
-        type: 'error',
-        code: 'E_UNKNOWN_TYPE',
-        message: `Unknown message type: "${msg.type}"`,
-      })
-    );
+async function start() {
+  // Start HTTP server
+  server.listen(PORT + 1, () => {
+    console.log(`[server] HTTP server listening on port ${PORT + 1}`);
   });
 
-  // ── Handle disconnect ──────────────────────────────────────────────
+  // Start WebSocket server
+  await wsServer.start();
 
-  ws.on('close', (code: number, reason: Buffer) => {
-    // Emit ws.disconnect event
-    bus.emit(
-      createEvent(
-        EventType.WS_DISCONNECT,
-        {
-          clientId,
-          code,
-          reason: reason?.toString() || 'client disconnected',
-          since: Date.now(),
-        },
-        'system'
-      )
-    );
+  // Store server info in IPC
+  ipcStore.set('server:startup', Date.now());
+  ipcStore.set('server:pid', process.pid);
+  ipcStore.set('server:httpPort', PORT + 1);
+  ipcStore.set('server:wsPort', PORT);
 
-    // Cleanup EventBus subscriptions
-    bus.cleanupClient(clientId);
+  // Start scheduler
+  startScheduler();
 
-    // Remove client state
-    clients.delete(ws);
+  console.log(`[server] Unified server started (HTTP: ${PORT + 1}, WS: ${PORT})`);
+}
 
-    console.log(
-      `[ws] client ${clientId.slice(0, 8)}... disconnected (${remote}), total: ${wss.clients.size}`
-    );
+// ── Graceful Shutdown ────────────────────────────────────────────────────
+
+async function shutdown() {
+  console.log('[server] Shutting down...');
+
+  // Stop scheduler
+  stopScheduler();
+
+  // Kill all claude processes
+  try { killAllClaudeProcesses(); } catch {}
+
+  // Cancel all watchers
+  try { cancelAllWatchers(); } catch {}
+
+  // Close checkpoint DB
+  try { closeDb(); } catch {}
+
+  // Stop WebSocket server
+  await wsServer.stop();
+
+  // Close HTTP server
+  await new Promise<void>((resolve) => {
+    server.close(() => {
+      console.log('[server] HTTP server closed');
+      resolve();
+    });
   });
 
-  // ── Handle errors ──────────────────────────────────────────────────
+  // Clear IPC state
+  ipcStore.delete('server:startup');
+  ipcStore.delete('server:pid');
 
-  ws.on('error', (err: Error) => {
-    console.error(`[ws] client error (${clientId.slice(0, 8)}...): ${err.message}`);
+  console.log('[server] Shutdown complete');
+  process.exit(0);
+}
 
-    bus.emit(
-      createEvent(
-        EventType.AGENT_ERROR,
-        {
-          agent: clientId,
-          code: 'WS_ERROR',
-          message: err.message,
-        },
-        'system'
-      )
-    );
-  });
-});
-
-// ── Periodic housekeeping ────────────────────────────────────────────────
-
-// Clean up stale clients every 30 seconds
-setInterval(() => {
-  clients.forEach((state, ws) => {
-    if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-      bus.cleanupClient(state.clientId);
-      clients.delete(ws);
-    }
-  });
-}, 30000);
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 // ── Start ────────────────────────────────────────────────────────────────
 
-server.listen(PORT, () => {
-  console.log(`[ws] WebSocket + EventBus + Workflow server on ws://localhost:${PORT}`);
-  console.log(`[ws]   Broadcast:  POST http://localhost:${PORT}/broadcast`);
-  console.log(`[ws]   Events:    POST http://localhost:${PORT}/events`);
-  console.log(`[ws]   Stats:     GET  http://localhost:${PORT}/events/stats`);
-  console.log(`[ws]   DLQ:       GET  http://localhost:${PORT}/events/dlq | POST .../dlq/retry | POST .../dlq/purge`);
-  console.log(`[ws]   Outbox:    GET  http://localhost:${PORT}/events/outbox`);
-  console.log(`[ws]   Workflows: POST http://localhost:${PORT}/workflows/run | GET .../workflows/stats`);
-  console.log(`[ws] EventBus v0.3 — DLQ + retry, WorkflowEngine v0.3 — DAG`);
-
-  // ── v0.4: Recover incomplete workflow runs from checkpoints ──
-  try {
-    const recovered = workflowEngine.recoverCheckpoints();
-    if (recovered.length > 0) {
-      console.log(`[ws] Recovered ${recovered.length} interrupted workflow run(s):`);
-      for (const r of recovered) console.log(`  - ${r.workflowName} (${r.runId.slice(0, 8)}) in ${r.group}`);
-    }
-  } catch (e: unknown) {
-    console.error(`[ws] Checkpoint recovery failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  // ── Start background scheduler (poll + DAG loops) ─────────────────
-  startScheduler({
-    engine: workflowEngine,
-    pollIntervalMs: parseInt(process.env.POLL_INTERVAL || '30000', 10),
-    dagIntervalMs: parseInt(process.env.DAG_INTERVAL || '10000', 10),
-  });
-});
-
-// ── Graceful shutdown ────────────────────────────────────────────────────
-
-process.on('SIGINT', () => {
-  console.log('[ws] Shutting down...');
-  const killed = killAllClaudeProcesses();
-  if (killed > 0) console.log(`[ws] aborted ${killed} active queries`);
-  stopScheduler();
-  cancelAllWatchers();
-  bus.destroy();
-  closeDb();
-  wss.close();
-  server.close();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('[ws] Shutting down...');
-  const killed = killAllClaudeProcesses();
-  if (killed > 0) console.log(`[ws] aborted ${killed} active queries`);
-  stopScheduler();
-  cancelAllWatchers();
-  bus.destroy();
-  closeDb();
-  wss.close();
-  server.close();
-  process.exit(0);
+start().catch((error) => {
+  console.error('[server] Failed to start:', error);
+  process.exit(1);
 });
