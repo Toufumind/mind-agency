@@ -44,9 +44,69 @@
       "priority": "normal",
       "status": "pending",
       "createdAt": 1781279141478
+    },
+    {
+      "runId": "2c1d1f21-f074-4cff-82f1-67afc871ea8f",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781289056151
+    },
+    {
+      "runId": "66add75f-2a72-4e6a-a45f-254d9264dd40",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781289755798
+    },
+    {
+      "runId": "a6003c25-52f8-4d3f-b08c-a11781b54e65",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781290053821
     }
   ],
   "completed": [
+    {
+      "runId": "a6003c25-52f8-4d3f-b08c-a11781b54e65",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781290013798,
+      "completedAt": 1781290053817,
+      "result": "Agent acknowledged task"
+    },
+    {
+      "runId": "66add75f-2a72-4e6a-a45f-254d9264dd40",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781289714007,
+      "completedAt": 1781289755792,
+      "result": "Agent acknowledged task"
+    },
+    {
+      "runId": "2c1d1f21-f074-4cff-82f1-67afc871ea8f",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781288990967,
+      "completedAt": 1781289056146,
+      "result": "Agent acknowledged task"
+    },
     {
       "runId": "d202675e-f709-4648-912c-6e2acad3acae",
       "stepId": "final-report",
@@ -563,39 +623,6 @@
       "createdAt": 1781013602610,
       "completedAt": 1781013874244,
       "result": "FAILED: 文件系统工具不可用，无法完成小说大纲创作任务\nrequire is not defined 错误，持续性系统问题"
-    },
-    {
-      "runId": "7440e936-fd82-4513-88ae-4e86f67e297f",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "failed",
-      "createdAt": 1781013602603,
-      "completedAt": 1781013874233,
-      "result": "FAILED: 文件系统工具不可用，无法完成小说大纲创作任务\nrequire is not defined 错误，持续性系统问题"
-    },
-    {
-      "runId": "0e162463-39d7-495c-8bca-64a39f3cf5c4",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "failed",
-      "createdAt": 1781013602597,
-      "completedAt": 1781013865018,
-      "result": "FAILED: 文件系统工具不可用（require is not defined），无法完成小说大纲创作任务\n尝试读取和写入文件时遇到 require is not defined 错误，这是持续性的系统问题。需要等文件系统恢复后重新触发。"
-    },
-    {
-      "runId": "5e69a7e5-eddd-4a53-9cd6-71aef434cbd7",
-      "stepId": "review-lit",
-      "workflow": "CCFA-Subconscious-LLM-Paper",
-      "prompt": "你是一位CCFA级别的审稿人，专注AI认知科学方向。请审查文献综述：\n1. 文献覆盖是否全面？是否遗漏了关键论文？\n2. 对现有空白的分析是否准确？\n3. 引用格式是否符合CCFA要求？\n4. 与本论文novelty的关联是否清晰？\n\n回复 APPROVED 或 REJECTED 并给出具体修改意见。\n",
-      "priority": "normal",
-      "status": "completed",
-      "createdAt": 1781013550664,
-      "completedAt": 1781013784689,
-      "result": "Agent acknowledged task"
     }
   ]
 }

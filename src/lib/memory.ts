@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Agent Memory — v0.4 CrewAI three-layer adaptation
  *

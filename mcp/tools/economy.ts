@@ -59,13 +59,13 @@ export async function handleEconomyTool(
 
   if (name === 'relay_key') {
     try {
-      const { getRelayKey, generateRelayKey } = await import('../lib/relay.js');
+      const { getRelayKey, generateRelayKey } = await import('../../src/lib/relay');
       const action = a.action || 'get';
       if (action === 'regenerate') {
         const key = generateRelayKey(agentName);
         respond(id, { content: [{ type: 'text', text: `🔑 新 relay key 已生成:\n${key}\n\n请保存此 key，用于 API 调用认证。` }] });
       } else {
-        const { getRelayKey } = await import('../lib/relay.js');
+        const { getRelayKey } = await import('../../src/lib/relay');
         const key = getRelayKey(agentName);
         respond(id, { content: [{ type: 'text', text: `🔑 ${agentName} 的 relay key:\n${key}` }] });
       }
@@ -394,8 +394,9 @@ export async function handleEconomyTool(
       } else {
         let text = `📋 ${group} 任务列表 (${tasks.length} 个):\n`;
         for (const t of tasks) {
-          const statusEmoji = { open: '🟢', assigned: '🔵', in_progress: '🟡', completed: '✅', cancelled: '🔴', expired: '⏰' }[t.status] || '❓';
-          text += `  ${statusEmoji} [${t.id}] ${t.title} | 奖励: ${t.reward} | 难度: ${t.difficulty || 'medium'} | 认领: ${(t.claims || []).length}/${t.maxClaims}\n`;
+          const statusEmoji: Record<string, string> = { open: '🟢', assigned: '🔵', in_progress: '🟡', completed: '✅', cancelled: '🔴', expired: '⏰' };
+          const emoji = statusEmoji[t.status] || '❓';
+          text += `  ${emoji} [${t.id}] ${t.title} | 奖励: ${t.reward} | 难度: ${t.difficulty || 'medium'} | 认领: ${(t.claims || []).length}/${t.maxClaims}\n`;
         }
         respond(id, { content: [{ type: 'text', text }] });
       }

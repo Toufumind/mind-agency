@@ -520,14 +520,16 @@ export class WorkflowEngine {
       }, 'workflow-engine'));
     }
 
-    // Also persist notification to agent's directory so autoRespond can pick it up
+    // Persist notification to agent's directory so autoRespond can pick it up
     try {
       const notifDir = path.join(AGENTS_DIR, agent, '.workflow-notifications');
       if (!fs.existsSync(notifDir)) fs.mkdirSync(notifDir, { recursive: true });
       const notifPath = path.join(notifDir, `${runId}_${sid}.json`);
-
       atomicWrite(notifPath, JSON.stringify({ runId, stepId: sid, prompt, createdAt: Date.now() }));
-    } catch {}
+      console.log(`[wf] Notification written: ${notifPath}`);
+    } catch (e) {
+      console.error(`[wf] Failed to write notification:`, e);
+    }
 
     node.status = StepStatus.WAITING;
     node.notifiedAt = Date.now();
@@ -920,29 +922,53 @@ export class WorkflowEngine {
     if (this.scheduling.has(runId)) return;
     this.scheduling.add(runId);
     try {
-    const run = this.runs.get(runId);
-    if (!run || run.status !== WorkflowStatus.RUNNING) return;
+      const run = this.runs.get(runId);
+      if (!run || run.status !== WorkflowStatus.RUNNING) return;
 
-    // Check abort
-    const ac = this.abortControllers.get(runId);
-    if (ac?.signal.aborted) {
-      run.status = WorkflowStatus.FAILED;
-      run.completedAt = Date.now();
-      return;
-    }
+      // Check abort
+      const ac = this.abortControllers.get(runId);
+      if (ac?.signal.aborted) {
+        run.status = WorkflowStatus.FAILED;
+        run.completedAt = Date.now();
+      } else {
+        this._scheduleInner(runId, run);
+      }
 
-    // ── Re-read blueprint from YAML (live document) ──
+    } catch (e) {
+      console.error(`[wf] schedule error:`, e);
+    } finally { this.scheduling.delete(runId); }
+  }
+
+  private _scheduleInner(runId: string, run: WorkflowRunRecord): void {
+    const nodes = this.runNodes.get(runId);
+    if (!nodes) return;
+
+    // Re-read blueprint from YAML (live document)
     const wfPath = run._yamlPath;
     if (wfPath && fs.existsSync(wfPath)) {
       try {
-        const yaml = fs.readFileSync(wfPath, 'utf-8');
-        const freshDef = parseWorkflowYaml(yaml);
-        // Update run with latest blueprint
+        const yamlContent = fs.readFileSync(wfPath, 'utf-8');
+        const freshDef = parseWorkflowYaml(yamlContent);
         run._wfDef = freshDef;
-        // Rebuild DAG nodes from fresh blueprint
-        const freshNodes = this.buildDag(freshDef, run);
+        // Build fresh DAG from blueprint
+        const freshNodes = new Map<string, DagNode>();
+        for (const s of freshDef.steps) {
+          freshNodes.set(s.id, {
+            step: s, deps: s.dependsOn || [], dependents: [],
+            status: StepStatus.PENDING, output: '', error: '',
+            retryCount: 0, maxRetries: s.retry ?? 3,
+            rejectCount: 0, maxRejectRetries: s.maxRejectRetries ?? 3,
+            onFailure: s.onFailure, onReject: s.onReject, onApprove: s.onApprove,
+            routes: s.routes, timeout: s.timeout || 300000, startedAt: 0, notifiedAt: 0,
+          });
+        }
+        for (const [id, node] of freshNodes) {
+          node.dependents = [];
+          for (const [oid, other] of freshNodes) {
+            if (other.deps.includes(id)) node.dependents.push(oid);
+          }
+        }
         this.runNodes.set(runId, freshNodes);
-        // Carry over completed/failed status from previous nodes
         const oldNodes = this.runNodes.get(runId);
         if (oldNodes) {
           for (const [id, node] of oldNodes) {
@@ -955,32 +981,31 @@ export class WorkflowEngine {
       } catch {}
     }
 
-    const nodes = this.runNodes.get(runId);
-    if (!nodes) return;
+    const currentNodes = this.runNodes.get(runId);
+    if (!currentNodes) return;
 
-    // Find ready steps — steps whose deps are all completed
+    // Find ready steps
     const ready: DagNode[] = [];
-    for (const [id, node] of nodes) {
+    for (const [id, node] of currentNodes) {
       if (node.status === StepStatus.COMPLETED || node.status === StepStatus.FAILED || node.status === StepStatus.IN_PROGRESS || node.status === StepStatus.WAITING) continue;
       const depsOk = node.deps.every(depId => {
-        const dn = nodes.get(depId);
+        const dn = currentNodes.get(depId);
         return dn && (dn.status === StepStatus.COMPLETED || dn.status === StepStatus.SKIPPED);
       });
       if (!depsOk) { node.status = StepStatus.BLOCKED; run.steps.set(id, StepStatus.BLOCKED); continue; }
       ready.push(node);
     }
 
-    // If no ready steps, check if run is done
     if (ready.length === 0) {
-      const pending = [...nodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED || n.status === StepStatus.WAITING);
+      const pending = [...currentNodes.values()].filter(n => n.status === StepStatus.PENDING || n.status === StepStatus.BLOCKED || n.status === StepStatus.WAITING);
       if (pending.length === 0) {
         let failed = false;
-        for (const [, n] of nodes) { if (n.status === StepStatus.FAILED) failed = true; }
+        for (const [, n] of currentNodes) { if (n.status === StepStatus.FAILED) failed = true; }
         run.status = failed ? WorkflowStatus.FAILED : WorkflowStatus.COMPLETED;
         run.completedAt = Date.now();
         console.log(`[wf] Run ${runId.slice(0, 8)} ${run.status}`);
         const grp = run.group as string | undefined;
-        this.reviewWorkflowExecution(grp, run, nodes);
+        this.reviewWorkflowExecution(grp, run, currentNodes);
         if (grp) {
           completeRunCheckpoint(grp, runId, run.status === WorkflowStatus.COMPLETED ? 'completed' : 'failed');
           const stepsCompleted = [...(run.steps.values())].filter(s => s === StepStatus.COMPLETED).length;
@@ -989,19 +1014,18 @@ export class WorkflowEngine {
             runId, workflowName: run.workflowName, group: grp,
             startedAt: run.startedAt, completedAt: Date.now(),
             status: run.status === WorkflowStatus.COMPLETED ? 'completed' : 'failed',
-            stepsTotal: nodes.size, stepsCompleted, stepsFailed,
+            stepsTotal: currentNodes.size, stepsCompleted, stepsFailed,
             compensations: run.compensations.length || 0,
           });
           cleanupCheckpoints(grp);
         }
-      return;
+        return;
+      }
     }
 
-    // Execute ready steps — each is independent
     for (const node of ready) {
-      this.execNode(runId, node, nodes);
+      this.execNode(runId, node, currentNodes);
     }
-    } finally { this.scheduling.delete(runId); }
   }
 
   private async execNode(runId: string, node: DagNode, nodes: Map<string, DagNode>): Promise<void> {

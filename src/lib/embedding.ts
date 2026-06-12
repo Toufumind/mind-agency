@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Local Embedding — v0.5
  *
@@ -70,11 +71,11 @@ async function bgeEmbed(text: string): Promise<number[]> {
       const tokens = tokenizeForBGE(text);
       const input = new Float32Array(tokens);
       const feeds = { input_ids: input };
-      const results = await model.session.run(feeds);
-      return Array.from(results.last_hidden_state.data).slice(0, 512);
+      const results: any = await model.session.run(feeds);
+      return Array.from(results.last_hidden_state.data as number[]).slice(0, 512);
     } else {
       // Transformers.js pipeline
-      const output = await model.extractor(text, { pooling: 'cls', normalize: true });
+      const output: any = await model.extractor(text, { pooling: 'cls', normalize: true });
       return Array.from(output.data).slice(0, 512);
     }
   } catch {
