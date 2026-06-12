@@ -238,8 +238,7 @@ export default function Sidebar() {
           {!collapsed ? (
             <>
               <NavItem href="/me" icon={User} label={t('me')} badge={unreadEmails} />
-              <NavItem href="/economy" icon={DollarSign} label="经济" />
-              <NavItem href="/analytics" icon={BarChart3} label={t('usage')} />
+              <NavItem href="/economy" icon={DollarSign} label="用量" />
               <NavItem href="/learning" icon={TrendingUp} label="学习" />
               <NavItem href="/settings" icon={Settings} label={t('settings')} />
             </>
