@@ -26,6 +26,15 @@
       "priority": "normal",
       "status": "pending",
       "createdAt": 1781097935055
+    },
+    {
+      "runId": "67bb3d29-d6f8-4ec3-b74f-a0e829093f76",
+      "stepId": "write",
+      "workflow": "code-review-pipeline",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n4. 包含 3 个单元测试\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781278967074
     }
   ],
   "completed": [

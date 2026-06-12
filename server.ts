@@ -476,6 +476,61 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // ── POST /workflows/run — Trigger workflow ─────────────────────────────
+  if (req.method === 'POST' && pathname === '/workflows/run') {
+    readBody(req, res).then(async body => {
+      if (body === null) return;
+      try {
+        const { group, workflow, triggerStepId } = JSON.parse(body);
+        if (!group || !workflow) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'group and workflow required' }));
+          return;
+        }
+        const { triggerWorkflow } = await import('./src/lib/workflow-bridge.js');
+        const result = await triggerWorkflow(group, triggerStepId);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── GET /workflows/runs — List workflow runs ──────────────────────────
+  if (req.method === 'GET' && pathname === '/workflows/runs') {
+    try {
+      const { listRuns } = await import('./src/lib/workflow-bridge.js');
+      const runs = listRuns();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, runs }));
+    } catch (e: any) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // ── POST /workflows/approve — Approve human_approval step ─────────────
+  if (req.method === 'POST' && pathname === '/workflows/approve') {
+    readBody(req, res).then(async body => {
+      if (body === null) return;
+      try {
+        const { runId, stepId, approved } = JSON.parse(body);
+        const { approveStep } = await import('./src/lib/workflow-bridge.js');
+        const result = await approveStep(runId, stepId, approved !== false);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ── Everything else ────────────────────────────────────────────────
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: false, error: 'Not Found', path: req.url, method: req.method }));
