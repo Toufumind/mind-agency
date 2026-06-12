@@ -27,11 +27,13 @@ const _shutdownController = new AbortController();
 
 export function getEngine(bus?: any): WorkflowEngine {
   if (!engine) {
+    // Try to recover from global (survives module reload)
+    engine = (global as any).__workflowEngine || null;
+  }
+  if (!engine) {
     engine = new WorkflowEngine(bus, new ChatStepExecutor());
-    // Register globally for text-based callback parsing (fallback when MCP tools don't work)
     (global as any).__workflowEngine = engine;
   } else if (bus && !(engine as any).bus) {
-    // Attach bus if it was created without one (server.ts provides the bus)
     (engine as any).bus = bus;
   }
   return engine;
