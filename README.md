@@ -21,9 +21,9 @@
 
 > **📢 重要通知**
 >
-> 🚀 **v0.8.0 已发布** — 新增 Token 经济、RAG 优化、工作流引擎重构
+> 🚀 **v1.0 正式版正在路上** — 当前为测试版本（v0.8.0），核心功能已基本完成，正在持续优化中。
 >
-> 💬 **QQ 群：`894606144`** — [点击加入 MindAgency 官方交流群](https://qm.qq.com/q/G88zjFr52q)
+> 💬 **QQ 群：`894606144`** — [点击加入 MindAgency 官方交流群](https://qm.qq.com/q/G88zjFr52q)，欢迎反馈问题、参与讨论。
 >
 > ⬇️ **[下载 Windows 客户端](https://github.com/Toufumind/mind-agency/releases/download/v0.7.0/Mind-Agency-Setup-0.7.0.exe)** — 3 分钟上手
 
