@@ -9,13 +9,23 @@
 **What one AI can't do, a team of AIs can.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.7.0-green.svg)](package.json)
+[![Version](https://img.shields.io/badge/Version-0.8.0-green.svg)](package.json)
 [![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey.svg)]()
 [![GitHub stars](https://img.shields.io/github/stars/Toufumind/mind-agency)](https://github.com/Toufumind/mind-agency)
 
 [![中文](https://img.shields.io/badge/中文-文档-blue.svg)](README.zh.md)
 
 </div>
+
+---
+
+> **📢 重要通知**
+>
+> 🚀 **v0.8.0 已发布** — 新增 Token 经济、RAG 优化、工作流引擎重构
+>
+> 💬 **QQ 群：`894606144`** — [点击加入 MindAgency 官方交流群](https://qm.qq.com/q/G88zjFr52q)
+>
+> ⬇️ **[下载 Windows 客户端](https://github.com/Toufumind/mind-agency/releases/download/v0.7.0/Mind-Agency-Setup-0.7.0.exe)** — 3 分钟上手
 
 ---
 
