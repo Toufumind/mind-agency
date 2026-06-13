@@ -169,7 +169,7 @@ export function scanAgentSignals(agentName: string): Signal[] {
             timestamp: now,
           });
         }
-      } catch {}
+      } catch (e) { console.error('[lib:signal-collector]', e); }
     }
   }
 
@@ -189,7 +189,7 @@ export function scanAgentSignals(agentName: string): Signal[] {
           snippet: f,
           timestamp: now,
         });
-      } catch {}
+      } catch (e) { console.error('[lib:signal-collector]', e); }
     }
   }
 
@@ -210,7 +210,7 @@ export function scanAgentSignals(agentName: string): Signal[] {
           snippet: `[工作流任务] runId=${notif.runId} stepId=${notif.stepId}\n${notif.prompt || ''}`,
           timestamp: now,
         });
-      } catch {}
+      } catch (e) { console.error('[lib:signal-collector]', e); }
     }
   }
 
@@ -231,7 +231,7 @@ export function scanAllAgents(): Signal[] {
   for (const name of agentNames) {
     try {
       signals.push(...scanAgentSignals(name));
-    } catch {}
+    } catch (e) { console.error('[lib:signal-collector]', e); }
   }
 
   return signals;

@@ -107,10 +107,10 @@ function loadRules(group?: string): ConsensusRule[] {
   let rules: ConsensusRule[];
   if (group) {
     const jsonFile = path.join(GROUPS_DIR, group, 'consensus.json');
-    try { if (fs.existsSync(jsonFile)) { const c = JSON.parse(fs.readFileSync(jsonFile, 'utf-8')); if (Array.isArray(c)) { rules = c; agentCache.set('config', `rules:${cacheKey}`, rules); return rules; } } } catch {}
+    try { if (fs.existsSync(jsonFile)) { const c = JSON.parse(fs.readFileSync(jsonFile, 'utf-8')); if (Array.isArray(c)) { rules = c; agentCache.set('config', `rules:${cacheKey}`, rules); return rules; } } } catch (e) { console.error('[lib:consensus]', e); }
   }
   const systemFile = path.join(MIND_DIR, 'consensus.json');
-  try { if (fs.existsSync(systemFile)) { const c = JSON.parse(fs.readFileSync(systemFile, 'utf-8')); if (Array.isArray(c)) { rules = c; agentCache.set('config', `rules:${cacheKey}`, rules); return rules; } } } catch {}
+  try { if (fs.existsSync(systemFile)) { const c = JSON.parse(fs.readFileSync(systemFile, 'utf-8')); if (Array.isArray(c)) { rules = c; agentCache.set('config', `rules:${cacheKey}`, rules); return rules; } } } catch (e) { console.error('[lib:consensus]', e); }
   rules = DEFAULT_RULES;
   agentCache.set('config', `rules:${cacheKey}`, rules);
   return rules;
@@ -262,7 +262,7 @@ export function createConsensusRequest(
 
 export function getRequest(group: string, id: string): ConsensusRequest | null {
   const f = path.join(requestsDir(group), `${id}.json`);
-  try { if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf-8')); } catch {}
+  try { if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf-8')); } catch (e) { console.error('[lib:consensus]', e); }
   return null;
 }
 
@@ -461,7 +461,7 @@ export function checkTimeouts(): number {
           console.log(`[consensus] ${req.id}: expired after ${Math.round(elapsed / 60000)}min → REJECTED`);
           rejected++;
         }
-      } catch {}
+      } catch (e) { console.error('[lib:consensus]', e); }
     }
   }
   return rejected;
@@ -479,7 +479,7 @@ export function checkPermissionKey(agentName: string, action: string): boolean {
       const config = JSON.parse(fs.readFileSync(cf, 'utf-8'));
       return config.permissions?.[rule.permissionKey] === true;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:consensus]', e); }
   return false;
 }
 
@@ -606,6 +606,6 @@ export function recoverPendingConsensus(): void {
     if (!g.isDirectory() || g.name.startsWith('.')) continue;
     const dir = path.join(GROUPS_DIR, g.name, '.consensus');
     if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir)) { if (!f.endsWith('.json')) continue; try { const req: ConsensusRequest = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')); if (req.status === 'pending' || req.status === 'adversary_review') { console.log(`[consensus] recovered #${req.id} in ${g.name}`); const chatDir = path.join(GROUPS_DIR, g.name, 'chat'); if (!fs.existsSync(chatDir)) fs.mkdirSync(chatDir, { recursive: true }); const entry = `---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n[consensus #${req.id}] (恢复) — ${req.description}\n${req.status === 'adversary_review' ? '仍在等待复核。' : '请用 decide 回复。'}`; const fp = path.join(chatDir, `${Date.now()}_system_recover.md`); const tmp = fp + '.tmp'; fs.writeFileSync(tmp, entry, 'utf-8'); fs.renameSync(tmp, fp); } } catch {} }
+    for (const f of fs.readdirSync(dir)) { if (!f.endsWith('.json')) continue; try { const req: ConsensusRequest = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')); if (req.status === 'pending' || req.status === 'adversary_review') { console.log(`[consensus] recovered #${req.id} in ${g.name}`); const chatDir = path.join(GROUPS_DIR, g.name, 'chat'); if (!fs.existsSync(chatDir)) fs.mkdirSync(chatDir, { recursive: true }); const entry = `---\nfrom: system\ndate: ${new Date().toISOString()}\n---\n\n[consensus #${req.id}] (恢复) — ${req.description}\n${req.status === 'adversary_review' ? '仍在等待复核。' : '请用 decide 回复。'}`; const fp = path.join(chatDir, `${Date.now()}_system_recover.md`); const tmp = fp + '.tmp'; fs.writeFileSync(tmp, entry, 'utf-8'); fs.renameSync(tmp, fp); } } catch (e) { console.error('[lib:consensus]', e); } }
   }
 }

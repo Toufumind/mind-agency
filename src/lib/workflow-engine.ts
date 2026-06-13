@@ -158,7 +158,7 @@ export class ChatStepExecutor implements StepExecutor {
               if (r.agent === agent && r.evaluation?.verdict === 'NEEDS_REVISION' && r.evaluation?.feedback) {
                 pastRejections.push(`[${r.stepId || r.workflow}] ${r.evaluation.feedback.slice(0, 200)}`);
               }
-            } catch {}
+            } catch (e) { console.error('[lib:workflow-engine]', e); }
           }
         }
         if (pastRejections.length > 0) {
@@ -166,7 +166,7 @@ export class ChatStepExecutor implements StepExecutor {
           learningHint = `\n\n---\n\n【历史反馈 — 请避免以下问题】\n${unique.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:workflow-engine]', e); }
 
     // v0.4: Step is a notification — agent does the work and reports via task tool
     const promptSuffix = `\n\n---\n\n【重要】完成任务后，请用 task 工具报告结果：
@@ -192,7 +192,7 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
         const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
         if (settings.model) models = [settings.model];
       }
-    } catch {}
+    } catch (e) { console.error('[lib:workflow-engine]', e); }
     let lastError: unknown;
 
     for (let i = 0; i < models.length; i++) {
@@ -220,7 +220,7 @@ task(action="report", step_id="${step.id}", status="APPROVED 或 REJECTED", summ
             // Clean up the report file
             fs.unlinkSync(reportPath);
             return `${report.status}: ${report.summary}${report.details ? '\n' + report.details : ''}`;
-          } catch {}
+          } catch (e) { console.error('[lib:workflow-engine]', e); }
         }
 
         // Fallback: use text output if agent didn't write to memory
@@ -574,7 +574,7 @@ export class WorkflowEngine {
     try {
       const notifPath = path.join(AGENTS_DIR, agentName, '.workflow-notifications', `${runId}_${stepId}.json`);
       if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
-    } catch {}
+    } catch (e) { console.error('[lib:workflow-engine]', e); }
 
     // v1.2: Auto-save agent output to file (since LLM may not call Write tool)
     const outGroup = run.group as string | undefined;
@@ -618,7 +618,7 @@ export class WorkflowEngine {
         const report: TaskReport = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
         run.taskReports.set(stepId, report);
         fs.unlinkSync(reportPath);
-      } catch {}
+      } catch (e) { console.error('[lib:workflow-engine]', e); }
     }
 
     // Evaluate routes
@@ -979,7 +979,7 @@ export class WorkflowEngine {
             }
           }
         }
-      } catch {}
+      } catch (e) { console.error('[lib:workflow-engine]', e); }
     }
 
     const currentNodes = this.runNodes.get(runId);
@@ -1066,7 +1066,7 @@ export class WorkflowEngine {
           agent: node.step.agent,
           prompt: (node.step.prompt || '').slice(0, 200),
         });
-      } catch {}
+      } catch (e) { console.error('[lib:workflow-engine]', e); }
 
       return; // Pause — resume via submitApproval()
     }
@@ -1091,7 +1091,7 @@ export class WorkflowEngine {
         // Deduct budget
         await withdraw(budgetAgent, node.step.budget, sid);
         console.log(`[wf] Deducted ${node.step.budget} tokens from ${budgetAgent} for ${sid}`);
-      } catch {}
+      } catch (e) { console.error('[lib:workflow-engine]', e); }
     }
 
     const ctx: Record<string, string> = {};
@@ -1414,7 +1414,7 @@ export class WorkflowEngine {
               try {
                 const notifPath = path.join(AGENTS_DIR, node.step.agent || 'unknown', '.workflow-notifications', `${rid}_${sid}.json`);
                 if (fs.existsSync(notifPath)) fs.unlinkSync(notifPath);
-              } catch {}
+              } catch (e) { console.error('[lib:workflow-engine]', e); }
               if (this.bus) this.bus.emit(createEvent(EventType.TASK_BLOCKED, {
                 taskId: rid, stepId: sid, workflow: run.workflowName,
                 reason: `timeout: ${Math.round(elapsed / 1000)}s`, phase: WorkflowPhase.COMPLETED,
@@ -1489,7 +1489,7 @@ export class WorkflowEngine {
           atomicWrite(wfPath, yaml.dump(def));
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:workflow-engine]', e); }
 
     console.log(`[wf] Added step ${step.id} to running workflow in ${group}`);
     // Trigger scheduling to pick up the new step

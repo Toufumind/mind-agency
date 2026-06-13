@@ -20,7 +20,7 @@ export async function loadAgentSession(agentName: string): Promise<ChatHistory> 
       if (typeof session._version !== 'number') session._version = 0;
       return session;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agent-session]', e); }
   return { sessionId: null, messages: [], _version: 0 };
 }
 
@@ -50,6 +50,6 @@ export function clearAgentSession(agentName: string): void {
   try {
     const file = path.join(AGENTS_DIR, agentName, 'chat', 'session.json');
     if (fs.existsSync(file)) fs.unlinkSync(file);
-  } catch {}
+  } catch (e) { console.error('[lib:agent-session]', e); }
   agentCache.invalidate('session', agentName);
 }

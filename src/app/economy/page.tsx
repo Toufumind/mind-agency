@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { getClientWsBase } from '@/lib/data-dir';
 import Sidebar from '@/components/sidebar';
 import { DollarSign, Send, TrendingUp, Users, ArrowUpDown } from 'lucide-react';
 import { useT } from '@/components/i18n';
@@ -30,23 +31,23 @@ export default function EconomyPage() {
     try {
       const res = await fetch('/api/emails'); // Reuse endpoint pattern
       // Actually we need a dedicated endpoint
-    } catch {}
+    } catch (e) { console.error('[app:economy:page]', e); }
     // Load from relay API
     try {
       const res = await fetch('/api/relay?limit=0');
       const data = await res.json();
       // We need accounts, let's use the economy endpoints
-    } catch {}
+    } catch (e) { console.error('[app:economy:page]', e); }
 
     // Fetch all agent accounts
     const agents = ['Alice', 'Bob', 'Charlie', 'me'];
     const results: AgentAccount[] = [];
     for (const agent of agents) {
       try {
-        const res = await fetch(`http://127.0.0.1:3001/api/economy/account?agent=${agent}`);
+        const res = await fetch(`${getClientWsBase()}/api/economy/account?agent=${agent}`);
         const data = await res.json();
         if (data.account) results.push(data.account);
-      } catch {}
+      } catch (e) { console.error('[app:economy:page]', e); }
     }
     setAccounts(results);
 
@@ -56,7 +57,7 @@ export default function EconomyPage() {
       const data = await res.json();
       setRelayLogs(data.logs || []);
       setRelayStats({ totalCost: data.totalCost || 0, totalCalls: data.totalCalls || 0, byAgent: data.byAgent || {} });
-    } catch {}
+    } catch (e) { console.error('[app:economy:page]', e); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -64,7 +65,7 @@ export default function EconomyPage() {
   const doDeposit = async () => {
     if (!selectedAgent || !depositAmount) return;
     try {
-      await fetch('http://127.0.0.1:3001/api/economy/deposit', {
+      await fetch(`${getClientWsBase()}/api/economy/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent: selectedAgent, amount: Number(depositAmount), from: 'me', reason: depositReason || '用户充值' }),
@@ -78,7 +79,7 @@ export default function EconomyPage() {
   const doTransfer = async () => {
     if (!transferTo || !transferAmount) return;
     try {
-      const res = await fetch('http://127.0.0.1:3001/api/economy/transfer', {
+      const res = await fetch(`${getClientWsBase()}/api/economy/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: 'me', to: transferTo, amount: Number(transferAmount), reason: transferReason || '用户转账' }),

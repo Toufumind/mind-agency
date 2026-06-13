@@ -99,8 +99,8 @@ export class EventBus {
     let delivered = 0;
     for (const sub of this.subs.values()) {
       if (!this.matchFilter(event, sub.filter)) continue;
-      sub.backpressureCount++; if (sub.backpressureCount > BP_LIMIT) { try { sub.send({ event: EventType.AGENT_ERROR, payload: { code: EventBusError.E_BACKPRESSURE, message: 'Backpressure limit', subId: sub.subId }, timestamp: Date.now(), source: 'system', id: randomUUID() }); } catch {} this.unsubscribe(sub.subId); continue; }
-      delivered++; try { sub.send(event); sub.backpressureCount = Math.max(0, sub.backpressureCount - 1); } catch (e: any) { this.enqueueDLQ(event, sub.subId, e.message); try { this.unsubscribe(sub.subId); } catch {} }
+      sub.backpressureCount++; if (sub.backpressureCount > BP_LIMIT) { try { sub.send({ event: EventType.AGENT_ERROR, payload: { code: EventBusError.E_BACKPRESSURE, message: 'Backpressure limit', subId: sub.subId }, timestamp: Date.now(), source: 'system', id: randomUUID() }); } catch (e) { console.error('[lib:event-bus]', e); } this.unsubscribe(sub.subId); continue; }
+      delivered++; try { sub.send(event); sub.backpressureCount = Math.max(0, sub.backpressureCount - 1); } catch (e: any) { this.enqueueDLQ(event, sub.subId, e.message); try { this.unsubscribe(sub.subId); } catch (e) { console.error('[lib:event-bus]', e); } }
     }
   }
 
@@ -114,7 +114,7 @@ export class EventBus {
   }
 
   unsubscribe(subId: string): void { const s = this.subs.get(subId); if (!s) throw new Error(`${EventBusError.E_SUB_NOT_FOUND}: "${subId}"`); this.subs.delete(subId); const cs = this.clientSubs.get(s.clientId); if (cs) { cs.delete(subId); if (cs.size === 0) this.clientSubs.delete(s.clientId); } }
-  unsubscribeSilent(subId: string): void { try { const s = this.subs.get(subId); if (!s) return; this.subs.delete(subId); const cs = this.clientSubs.get(s.clientId); if (cs) { cs.delete(subId); if (cs.size === 0) this.clientSubs.delete(s.clientId); } } catch {} }
+  unsubscribeSilent(subId: string): void { try { const s = this.subs.get(subId); if (!s) return; this.subs.delete(subId); const cs = this.clientSubs.get(s.clientId); if (cs) { cs.delete(subId); if (cs.size === 0) this.clientSubs.delete(s.clientId); } } catch (e) { console.error('[lib:event-bus]', e); } }
 
   cleanupClient(clientId: string): number { const sids = this.clientSubs.get(clientId); if (!sids) return 0; let c = 0; for (const sid of sids) { this.subs.delete(sid); c++; } this.clientSubs.delete(clientId); return c; }
 
@@ -130,7 +130,7 @@ export class EventBus {
     console.warn(`[event-bus] DLQ: ${event.event} → ${subId.slice(0, 8)}... (${this.deadLetters.length})`);
   }
 
-  retryDeadLetters(): number { const now = Date.now(); let r = 0; for (let i = this.deadLetters.length - 1; i >= 0; i--) { const e = this.deadLetters[i]; if (e.nextRetryAt > now) continue; if (e.retryCount >= e.maxRetries) { for (const sid of e.failedSubIds) { const s = this.subs.get(sid); if (s) try { s.send({ event: EventType.AGENT_ERROR, payload: { code: 'E_DLQ_EXHAUSTED', message: 'DLQ exhausted', originalEventId: e.event.id }, timestamp: Date.now(), source: 'system', id: randomUUID() }); } catch {} } this.deadLetters.splice(i, 1); continue; }
+  retryDeadLetters(): number { const now = Date.now(); let r = 0; for (let i = this.deadLetters.length - 1; i >= 0; i--) { const e = this.deadLetters[i]; if (e.nextRetryAt > now) continue; if (e.retryCount >= e.maxRetries) { for (const sid of e.failedSubIds) { const s = this.subs.get(sid); if (s) try { s.send({ event: EventType.AGENT_ERROR, payload: { code: 'E_DLQ_EXHAUSTED', message: 'DLQ exhausted', originalEventId: e.event.id }, timestamp: Date.now(), source: 'system', id: randomUUID() }); } catch (e) { console.error('[lib:event-bus]', e); } } this.deadLetters.splice(i, 1); continue; }
     e.retryCount++; let ok = 0; for (const sid of e.failedSubIds) { const s = this.subs.get(sid); if (!s) { ok++; continue; } try { s.send(e.event); ok++; } catch (err: any) { e.errors.push(`r${e.retryCount}: ${err.message}`); } }
     if (ok === e.failedSubIds.length) this.deadLetters.splice(i, 1); else e.nextRetryAt = Date.now() + Math.min(1000 * Math.pow(2, e.retryCount), 60000); r++; } return r; }
   getDeadLetters(): DeadLetterEntry[] { return [...this.deadLetters]; }
@@ -205,7 +205,7 @@ export class EventBus {
       const cutoff = Date.now() - 7 * 86400000;
       for (const f of fs.readdirSync(OUTBOX_DIR)) {
         const fp = path.join(OUTBOX_DIR, f);
-        try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch {}
+        try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch (e) { console.error('[lib:event-bus]', e); }
       }
     } catch (e: unknown) { console.error(`[event-bus] outbox replay failed: ${e instanceof Error ? e.message : String(e)}`); }
   }
@@ -213,7 +213,7 @@ export class EventBus {
   getOutboxStats(): { dir: string; files: number; totalBytes: number } {
     let count = 0, bytes = 0;
     if (fs.existsSync(OUTBOX_DIR)) {
-      for (const f of fs.readdirSync(OUTBOX_DIR)) { try { const s = fs.statSync(path.join(OUTBOX_DIR, f)); count++; bytes += s.size; } catch {} }
+      for (const f of fs.readdirSync(OUTBOX_DIR)) { try { const s = fs.statSync(path.join(OUTBOX_DIR, f)); count++; bytes += s.size; } catch (e) { console.error('[lib:event-bus]', e); } }
     }
     return { dir: OUTBOX_DIR, files: count, totalBytes: bytes };
   }

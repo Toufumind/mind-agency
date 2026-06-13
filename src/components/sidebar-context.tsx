@@ -64,7 +64,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
         const map: AgentActivity = {};
         agentResults.forEach(r => { map[r.name] = { active: r.active, status: r.status, detail: r.detail }; });
         setActivity(map);
-      } catch {}
+      } catch (e) { console.error('[components:sidebar-context]', e); }
     };
 
     // Initial poll
@@ -93,7 +93,7 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'sidebar_refresh') refresh();
-          } catch {}
+          } catch (e) { console.error('[components:sidebar-context]', e); }
         };
         ws.onclose = () => { if (!stopped) reconnectTimer = setTimeout(connect, 5000); };
         ws.onerror = () => { ws?.close(); };

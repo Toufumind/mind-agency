@@ -88,7 +88,7 @@ export function getAgentEmails(agentName: string): Email[] {
       const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
       emailCheck = state.emailCheck || 0;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agents]', e); }
 
   const files = fs.readdirSync(emailDir).filter(f => f.endsWith('.md'));
   const emails: Email[] = [];
@@ -137,14 +137,14 @@ export function getAgentEmails(agentName: string): Email[] {
 
     // If date is empty or invalid, use file mtime as fallback
     if (!date) {
-      try { date = fs.statSync(filePath).mtime.toISOString(); } catch {}
+      try { date = fs.statSync(filePath).mtime.toISOString(); } catch (e) { console.error('[lib:agents]', e); }
     }
     // Determine if AI has processed this email: file mtime <= emailCheck
     let processed = false;
     try {
       const mtimeMs = fs.statSync(filePath).mtimeMs;
       processed = mtimeMs <= emailCheck;
-    } catch {}
+    } catch (e) { console.error('[lib:agents]', e); }
     emails.push({ from, to, subject, date, body, filename: file, processed });
   }
 
@@ -172,9 +172,9 @@ export function getEmail(agentName: string, filename: string): Email | null {
       const state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
       emailCheck = state.emailCheck || 0;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agents]', e); }
   let processed = false;
-  try { processed = fs.statSync(emailPath).mtimeMs <= emailCheck; } catch {}
+  try { processed = fs.statSync(emailPath).mtimeMs <= emailCheck; } catch (e) { console.error('[lib:agents]', e); }
 
   const content = fs.readFileSync(emailPath, 'utf-8');
 

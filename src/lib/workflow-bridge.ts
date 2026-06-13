@@ -192,7 +192,7 @@ function loadWorkflowState(group: string): GroupWorkflowState | null {
   const fp = path.join(GROUPS_DIR, group, 'workflow-state.json');
   try {
     if (fs.existsSync(fp)) return JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  } catch {}
+  } catch (e) { console.error('[lib:workflow-bridge]', e); }
   return null;
 }
 

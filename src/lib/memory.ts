@@ -47,7 +47,7 @@ export function writeMemory(agentName: string, key: string, content: string): Me
     try {
       const existing = parseMemoryFile(mp);
       if (existing) created = existing.created;
-    } catch {}
+    } catch (e) { console.error('[lib:memory]', e); }
   }
   const entry: MemoryEntry = { key, content, created, updated: now };
   const body = `---
@@ -127,7 +127,7 @@ export async function searchMemory(agentName: string, query: string): Promise<Me
     try {
       const entry = parseMemoryFile(path.join(dir, f));
       if (entry) entries.push(entry);
-    } catch {}
+    } catch (e) { console.error('[lib:memory]', e); }
   }
   if (entries.length === 0) return [];
 
@@ -188,7 +188,7 @@ export function listMemory(agentName: string): MemoryEntry[] {
     try {
       const entry = parseMemoryFile(path.join(dir, f));
       if (entry) results.push(entry);
-    } catch {}
+    } catch (e) { console.error('[lib:memory]', e); }
   }
   return results.sort((a, b) => b.updated - a.updated);
 }

@@ -211,7 +211,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     try {
       const s = localStorage.getItem('mind-lang');
       if (s === 'en' || s === 'zh') setLang(s);
-    } catch {}
+    } catch (e) { console.error('[components:i18n]', e); }
   }, []);
 
   const t = (key: string, vars?: Record<string,string|number>) => {

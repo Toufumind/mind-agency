@@ -21,10 +21,10 @@ export async function loadAgentEmails(agentName: string): Promise<Email[]> {
           const content = fs.readFileSync(path.join(emailDir, file), 'utf-8');
           const email = parseEmailFile(content, file);
           if (email) emails.push(email);
-        } catch {}
+        } catch (e) { console.error('[lib:agent-email]', e); }
       }
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agent-email]', e); }
   return emails;
 }
 

@@ -25,7 +25,7 @@ export default function TitleBar() {
     const check = () => {
       try {
         setMaximized((window as any).mind?.isMaximized?.() || false);
-      } catch {}
+      } catch (e) { console.error('[components:title-bar]', e); }
     };
     const interval = setInterval(check, 1000);
     // Also check on resize
@@ -34,7 +34,7 @@ export default function TitleBar() {
   }, [isElectron]);
 
   const winAction = (action: string) => {
-    try { (window as any).mind?.[action]?.(); } catch {}
+    try { (window as any).mind?.[action]?.(); } catch (e) { console.error('[components:title-bar]', e); }
   };
 
   const nonAgent = agents.filter(a => a.name !== 'me');

@@ -153,7 +153,7 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
           signal.invitations.push({ group: g.name, invitedBy: inv.invitedBy || 'unknown' });
           signal.urgent = true;
           dirty = true;
-        } catch {}
+        } catch (e) { console.error('[lib:auto-respond]', e); }
       }
     }
   }
@@ -249,7 +249,7 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
         const notif = JSON.parse(fs.readFileSync(path.join(notifDir, f), 'utf-8'));
         // v0.6: Clean up notifications older than 1 hour
         if (notif.createdAt && notif.createdAt < oneHourAgo) {
-          try { fs.unlinkSync(path.join(notifDir, f)); } catch {}
+          try { fs.unlinkSync(path.join(notifDir, f)); } catch (e) { console.error('[lib:auto-respond]', e); }
           continue;
         }
         signal.mentions.push({
@@ -259,7 +259,7 @@ function buildSignal(agent: string): { signal: Signal; state: AgentState; dirty:
         });
         signal.urgent = true;
         dirty = true;
-      } catch {}
+      } catch (e) { console.error('[lib:auto-respond]', e); }
     }
   }
 
@@ -359,7 +359,7 @@ async function processWorkflowCallbacks(agent: string, reply: string): Promise<v
         console.log(`[autoRespond] ${agent}: callback returned false for ${notif.stepId}`);
       }
       // Clean up notification file regardless
-      try { fs.unlinkSync(path.join(notifDir, f)); } catch {}
+      try { fs.unlinkSync(path.join(notifDir, f)); } catch (e) { console.error('[lib:auto-respond]', e); }
     } catch (e) {
       console.log(`[autoRespond] ${agent}: notification ${f} callback error:`, e);
     }

@@ -313,7 +313,7 @@ async function* streamMessages(params: {
           } else if (event.type === 'message_start' && event.message?.usage) {
             yield { type: 'usage', content: JSON.stringify(event.message.usage) } as any;
           }
-        } catch {}
+        } catch (e) { console.error('[lib:providers:claude-proxy]', e); }
       }
     }
   }
@@ -338,7 +338,7 @@ class ClaudeProxyProvider implements AgentProvider {
         const s = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
         if (s.model) return s.model;
       }
-    } catch {}
+    } catch (e) { console.error('[lib:providers:claude-proxy]', e); }
     return process.env.ANTHROPIC_MODEL || 'mimo-v2.5';
   }
 
@@ -390,7 +390,7 @@ class ClaudeProxyProvider implements AgentProvider {
               const usage = JSON.parse(event.content || '{}');
               totalInputTokens += usage.input_tokens || 0;
               totalOutputTokens += usage.output_tokens || 0;
-            } catch {}
+            } catch (e) { console.error('[lib:providers:claude-proxy]', e); }
           } else if (event.type === 'done') {
             stopReason = event.stop_reason || '';
           }
@@ -411,7 +411,7 @@ class ClaudeProxyProvider implements AgentProvider {
           if (!RAG_SKIP_TOOLS.has(toolName)) {
             try {
               ragContext = await loadSkillsContext(spawnOpts.agentName, result.content);
-            } catch {}
+            } catch (e) { console.error('[lib:providers:claude-proxy]', e); }
           }
 
           const content = ragContext ? `${result.content}\n\n${ragContext}` : result.content;

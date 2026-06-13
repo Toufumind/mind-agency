@@ -6,9 +6,35 @@
 
 import fs from 'fs';
 import path from 'path';
-import { AGENTS_DIR, GROUPS_DIR, MCP_DIR, MIND_DIR, default as DATA_DIR } from './data-dir';
+import { AGENTS_DIR, GROUPS_DIR, MCP_DIR, MIND_DIR, default as DATA_DIR, getApiBase, getWsBase } from './data-dir';
 import { agentCache } from './cache';
 import type { AgentConfig } from './agent-types';
+
+// ── Shared system boundary prompt (canonical source) ──
+// Used by both agent-identity.ts and chat.ts. Do not duplicate.
+export const SYSTEM_BOUNDARY_PROMPT = `
+【能力边界 — L1·L2·L3】
+L1-你的领域: 自己的 chat session、.todo、email 收件箱（只看+删）、.mind 记忆。可自由操作。
+L2-协议交互: 跟别人沟通用 group_send/group_read/email（写到对方 Agents/<name>/email/）。不要直接写其他 Agent 的文件。
+L3-不可碰: 别人的 config.json、chat session、.todo。不要替别人发言。
+违反 L2/L3 会破坏团队信任。
+
+【工具速查】
+你可以使用以下MCP工具：
+- group_send: 向群组发消息
+- group_read: 读取群组消息
+- email_send: 发送邮件
+- workflow_callback: 报告工作流步骤完成结果
+- task: 报告任务进度
+- learning_query: 查询团队学习记录
+
+文件系统工具（备用）：
+- Read/Write/Edit: 文件读写
+- Bash: 执行命令
+
+完成工作流任务后，请用 workflow_callback 工具报告结果：
+workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果摘要", details="详细说明")
+始终用中文回复。`;
 
 export class AgentIdentity {
   readonly name: string;
@@ -71,29 +97,8 @@ export class AgentIdentity {
     }
     if (behaviorLines.length > 0) identity += '\n\n【行为偏好】\n' + behaviorLines.join('\n');
 
-    // Append L1/L2/L3 boundaries
-    identity += `\n\n【能力边界 — L1·L2·L3】
-L1-你的领域: 自己的 chat session、.todo、email 收件箱（只看+删）、.mind 记忆。可自由操作。
-L2-协议交互: 跟别人沟通用 group_send/group_read/email（写到对方 Agents/<name>/email/）。不要直接写其他 Agent 的文件。
-L3-不可碰: 别人的 config.json、chat session、.todo。不要替别人发言。
-违反 L2/L3 会破坏团队信任。
-
-【工具速查】
-你可以使用以下MCP工具：
-- group_send: 向群组发消息
-- group_read: 读取群组消息
-- email_send: 发送邮件
-- workflow_callback: 报告工作流步骤完成结果
-- task: 报告任务进度
-- learning_query: 查询团队学习记录
-
-文件系统工具（备用）：
-- Read/Write/Edit: 文件读写
-- Bash: 执行命令
-
-完成工作流任务后，请用 workflow_callback 工具报告结果：
-workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果摘要", details="详细说明")
-始终用中文回复。`;
+    // Append L1/L2/L3 boundaries (from shared constant)
+    identity += `\n\n${SYSTEM_BOUNDARY_PROMPT}`;
 
     return identity;
   }
@@ -180,8 +185,8 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     const electronExe = process.env.MIND_ELECTRON_EXE;
     const envBase: Record<string, string> = {
       MIND_DATA_DIR: DATA_DIR,
-      MIND_API_URL: 'http://127.0.0.1:3000',
-      WS_BASE_URL: 'http://127.0.0.1:3001',
+      MIND_API_URL: getApiBase(),
+      WS_BASE_URL: getWsBase(),
     };
 
     const bundledPath = path.resolve(MCP_DIR, 'group-server.mjs');

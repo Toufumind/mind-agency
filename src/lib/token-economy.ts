@@ -112,7 +112,7 @@ export function getAgentAccount(agent: string): AgentAccount {
   const fp = path.join(ACCOUNTS_DIR, `${agent}.json`);
   try {
     if (fs.existsSync(fp)) return JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  } catch {}
+  } catch (e) { console.error('[lib:token-economy]', e); }
   return { agent, balance: 0, earned: 0, spent: 0, transactions: [] };
 }
 
@@ -220,7 +220,7 @@ export function getAgentPricing(agent: string): AgentPricing {
   const fp = path.join(PRICING_DIR, `${agent}.json`);
   try {
     if (fs.existsSync(fp)) return JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  } catch {}
+  } catch (e) { console.error('[lib:token-economy]', e); }
   // Default pricing for new agents
   return {
     agent,
@@ -264,7 +264,7 @@ export function getAgentTrust(agent: string): AgentTrust {
   const fp = path.join(TRUST_DIR, `${agent}.json`);
   try {
     if (fs.existsSync(fp)) return JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  } catch {}
+  } catch (e) { console.error('[lib:token-economy]', e); }
   return {
     agent,
     score: 50, // start at neutral
@@ -325,7 +325,7 @@ export function applyTrustDecay(): void {
           fs.writeFileSync(path.join(TRUST_DIR, f), JSON.stringify(trust, null, 2), 'utf-8');
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:token-economy]', e); }
   }
 }
 
@@ -343,7 +343,7 @@ export function getTrustTier(score: number): string {
 function loadRateLimitState(): RateLimitState {
   try {
     if (fs.existsSync(RATE_LIMIT_FILE)) return JSON.parse(fs.readFileSync(RATE_LIMIT_FILE, 'utf-8'));
-  } catch {}
+  } catch (e) { console.error('[lib:token-economy]', e); }
   return { transfers: [], dailySpend: 0, dailySpendDate: todayStr() };
 }
 
@@ -422,7 +422,7 @@ export function loadMarketplaceTask(group: string, taskId: string): MarketplaceT
   const fp = path.join(MARKETPLACE_DIR, group, `${taskId}.json`);
   try {
     if (fs.existsSync(fp)) return JSON.parse(fs.readFileSync(fp, 'utf-8'));
-  } catch {}
+  } catch (e) { console.error('[lib:token-economy]', e); }
   return null;
 }
 
@@ -437,7 +437,7 @@ export function listMarketplaceTasks(group: string, status?: string): Marketplac
     try {
       const task: MarketplaceTask = JSON.parse(fs.readFileSync(path.join(taskDir, f), 'utf-8'));
       if (!status || task.status === status) tasks.push(task);
-    } catch {}
+    } catch (e) { console.error('[lib:token-economy]', e); }
   }
 
   // Auto-expire tasks older than 24h

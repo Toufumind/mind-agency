@@ -34,7 +34,7 @@ class ClaudeProvider implements AgentProvider {
         const s = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
         if (s.model) return s.model;
       }
-    } catch {}
+    } catch (e) { console.error('[lib:providers:claude]', e); }
     return process.env.ANTHROPIC_MODEL || 'mimo-v2.5';
   }
 

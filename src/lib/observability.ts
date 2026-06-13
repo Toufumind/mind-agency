@@ -70,7 +70,7 @@ function readAudit(limit = 100): AuditRecord[] {
   const todayFile = path.join(dir, `${today}.json`);
   const records: AuditRecord[] = [];
   if (fs.existsSync(todayFile)) {
-    try { records.push(...JSON.parse(fs.readFileSync(todayFile, 'utf-8'))); } catch {}
+    try { records.push(...JSON.parse(fs.readFileSync(todayFile, 'utf-8'))); } catch (e) { console.error('[lib:observability]', e); }
   }
   return records.slice(-limit);
 }
@@ -88,7 +88,7 @@ export function getActivityFeed(): ActivityEvent[] {
       if (!a.isDirectory() || a.name.startsWith('.') || a.name === 'me') continue;
       const stateFile = path.join(AGENTS_DIR, a.name, 'chat', 'mind-state.json');
       let lastCheck = 0;
-      try { if (fs.existsSync(stateFile)) { const s = JSON.parse(fs.readFileSync(stateFile, 'utf-8')); lastCheck = Math.max(s.emailCheck||0, ...Object.values(s.groups||{}).map((g:any)=>g.chatCheck||0)); } } catch {}
+      try { if (fs.existsSync(stateFile)) { const s = JSON.parse(fs.readFileSync(stateFile, 'utf-8')); lastCheck = Math.max(s.emailCheck||0, ...Object.values(s.groups||{}).map((g:any)=>g.chatCheck||0)); } } catch (e) { console.error('[lib:observability]', e); }
       if (now - lastCheck < 120_000) {
         events.push({ type: 'agent_active', agent: a.name, detail: '刚刚活跃', timestamp: lastCheck });
       } else if (now - lastCheck < oneHour) {

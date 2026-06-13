@@ -78,7 +78,7 @@ export default function WorkflowsPage() {
           if (results[i]?.runs) newRuns[groups[i]] = results[i].runs;
         }
         setRuns(newRuns);
-      } catch {}
+      } catch (e) { console.error('[app:workflows:page]', e); }
       timeout = setTimeout(poll, 8000);
     };
     poll();

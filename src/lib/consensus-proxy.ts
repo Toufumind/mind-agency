@@ -79,7 +79,7 @@ export class ConsensusProxy {
   async getRequests(groupName: string): Promise<ConsensusRequest[]> {
     try {
       return listPendingRequests(groupName);
-    } catch {}
+    } catch (e) { console.error('[lib:consensus-proxy]', e); }
 
     return [];
   }

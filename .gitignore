@@ -33,6 +33,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# stale test data
+Agents/real-test-*
+Agents/test-agent
+tests/.test-data/
+
 # runtime data
 /.mind/
 /.audit/

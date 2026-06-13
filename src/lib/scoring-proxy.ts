@@ -74,10 +74,10 @@ export class ScoringProxy {
         for (const line of lines) {
           try {
             records.push(JSON.parse(line));
-          } catch {}
+          } catch (e) { console.error('[lib:scoring-proxy]', e); }
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:scoring-proxy]', e); }
 
     this._records.set(cacheKey, records);
     this._loaded.set(cacheKey, true);
@@ -103,11 +103,11 @@ export class ScoringProxy {
               if (record.agent === agentName) {
                 allRecords.push(record);
               }
-            } catch {}
+            } catch (e) { console.error('[lib:scoring-proxy]', e); }
           }
-        } catch {}
+        } catch (e) { console.error('[lib:scoring-proxy]', e); }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:scoring-proxy]', e); }
 
     return allRecords;
   }
@@ -220,11 +220,11 @@ export class ScoringProxy {
           for (const line of lines) {
             try {
               allRecords.push(JSON.parse(line));
-            } catch {}
+            } catch (e) { console.error('[lib:scoring-proxy]', e); }
           }
-        } catch {}
+        } catch (e) { console.error('[lib:scoring-proxy]', e); }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:scoring-proxy]', e); }
 
     return allRecords;
   }

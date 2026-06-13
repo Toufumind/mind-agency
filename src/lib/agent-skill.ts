@@ -24,11 +24,11 @@ export async function loadAgentSkills(agentName: string): Promise<AgentSkill[]> 
           if (fs.existsSync(promptPath)) {
             prompt = fs.readFileSync(promptPath, 'utf-8').trim();
           }
-        } catch {}
+        } catch (e) { console.error('[lib:agent-skill]', e); }
         skills.push({ name: entry.name, prompt });
       }
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agent-skill]', e); }
   return skills;
 }
 

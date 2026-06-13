@@ -104,7 +104,7 @@ export async function POST(
   try {
     const { markAgentActive } = require('@/lib/scheduler');
     markAgentActive(name);
-  } catch {}
+  } catch (e) { console.error('[app:api:agents:[name]:chat:route]', e); }
 
   // SSE stream — pass group/model/overrides/fresh
   const stream = await createChatStream(name, message, group || undefined, model || undefined, cliResult.optsOverrides, fresh);

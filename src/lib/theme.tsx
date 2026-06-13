@@ -37,13 +37,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setThemeState(s as ThemeId);
         document.documentElement.setAttribute('data-theme', s);
       }
-    } catch {}
+    } catch (e) { console.error('[lib:theme]', e); }
   }, []);
 
   const setTheme = (t: ThemeId) => {
     setThemeState(t);
     document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('mind-theme', t); } catch {}
+    try { localStorage.setItem('mind-theme', t); } catch (e) { console.error('[lib:theme]', e); }
   };
 
   return <ThemeCtx.Provider value={{ theme, setTheme }}>{children}</ThemeCtx.Provider>;

@@ -92,7 +92,7 @@ export class SystemProxy {
         this._settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
         agentCache.set('system', 'settings', this._settings);
       }
-    } catch {}
+    } catch (e) { console.error('[lib:system-proxy]', e); }
 
     this._settingsLoaded = true;
     return this._settings;
@@ -131,7 +131,7 @@ export class SystemProxy {
           })
           .filter(Boolean);
       }
-    } catch {}
+    } catch (e) { console.error('[lib:system-proxy]', e); }
 
     this._tokenRecordsLoaded = true;
     return this._tokenRecords;
@@ -200,10 +200,10 @@ export class SystemProxy {
               prompt: data.prompt || '',
               group: group.name,
             });
-          } catch {}
+          } catch (e) { console.error('[lib:system-proxy]', e); }
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:system-proxy]', e); }
 
     return pending;
   }
@@ -220,7 +220,7 @@ export class SystemProxy {
     this.ensureAccountsDir();
     const fp = path.join(this._accountsDir, `${agent}.json`);
     if (fs.existsSync(fp)) {
-      try { return JSON.parse(fs.readFileSync(fp, 'utf-8')); } catch {}
+      try { return JSON.parse(fs.readFileSync(fp, 'utf-8')); } catch (e) { console.error('[lib:system-proxy]', e); }
     }
     return { agent, balance: 0, earned: 0, spent: 0, transactions: [] };
   }
@@ -250,7 +250,7 @@ export class SystemProxy {
       if (fs.existsSync(this._profilesFile)) {
         return JSON.parse(fs.readFileSync(this._profilesFile, 'utf-8'));
       }
-    } catch {}
+    } catch (e) { console.error('[lib:system-proxy]', e); }
     return [];
   }
 

@@ -56,7 +56,7 @@ function loadSkills(): Skill[] {
     if (fs.existsSync(SKILLS_FILE)) {
       return JSON.parse(fs.readFileSync(SKILLS_FILE, 'utf-8'));
     }
-  } catch {}
+  } catch (e) { console.error('[lib:skills]', e); }
   return [];
 }
 
@@ -260,7 +260,7 @@ export async function checkSkillUpdates(): Promise<string[]> {
       } else {
         skill.status = 'installed';
       }
-    } catch {}
+    } catch (e) { console.error('[lib:skills]', e); }
   }
 
   saveSkills(skills);
@@ -417,7 +417,7 @@ export function buildSkillIndex(): void {
             tokens: tokenize(content),
           });
         }
-      } catch {}
+      } catch (e) { console.error('[lib:skills]', e); }
     }
   }
 
@@ -464,7 +464,7 @@ export async function loadSkillsContext(agentName: string, taskContext?: string)
       try {
         const content = (await fs.promises.readFile(promptPath, 'utf-8')).trim();
         if (content) parts.push(`### Skill: ${skillName}\n${content}`);
-      } catch {}
+      } catch (e) { console.error('[lib:skills]', e); }
     }
     return parts.length > 0 ? '\n\n[启用的 Skills]\n' + parts.join('\n\n') : '';
   }
@@ -497,7 +497,7 @@ function loadAgentConfigForSkill(agentName: string): any {
     if (fs.existsSync(configPath)) {
       return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     }
-  } catch {}
+  } catch (e) { console.error('[lib:skills]', e); }
   return {};
 }
 

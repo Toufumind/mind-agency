@@ -36,7 +36,7 @@ export default function SkillsPanel({ lang, agent }: { lang: string; agent?: str
       const res = await fetch(url);
       const data = await res.json();
       setSkills(data.skills || []);
-    } catch {}
+    } catch (e) { console.error('[components:settings:SkillsPanel]', e); }
     setLoading(false);
   };
 
@@ -49,7 +49,7 @@ export default function SkillsPanel({ lang, agent }: { lang: string; agent?: str
       const res = await fetch(`/api/system/skills?q=${encodeURIComponent(searchQuery)}`);
       const data = await res.json();
       setSearchResults(data.results || []);
-    } catch {}
+    } catch (e) { console.error('[components:settings:SkillsPanel]', e); }
     setSearching(false);
   };
 
@@ -62,7 +62,7 @@ export default function SkillsPanel({ lang, agent }: { lang: string; agent?: str
         body: JSON.stringify({ repo }),
       });
       if (res.ok) await loadSkills();
-    } catch {}
+    } catch (e) { console.error('[components:settings:SkillsPanel]', e); }
     setInstalling(null);
   };
 
@@ -71,7 +71,7 @@ export default function SkillsPanel({ lang, agent }: { lang: string; agent?: str
     try {
       await fetch(`/api/system/skills?id=${id}`, { method: 'DELETE' });
       await loadSkills();
-    } catch {}
+    } catch (e) { console.error('[components:settings:SkillsPanel]', e); }
   };
 
   const toggleSkill = async (skillName: string, enabled: boolean) => {
@@ -88,7 +88,7 @@ export default function SkillsPanel({ lang, agent }: { lang: string; agent?: str
         }),
       });
       await loadSkills();
-    } catch {}
+    } catch (e) { console.error('[components:settings:SkillsPanel]', e); }
     setToggling(null);
   };
 

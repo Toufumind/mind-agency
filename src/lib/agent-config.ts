@@ -35,7 +35,7 @@ export async function loadAgentConfig(agentName: string): Promise<AgentConfig> {
         maxTurns: data.maxTurns,
       };
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agent-config]', e); }
   return {} as AgentConfig;
 }
 

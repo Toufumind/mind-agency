@@ -34,7 +34,7 @@ export function loadState(agent: string): AgentState {
       proxy.setState(data);
       return data;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:state]', e); }
   return { ...DEFAULT_STATE };
 }
 

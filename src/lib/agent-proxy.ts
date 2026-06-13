@@ -17,7 +17,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { AGENTS_DIR, GROUPS_DIR, MCP_DIR, MIND_DIR, default as DATA_DIR } from './data-dir';
+import { AGENTS_DIR, GROUPS_DIR, MCP_DIR, MIND_DIR, default as DATA_DIR, getApiBase, getWsBase } from './data-dir';
 import { agentCache } from './cache';
 import { getEventBus, EventType, createEvent } from './event-bus';
 import { randomUUID } from 'crypto';
@@ -273,7 +273,7 @@ export class AgentProxy {
       const claudeMdAlt = path.join(AGENTS_DIR, this.name, '.claude', 'CLAUDE.md');
       try {
         if (fs.existsSync(claudeMdAlt)) identity = fs.readFileSync(claudeMdAlt, 'utf-8').trim();
-      } catch {}
+      } catch (e) { console.error('[lib:agent-proxy]', e); }
     }
     if (!identity) identity = `你是${this.name}，Mind Agency 团队成员。`;
 
@@ -316,7 +316,7 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     try {
       const file = path.join(AGENTS_DIR, this.name, 'CLAUDE.md');
       if (fs.existsSync(file)) return fs.readFileSync(file, 'utf-8').trim();
-    } catch {}
+    } catch (e) { console.error('[lib:agent-proxy]', e); }
     return '';
   }
 
@@ -358,7 +358,7 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
           const raw = fs.readFileSync(path.join(chatDir, f), 'utf-8');
           const truncated = raw.length > 1500 ? raw.slice(-1500) : raw;
           msgs.push(`[${f.replace('.md', '')}]\n${truncated}`);
-        } catch {}
+        } catch (e) { console.error('[lib:agent-proxy]', e); }
       }
       return `\n群聊${groupName}最近消息:\n${msgs.join('\n---\n')}`;
     } catch {
@@ -370,8 +370,8 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     const isWin = process.platform === 'win32';
     const electronExe = process.env.MIND_ELECTRON_EXE;
     const envBase: Record<string, string> = {
-      MIND_DATA_DIR: DATA_DIR, MIND_API_URL: 'http://127.0.0.1:3000',
-      WS_BASE_URL: 'http://127.0.0.1:3001',
+      MIND_DATA_DIR: DATA_DIR, MIND_API_URL: getApiBase(),
+      WS_BASE_URL: getWsBase(),
     };
 
     const bundledPath = path.resolve(MCP_DIR, 'group-server.mjs');
@@ -524,7 +524,7 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
           apiKey = settings.apiKey || '';
           baseUrl = settings.baseUrl || '';
         }
-      } catch {}
+      } catch (e) { console.error('[lib:agent-proxy]', e); }
 
       const opts: any = {
         cwd: path.join(AGENTS_DIR, this.name),
@@ -544,7 +544,7 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
             const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
             if (settings.model) opts.model = settings.model;
           }
-        } catch {}
+        } catch (e) { console.error('[lib:agent-proxy]', e); }
       }
 
       // Set API configuration via env option
@@ -584,7 +584,7 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     if (this._warmQuery) {
       try {
         this._warmQuery.close();
-      } catch {}
+      } catch (e) { console.error('[lib:agent-proxy]', e); }
       this._warmQuery = null;
       this._processReady = false;
       this._processError = null;
@@ -602,7 +602,7 @@ workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果
     try {
       const bus = getEventBus();
       bus.emit(createEvent(event, payload, this.name));
-    } catch {}
+    } catch (e) { console.error('[lib:agent-proxy]', e); }
   }
 
   emitStatusChanged(status: string): void {

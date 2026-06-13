@@ -33,7 +33,7 @@ function loadGoals(agentName: string): string[] {
     if (fs.existsSync(goalsFile(agentName))) {
       return JSON.parse(fs.readFileSync(goalsFile(agentName), 'utf-8'));
     }
-  } catch {}
+  } catch (e) { console.error('[lib:cli-commands]', e); }
   return [];
 }
 

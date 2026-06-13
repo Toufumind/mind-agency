@@ -18,7 +18,7 @@ export async function loadAgentState(agentName: string): Promise<AgentState> {
     if (fs.existsSync(file)) {
       return { ...DEFAULT_STATE, ...JSON.parse(fs.readFileSync(file, 'utf-8')) };
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agent-state]', e); }
   return { ...DEFAULT_STATE, groups: {} };
 }
 

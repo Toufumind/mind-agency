@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { getClientWsBase } from '@/lib/data-dir';
 import Sidebar from '@/components/sidebar';
 import { useSidebarData } from '@/components/sidebar-context';
 import { useNotifications } from '@/components/notification-provider';
@@ -36,7 +37,7 @@ export default function HomePage() {
       setGroups((d.groups || []).map((g: string) => ({ name: g })))
     ).catch(() => {});
     fetch('/api/system/pending').then(r => r.json()).then(d => setPending(d.items || [])).catch(() => {});
-    fetch('http://127.0.0.1:3001/api/economy/leaderboard').then(r => r.json()).then(d =>
+    fetch(`${getClientWsBase()}/api/economy/leaderboard`).then(r => r.json()).then(d =>
       setLeaderboard(d.leaderboard || [])
     ).catch(() => {});
     Promise.all(
@@ -249,7 +250,7 @@ function LiveActivity() {
     load();
     const timer = setInterval(load, 15000);
     let ws: WebSocket|null=null, stopped=false, rt:any;
-    const connect = () => { if(stopped)return; try{ws=new WebSocket(`ws://${window.location.hostname}:3001`); ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==='dashboard_refresh')load()}catch{}}; ws.onclose=()=>{if(!stopped)rt=setTimeout(connect,3000)}; }catch{ if(!stopped)rt=setTimeout(connect,3000); } };
+    const connect = () => { if(stopped)return; try{ws=new WebSocket(`ws://${window.location.hostname}:3001`); ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==='dashboard_refresh')load()}catch (e) { console.error('[app:page]', e); }}; ws.onclose=()=>{if(!stopped)rt=setTimeout(connect,3000)}; }catch{ if(!stopped)rt=setTimeout(connect,3000); } };
     connect();
     return () => { stopped=true; clearInterval(timer); clearTimeout(rt); ws?.close(); };
   }, []);

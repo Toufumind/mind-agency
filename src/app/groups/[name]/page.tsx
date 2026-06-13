@@ -129,7 +129,7 @@ export default function GroupPage() {
         body: JSON.stringify({ message: `用 group_send 向 ${name} 群发送消息: ${t}`, group: name }),
       });
       setTimeout(fetchGroup, 1000);
-    } catch {}
+    } catch (e) { console.error('[app:groups:[name]:page]', e); }
     setSending(false);
   };
 
@@ -337,7 +337,7 @@ export default function GroupPage() {
       const r = await fetch(`/api/groups/${name}/files`);
       setFiles((await r.json()).files || []);
       setShowFiles(true);
-    } catch {}
+    } catch (e) { console.error('[app:groups:[name]:page]', e); }
   };
 
   const uploadFile = async () => {
@@ -1052,7 +1052,7 @@ function OrchestrateButton({ group, onDone }: { group: string; onDone: () => voi
         body: JSON.stringify({ goal, group, coordinator:'user', confirm:false }) });
       const data = await res.json();
       setPlan(data);
-    } catch {}
+    } catch (e) { console.error('[app:groups:[name]:page]', e); }
     setLoading(false);
   };
 
@@ -1063,7 +1063,7 @@ function OrchestrateButton({ group, onDone }: { group: string; onDone: () => voi
         body: JSON.stringify({ goal, group, coordinator:'user', confirm:true }) });
       setShow(false); setGoal(''); setPlan(null);
       onDone();
-    } catch {}
+    } catch (e) { console.error('[app:groups:[name]:page]', e); }
     setLoading(false);
   };
 

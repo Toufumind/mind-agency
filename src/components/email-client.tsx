@@ -43,7 +43,7 @@ export default function EmailClient({ agentName, displayName }: Props) {
     ]).then(([emailsData, agentsData]) => {
       setEmails(Array.isArray(emailsData) ? emailsData : []);
       setAgents((agentsData.agents || []).filter((a: any) => a.name !== agentName));
-      try { const saved = localStorage.getItem(STATE_KEY); if (saved) setReadSet(new Set(JSON.parse(saved))); } catch {}
+      try { const saved = localStorage.getItem(STATE_KEY); if (saved) setReadSet(new Set(JSON.parse(saved))); } catch (e) { console.error('[components:email-client]', e); }
     }).catch(() => {}).finally(() => setLoading(false));
   }, [agentName, STATE_KEY]);
 
@@ -56,7 +56,7 @@ export default function EmailClient({ agentName, displayName }: Props) {
       if (stopped) return;
       try {
         ws = new WebSocket(`ws://${window.location.hostname}:3001`);
-        ws.onmessage = (e) => { try { const d = JSON.parse(e.data); if (d.type === 'email' && (d.to === agentName || d.from === agentName)) load(); } catch {} };
+        ws.onmessage = (e) => { try { const d = JSON.parse(e.data); if (d.type === 'email' && (d.to === agentName || d.from === agentName)) load(); } catch (e) { console.error('[components:email-client]', e); } };
         ws.onclose = () => { if (!stopped) rt = setTimeout(connect, 3000); };
       } catch { if (!stopped) rt = setTimeout(connect, 3000); }
     };
@@ -67,7 +67,7 @@ export default function EmailClient({ agentName, displayName }: Props) {
   const markRead = (fn: string) => {
     const next = new Set(readSet); next.add(fn);
     setReadSet(next);
-    try { localStorage.setItem(STATE_KEY, JSON.stringify([...next])); } catch {}
+    try { localStorage.setItem(STATE_KEY, JSON.stringify([...next])); } catch (e) { console.error('[components:email-client]', e); }
   };
 
   // Ensure readSet is loaded from localStorage on mount — critical for persisted state
@@ -80,7 +80,7 @@ export default function EmailClient({ agentName, displayName }: Props) {
           setReadSet(new Set(parsed));
         }
       }
-    } catch {}
+    } catch (e) { console.error('[components:email-client]', e); }
   }, [STATE_KEY]);
 
   const sendEmail = async () => {

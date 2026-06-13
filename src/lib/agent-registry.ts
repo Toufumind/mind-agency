@@ -74,7 +74,7 @@ class AgentRegistry {
           result.push(this.getOrCreate(entry.name));
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:agent-registry]', e); }
 
     return result;
   }
@@ -124,7 +124,7 @@ class AgentRegistry {
           }
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:agent-registry]', e); }
   }
 }
 

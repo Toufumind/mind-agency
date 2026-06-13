@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     try {
       const jsonMatch = reply.match(/\{[\s\S]*\}/);
       if (jsonMatch) decomposition = JSON.parse(jsonMatch[0]);
-    } catch {}
+    } catch (e) { console.error('[app:api:orchestrate:route]', e); }
 
     if (!decomposition || !decomposition.steps || decomposition.steps.length === 0) {
       return NextResponse.json({
@@ -166,7 +166,7 @@ ${yamlSteps}
           let data = '';
           res.on('data', (chunk) => data += chunk);
           res.on('end', () => {
-            try { const r = JSON.parse(data); console.log(`[orchestrate] Trigger result:`, r); } catch {}
+            try { const r = JSON.parse(data); console.log(`[orchestrate] Trigger result:`, r); } catch (e) { console.error('[app:api:orchestrate:route]', e); }
             resolve();
           });
         });

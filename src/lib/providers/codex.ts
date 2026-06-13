@@ -70,7 +70,7 @@ class CodexProvider implements AgentProvider {
     await new Promise<void>((resolve, reject) => {
       const TIMEOUT_MS = 300_000; // 5 minutes
       const timer = setTimeout(() => {
-        try { proc.kill(); } catch {}
+        try { proc.kill(); } catch (e) { console.error('[lib:providers:codex]', e); }
         reject(new Error(`Codex timed out after ${TIMEOUT_MS}ms`));
       }, TIMEOUT_MS);
 

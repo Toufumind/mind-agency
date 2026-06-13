@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { getClientWsBase } from '@/lib/data-dir';
 import { useParams } from 'next/navigation';
 import ChatPanel from '@/components/chat-panel';
 import EmailClient from '@/components/email-client';
@@ -64,20 +65,20 @@ export default function AgentPage() {
 
   const toggleConfig = async (key: keyof AgentConfig) => {
     const next = { ...config, [key]: !config[key] }; setConfig(next); setSaving(true);
-    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ [key]: !config[key] }) }); } catch {}
+    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ [key]: !config[key] }) }); } catch (e) { console.error('[app:agents:[name]:page]', e); }
     setSaving(false);
   };
 
   const saveClaude = async () => {
     setClaudeSaving(true);
-    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ claudeMd }) }); } catch {}
+    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ claudeMd }) }); } catch (e) { console.error('[app:agents:[name]:page]', e); }
     setClaudeSaving(false);
   };
 
   const [rolesInput, setRolesInput] = useState('');
   const [heartbeatMin, setHeartbeatMin] = useState('0');
   const saveConfigField = async (key: string, value: any) => {
-    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ [key]: value }) }); } catch {}
+    try { await fetch(`/api/agents/${name}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ [key]: value }) }); } catch (e) { console.error('[app:agents:[name]:page]', e); }
   };
   const saveRoles = async () => {
     const roles = rolesInput.split(',').map(s => s.trim()).filter(Boolean);
@@ -367,7 +368,7 @@ function TokenBalance({ agent }: { agent: string }) {
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:3001/api/economy/account?agent=${agent}`)
+    fetch(`${getClientWsBase()}/api/economy/account?agent=${agent}`)
       .then(r => r.json()).then(d => setAccount(d.account)).catch(() => {});
   }, [agent]);
 

@@ -90,7 +90,7 @@ export function loadIndex(): ChatIndex {
         return index;
       }
     }
-  } catch {}
+  } catch (e) { console.error('[lib:chat-index]', e); }
 
   // Fresh
   index = {

@@ -61,9 +61,9 @@ export class EmailProxy {
           const content = fs.readFileSync(path.join(emailDir, file), 'utf-8');
           const email = this.parseEmailFile(content, file);
           if (email) emails.push(email);
-        } catch {}
+        } catch (e) { console.error('[lib:email-proxy]', e); }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:email-proxy]', e); }
 
     this._emailCache.set(agentName, emails);
     this._loaded.set(agentName, true);

@@ -16,7 +16,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { MIND_DIR, AGENTS_DIR } from './data-dir';
+import { MIND_DIR, AGENTS_DIR, getApiBase } from './data-dir';
 import { searchMemory } from './memory';
 import { getAgentAccount, saveAgentAccount } from './token-economy';
 
@@ -115,7 +115,7 @@ function writeLog(entry: RelayLog): void {
     }
 
     fs.appendFileSync(logFile, JSON.stringify(entry) + '\n', 'utf-8');
-  } catch {}
+  } catch (e) { console.error('[lib:relay]', e); }
 }
 
 function readLogs(date?: string, limit = 100): RelayLog[] {
@@ -139,7 +139,7 @@ async function ragSearch(agent: string, query: string): Promise<string> {
     if (results.length > 0) {
       parts.push(results.slice(0, 3).map(r => `[记忆: ${r.key}] ${r.content.slice(0, 150)}`).join('\n'));
     }
-  } catch {}
+  } catch (e) { console.error('[lib:relay]', e); }
 
   // 2. Recent conversation
   try {
@@ -151,7 +151,7 @@ async function ragSearch(agent: string, query: string): Promise<string> {
         parts.push(recent.map((m: any) => `[${m.role}] ${(m.content || '').slice(0, 100)}`).join('\n'));
       }
     }
-  } catch {}
+  } catch (e) { console.error('[lib:relay]', e); }
 
   if (parts.length === 0) return '';
   return `\n\n--- RAG Context ---\n${parts.join('\n---\n')}\n--- End ---`;
@@ -163,7 +163,7 @@ function loadSettings(): { apiKey?: string; baseUrl?: string; model?: string } {
   try {
     const p = path.join(MIND_DIR, 'settings.json');
     if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf-8'));
-  } catch {}
+  } catch (e) { console.error('[lib:relay]', e); }
   return {};
 }
 
@@ -194,7 +194,7 @@ export function validateRelayKey(key: string): string | null {
       const data = JSON.parse(fs.readFileSync(path.join(KEYS_DIR, f), 'utf-8'));
       if (data.key === key) return data.agent;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:relay]', e); }
   return null;
 }
 
@@ -207,7 +207,7 @@ export function getRelayKey(agent: string): string {
       const data = JSON.parse(fs.readFileSync(fp, 'utf-8'));
       return data.key;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:relay]', e); }
   return generateRelayKey(agent);
 }
 
@@ -325,12 +325,12 @@ export async function relay(req: RelayRequest): Promise<RelayResponse> {
 
   // 9. Record for analytics
   try {
-    await fetch('http://127.0.0.1:3000/api/system/token', {
+    await fetch(`${getApiBase()}/api/system/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ agent, tokensIn, tokensOut, cost, model }),
     });
-  } catch {}
+  } catch (e) { console.error('[lib:relay]', e); }
 
   return { content, usage: { tokensIn, tokensOut, cost }, balance: account.balance, model, latencyMs };
 }

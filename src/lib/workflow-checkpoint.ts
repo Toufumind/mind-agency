@@ -82,7 +82,7 @@ export function completeRunCheckpoint(group: string, runId: string, status: stri
     if (error) meta.error = error;
   
     atomicWrite(metaPath, JSON.stringify(meta, null, 2));
-  } catch {}
+  } catch (e) { console.error('[lib:workflow-checkpoint]', e); }
 }
 
 export function loadRunCheckpoints(group: string, runId: string): StepCheckpoint[] {

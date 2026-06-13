@@ -63,7 +63,7 @@ export default function Sidebar() {
       if (type === 'group') await fetch(`/api/groups/${name}`, { method: 'DELETE' });
       else await fetch(`/api/agents?name=${name}`, { method: 'DELETE' });
       if (pathname.includes(`/${name}`)) router.push('/');
-    } catch {}
+    } catch (e) { console.error('[components:sidebar]', e); }
     setConfirmDel('');
     refresh();
   };

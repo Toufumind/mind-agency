@@ -52,7 +52,7 @@ export class WorkflowProxy {
       const content = fs.readFileSync(wfPath, 'utf-8');
       this._workflowCache.set(groupName, { content, mtime: stat.mtimeMs });
       return content;
-    } catch {}
+    } catch (e) { console.error('[lib:workflow-proxy]', e); }
     return null;
   }
 
@@ -99,7 +99,7 @@ export class WorkflowProxy {
         const meta = loadRunMeta(groupName, entry.name);
         if (meta) runs.push(meta);
       }
-    } catch {}
+    } catch (e) { console.error('[lib:workflow-proxy]', e); }
 
     return runs.sort((a, b) => b.startedAt - a.startedAt);
   }

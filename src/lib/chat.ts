@@ -9,6 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
+import { SYSTEM_BOUNDARY_PROMPT } from './agent-identity';
 import { getProvider, type AgentProvider } from './providers';
 
 // Ensure providers are registered
@@ -53,7 +54,7 @@ function loadApiSettings(): void {
       if (s.model) process.env.ANTHROPIC_MODEL = s.model;
       console.log('[chat] API settings loaded from settings.json');
     }
-  } catch {}
+  } catch (e) { console.error('[lib:chat]', e); }
   settingsLoaded = true;
 }
 
@@ -91,7 +92,7 @@ function watchAgentConfig(agentName: string): void {
   if (!fs.existsSync(configPath)) return;
   // Close any existing watcher for this agent
   const old = configWatchers.get(agentName);
-  if (old) { try { old.close(); } catch {} }
+  if (old) { try { old.close(); } catch (e) { console.error('[lib:chat]', e); } }
   try {
     // Watch the agent directory — catches both config.json and CLAUDE.md changes
     const w = fs.watch(path.join(AGENTS_DIR, agentName), (eventType, filename) => {
@@ -116,7 +117,7 @@ try {
       if (entry.isDirectory() && !entry.name.startsWith('.')) watchAgentConfig(entry.name);
     }
   }
-} catch {}
+} catch (e) { console.error('[lib:chat]', e); }
 
 // On new agent creation, the scheduler's tick() refreshes file watchers via
 // refreshFileWatchers(). Also watch for new agent directories appearing.
@@ -129,12 +130,12 @@ try {
       if (!configWatchers.has(filename)) watchAgentConfig(filename);
     });
   }
-} catch {}
+} catch (e) { console.error('[lib:chat]', e); }
 
 process.on('exit', () => {
-  try { settingsWatcher?.close(); } catch {}
-  try { agentDirWatcher?.close(); } catch {}
-  for (const w of configWatchers.values()) try { w.close(); } catch {}
+  try { settingsWatcher?.close(); } catch (e) { console.error('[lib:chat]', e); }
+  try { agentDirWatcher?.close(); } catch (e) { console.error('[lib:chat]', e); }
+  for (const w of configWatchers.values()) try { w.close(); } catch (e) { console.error('[lib:chat]', e); }
   for (const t of watchDebounce.values()) clearTimeout(t);
 });
 
@@ -242,7 +243,7 @@ function buildIdentity(agentName: string): string {
     const claudeMdAlt = path.join(AGENTS_DIR, agentName, '.claude', 'CLAUDE.md');
     try {
       if (fs.existsSync(claudeMdAlt)) identity = fs.readFileSync(claudeMdAlt, 'utf-8').trim();
-    } catch {}
+    } catch (e) { console.error('[lib:chat]', e); }
   }
   if (!identity) identity = `你是${agentName}，Mind Agency 团队成员。`;
 
@@ -256,29 +257,8 @@ function buildIdentity(agentName: string): string {
   }
   if (behaviorLines.length > 0) identity += '\n\n【行为偏好】\n' + behaviorLines.join('\n');
 
-  // Append L1/L2/L3 boundaries + tools reference (layer on top of identity)
-  identity += `\n\n【能力边界 — L1·L2·L3】
-L1-你的领域: 自己的 chat session、.todo、email 收件箱（只看+删）、.mind 记忆。可自由操作。
-L2-协议交互: 跟别人沟通用 group_send/group_read/email（写到对方 Agents/<name>/email/）。不要直接写其他 Agent 的文件。
-L3-不可碰: 别人的 config.json、chat session、.todo。不要替别人发言。
-违反 L2/L3 会破坏团队信任。
-
-【工具速查】
-你可以使用以下MCP工具：
-- group_send: 向群组发消息
-- group_read: 读取群组消息
-- email_send: 发送邮件
-- workflow_callback: 报告工作流步骤完成结果
-- task: 报告任务进度
-- learning_query: 查询团队学习记录
-
-文件系统工具（备用）：
-- Read/Write/Edit: 文件读写
-- Bash: 执行命令
-
-完成工作流任务后，请用 workflow_callback 工具报告结果：
-workflow_callback(runId="...", stepId="...", status="COMPLETED", summary="结果摘要", details="详细说明")
-始终用中文回复。`;
+  // Append L1/L2/L3 boundaries + tools reference (from shared constant)
+  identity += `\n\n${SYSTEM_BOUNDARY_PROMPT}`;
 
   return identity;
 }
@@ -321,7 +301,7 @@ export function getAgentConfig(agentName: string): AgentFullConfig {
       agentCache.set('config', agentName, cfg);
       return cfg;
     }
-  } catch {}
+  } catch (e) { console.error('[lib:chat]', e); }
   const def = { roles: [] };
   agentCache.set('config', agentName, def);
   return def;
@@ -623,7 +603,7 @@ export async function createChatStream(agentName: string, userMessage: string, g
       .join('\n');
     const ragContext = fullContext ? fullContext + '\n[user] ' + userMessage : userMessage;
     skillsCtx = await agentProxy.loadSkillsContext(ragContext);
-  } catch {}
+  } catch (e) { console.error('[lib:chat]', e); }
 
   const fullPrompt = groupChatCtx
     ? groupChatCtx + (goalsCtx ? '\n' + goalsCtx : '') + '\n\n---\n\n' + userMessage + (skillsCtx ? '\n\n' + skillsCtx : '')
@@ -689,7 +669,7 @@ export async function createChatStream(agentName: string, userMessage: string, g
         const messages = query({ prompt: fullPrompt, options: opts });
 
         // Save user message immediately — visible even before first response chunk
-        try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {}
+        try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch (e) { console.error('[lib:chat]', e); }
 
         // v0.4: Timeout protection — if SDK hangs, show error after 30s
         let firstChunk = false;
@@ -712,20 +692,20 @@ export async function createChatStream(agentName: string, userMessage: string, g
                 ctrl.enqueue(allEvents[allEvents.length - 1]);
                 // Save during thinking phase too — user can leave and come back
                 if (allEvents.filter(e => e.type === 'thinking').length % 3 === 0 && sessionId) {
-                  try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {}
+                  try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch (e) { console.error('[lib:chat]', e); }
                 }
               } else if (isToolUseBlock(block)) {
                 allEvents.push({ type: 'tool_use', content: block.name, toolName: block.name, toolInput: JSON.stringify(block.input || {}, null, 2), timestamp: ts() });
                 ctrl.enqueue(allEvents[allEvents.length - 1]);
                 // v0.4: Save session on every tool call (prevents data loss on page switch)
-                if (sessionId) { try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {} }
+                if (sessionId) { try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch (e) { console.error('[lib:chat]', e); } }
                 // Audit log for file operations
                 const input = block.input as Record<string, any> | undefined;
                 const filePath = input?.file_path || input?.path || '';
                 if (block.name === 'Write' || block.name === 'Edit' || block.name === 'Delete' || block.name === 'Rename') {
-                  try { writeAudit({ agent: agentName, action: `file.${block.name.toLowerCase()}`, resource: filePath || 'unknown', details: block.name === 'Write' ? (input?.content || '').slice(0, 100) : '' }); } catch {}
+                  try { writeAudit({ agent: agentName, action: `file.${block.name.toLowerCase()}`, resource: filePath || 'unknown', details: block.name === 'Write' ? (input?.content || '').slice(0, 100) : '' }); } catch (e) { console.error('[lib:chat]', e); }
                 } else if (block.name === 'Bash') {
-                  try { writeAudit({ agent: agentName, action: 'file.bash', resource: '', details: (input?.command || '').slice(0, 120) }); } catch {}
+                  try { writeAudit({ agent: agentName, action: 'file.bash', resource: '', details: (input?.command || '').slice(0, 120) }); } catch (e) { console.error('[lib:chat]', e); }
                 }
               } else if (isTextBlock(block) && block.text) {
                 fullReply += block.text; hasContent = true;
@@ -736,7 +716,7 @@ export async function createChatStream(agentName: string, userMessage: string, g
                 // Allows users to navigate away and come back to see partial results.
                 incrementalSaveCounter++;
                 if (incrementalSaveCounter % 8 === 0 && sessionId) {
-                  try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {}
+                  try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch (e) { console.error('[lib:chat]', e); }
                 }
               }
             }
@@ -788,7 +768,7 @@ export async function createChatStream(agentName: string, userMessage: string, g
                 req.on('error', () => {});
                 req.write(payload);
                 req.end();
-              } catch {}
+              } catch (e) { console.error('[lib:chat]', e); }
             }
           }
         }
@@ -804,7 +784,7 @@ export async function createChatStream(agentName: string, userMessage: string, g
         clearActivity(agentName);
         untrackQuery(abortController);
         // v0.6: Always save session on error — prevents message loss
-        try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch {}
+        try { savePartialState(agentName, { userMessage, fullReply, allEvents, sessionId }); } catch (e) { console.error('[lib:chat]', e); }
         ctrl.enqueue({ type: 'error', content: err.message || String(err), timestamp: ts() });
         ctrl.enqueue({ type: 'done', content: '', timestamp: ts() });
       }

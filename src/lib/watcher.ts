@@ -76,8 +76,8 @@ export function startWatcher(): void {
 }
 
 export function stopWatcher(): void {
-  for (const w of directoryWatchers) { try { w.close(); } catch {} }
-  for (const fw of fileWatchers) { try { fs.unwatchFile(fw.path); } catch {} }
+  for (const w of directoryWatchers) { try { w.close(); } catch (e) { console.error('[lib:watcher]', e); } }
+  for (const fw of fileWatchers) { try { fs.unwatchFile(fw.path); } catch (e) { console.error('[lib:watcher]', e); } }
   directoryWatchers = [];
   fileWatchers = [];
   if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
@@ -96,7 +96,7 @@ export function stopWatcher(): void {
  */
 export function refreshFileWatchers(): void {
   // Tear down old
-  for (const fw of fileWatchers) { try { fs.unwatchFile(fw.path); } catch {} }
+  for (const fw of fileWatchers) { try { fs.unwatchFile(fw.path); } catch (e) { console.error('[lib:watcher]', e); } }
   fileWatchers = [];
 
   const filesToWatch: string[] = [];
@@ -147,7 +147,7 @@ export function refreshFileWatchers(): void {
         }
       });
       fileWatchers.push({ watcher: w, path: fp });
-    } catch {}
+    } catch (e) { console.error('[lib:watcher]', e); }
   }
 
   if (fileWatchers.length > 0) {

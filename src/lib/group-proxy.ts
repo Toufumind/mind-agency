@@ -94,7 +94,7 @@ export class GroupProxy {
         this._config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         agentCache.set('groupConfig', this.name, this._config);
       }
-    } catch {}
+    } catch (e) { console.error('[lib:group-proxy]', e); }
 
     this._configLoaded = true;
     return this._config;
@@ -137,7 +137,7 @@ export class GroupProxy {
             joinedAt: fs.statSync(path.join(agentsDir, e.name)).mtimeMs,
           }));
       }
-    } catch {}
+    } catch (e) { console.error('[lib:group-proxy]', e); }
 
     this._membersLoaded = true;
     return this._members;
@@ -211,9 +211,9 @@ export class GroupProxy {
               });
             }
           }
-        } catch {}
+        } catch (e) { console.error('[lib:group-proxy]', e); }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:group-proxy]', e); }
 
     return messages;
   }
@@ -262,7 +262,7 @@ export class GroupProxy {
       this._workflowLoaded = true;
 
       return this._workflow;
-    } catch {}
+    } catch (e) { console.error('[lib:group-proxy]', e); }
     return null;
   }
 
@@ -296,7 +296,7 @@ export class GroupProxy {
       if (!fs.existsSync(filesDir)) return [];
 
       return fs.readdirSync(filesDir).filter(f => !f.startsWith('.'));
-    } catch {}
+    } catch (e) { console.error('[lib:group-proxy]', e); }
     return [];
   }
 
@@ -321,7 +321,7 @@ export class GroupProxy {
       if (!fs.existsSync(filePath)) return null;
 
       return fs.readFileSync(filePath);
-    } catch {}
+    } catch (e) { console.error('[lib:group-proxy]', e); }
     return null;
   }
 

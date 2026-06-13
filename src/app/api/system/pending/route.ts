@@ -44,7 +44,7 @@ export async function GET() {
         createdAt: wf.createdAt || Date.now(),
       });
     }
-  } catch {}
+  } catch (e) { console.error('[app:api:system:pending:route]', e); }
 
   items.sort((a, b) => b.createdAt - a.createdAt);
 

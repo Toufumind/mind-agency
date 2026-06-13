@@ -77,8 +77,8 @@ export default function FlowCanvas({ workflows, runs, onSelectWorkflow, selected
       return newZ;
     });
   };el.addEventListener('wheel',h,{passive:false});return()=>el.removeEventListener('wheel',h)},[]);
-  useEffect(()=>{try{localStorage.setItem('flow-pan',JSON.stringify(pan))}catch{}},[pan]);
-  useEffect(()=>{try{localStorage.setItem('flow-zoom',String(zoom))}catch{}},[zoom]);
+  useEffect(()=>{try{localStorage.setItem('flow-pan',JSON.stringify(pan))}catch (e) { console.error('[components:flow-canvas]', e); }},[pan]);
+  useEffect(()=>{try{localStorage.setItem('flow-zoom',String(zoom))}catch (e) { console.error('[components:flow-canvas]', e); }},[zoom]);
 
   useEffect(()=>{
     try{

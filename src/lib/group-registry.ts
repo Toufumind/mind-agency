@@ -115,7 +115,7 @@ class GroupRegistry {
           }
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:group-registry]', e); }
   }
 }
 

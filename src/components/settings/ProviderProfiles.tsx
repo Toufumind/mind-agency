@@ -27,7 +27,7 @@ export default function ProviderProfiles({ lang }: { lang: string }) {
       const res = await fetch('/api/system/providers');
       const data = await res.json();
       setProfiles(data.profiles || []);
-    } catch {}
+    } catch (e) { console.error('[components:settings:ProviderProfiles]', e); }
     setLoading(false);
   };
 
@@ -38,7 +38,7 @@ export default function ProviderProfiles({ lang }: { lang: string }) {
     try {
       await fetch(`/api/system/providers?id=${id}&action=activate`, { method: 'PUT' });
       await load();
-    } catch {}
+    } catch (e) { console.error('[components:settings:ProviderProfiles]', e); }
     setActivating(null);
   };
 
@@ -53,7 +53,7 @@ export default function ProviderProfiles({ lang }: { lang: string }) {
       setNewProfile({ name: '', provider: 'claude', apiKey: '', baseUrl: '', model: '' });
       setShowAdd(false);
       await load();
-    } catch {}
+    } catch (e) { console.error('[components:settings:ProviderProfiles]', e); }
   };
 
   const remove = async (id: string) => {
@@ -61,7 +61,7 @@ export default function ProviderProfiles({ lang }: { lang: string }) {
     try {
       await fetch(`/api/system/providers?id=${id}`, { method: 'DELETE' });
       await load();
-    } catch {}
+    } catch (e) { console.error('[components:settings:ProviderProfiles]', e); }
   };
 
   return (

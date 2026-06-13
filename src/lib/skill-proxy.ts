@@ -69,10 +69,10 @@ export class SkillProxy {
           if (fs.existsSync(promptPath)) {
             prompt = fs.readFileSync(promptPath, 'utf-8').trim();
           }
-        } catch {}
+        } catch (e) { console.error('[lib:skill-proxy]', e); }
         skills.push({ name: entry.name, prompt });
       }
-    } catch {}
+    } catch (e) { console.error('[lib:skill-proxy]', e); }
 
     this._agentSkillsCache.set(agentName, skills);
     this._loaded.set(agentName, true);

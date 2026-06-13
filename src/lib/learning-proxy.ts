@@ -71,10 +71,10 @@ export class LearningProxy {
         for (const line of lines) {
           try {
             records.push(JSON.parse(line));
-          } catch {}
+          } catch (e) { console.error('[lib:learning-proxy]', e); }
         }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:learning-proxy]', e); }
 
     this._records.set(cacheKey, records);
     this._loaded.set(cacheKey, true);
@@ -101,11 +101,11 @@ export class LearningProxy {
               if (record.agent === agentName) {
                 allRecords.push(record);
               }
-            } catch {}
+            } catch (e) { console.error('[lib:learning-proxy]', e); }
           }
-        } catch {}
+        } catch (e) { console.error('[lib:learning-proxy]', e); }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:learning-proxy]', e); }
 
     return allRecords;
   }
@@ -164,11 +164,11 @@ export class LearningProxy {
           for (const line of lines) {
             try {
               allRecords.push(JSON.parse(line));
-            } catch {}
+            } catch (e) { console.error('[lib:learning-proxy]', e); }
           }
-        } catch {}
+        } catch (e) { console.error('[lib:learning-proxy]', e); }
       }
-    } catch {}
+    } catch (e) { console.error('[lib:learning-proxy]', e); }
 
     return allRecords;
   }

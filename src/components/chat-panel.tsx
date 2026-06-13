@@ -115,20 +115,20 @@ async function memoryCmd(agentName: string) {
       parts.push(`\n**Agent:** ${agent.name}`);
       parts.push(`Emails: ${agent.emailCount}`);
     }
-  } catch {}
+  } catch (e) { console.error('[components:chat-panel]', e); }
   // Fetch chat history length
   try {
     const r = await fetch(`/api/agents/${agentName}/chat`);
     const d = await r.json();
     const count = d.messages?.length || 0;
     parts.push(`Messages: ${count}`);
-  } catch {}
+  } catch (e) { console.error('[components:chat-panel]', e); }
   // Fetch groups
   try {
     const r = await fetch(`/api/groups/scan?agent=${agentName}`);
     const d = await r.json();
     parts.push(`Groups: ${(d.groups || []).join(', ') || 'none'}`);
-  } catch {}
+  } catch (e) { console.error('[components:chat-panel]', e); }
   parts.push(`\n\`\`\`\nCLAUDE.md loaded from project root + Agents/${agentName}/\n\`\`\``);
   return parts.join('\n');
 }
@@ -211,14 +211,14 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
         setTimeout(() => setToastMsg(''), 4000);
       }
       setEmailCount(Array.isArray(emails) ? emails.length : 0);
-    } catch {}
+    } catch (e) { console.error('[components:chat-panel]', e); }
   }, [agentName, emailCount]);
 
   const loadGroups = useCallback(async () => {
     try {
       const r = await fetch('/api/groups/scan?agent=' + agentName);
       setMyGroups((await r.json()).groups || []);
-    } catch {}
+    } catch (e) { console.error('[components:chat-panel]', e); }
   }, [agentName]);
 
   // Load history on mount: localStorage first, API as fallback/backfill
@@ -232,7 +232,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
           setMsgs(parsed);
         }
       }
-    } catch {}
+    } catch (e) { console.error('[components:chat-panel]', e); }
 
     // Backfill from server (may have newer messages)
     const load = () => {
@@ -241,10 +241,10 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
           if (!d.messages || busyRef.current) return;
           // Only replace if server has more messages than local
           let localCount = 0;
-          try { const p = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(p)) localCount = p.length; } catch {}
+          try { const p = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if (Array.isArray(p)) localCount = p.length; } catch (e) { console.error('[components:chat-panel]', e); }
           if (d.messages.length > localCount) {
             setMsgs(d.messages);
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d.messages)); } catch {}
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d.messages)); } catch (e) { console.error('[components:chat-panel]', e); }
           }
         }).catch(() => {});
     };
@@ -300,7 +300,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
     getMessages: () => msgs,
     clearMessages: () => {
       setMsgs([]);
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) { console.error('[components:chat-panel]', e); }
     },
   }), [msgs]);
 
@@ -430,7 +430,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
                 events: [...msg.events, evt],
                 content: evt.type === 'text' ? msg.content + (evt.content || '') : msg.content,
               }));
-            } catch {}
+            } catch (e) { console.error('[components:chat-panel]', e); }
           }
         }
       }
@@ -650,7 +650,7 @@ const Tool = React.memo(function Tool({ name, input }: { name: string; input: st
 
   // v0.4: Parse file operations for diff display
   let parsed: any = null;
-  try { parsed = JSON.parse(input); } catch {}
+  try { parsed = JSON.parse(input); } catch (e) { console.error('[components:chat-panel]', e); }
   const isFileOp = parsed && ['Write', 'Edit', 'Delete', 'Read'].includes(parsed.tool_name || short);
   const filePath = parsed?.file_path || parsed?.path || '';
   const isWrite = short === 'Write' || parsed?.tool_name === 'Write';

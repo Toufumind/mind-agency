@@ -16,7 +16,7 @@ export async function loadAgentTasks(agentName: string): Promise<AgentTask[]> {
     if (fs.existsSync(file)) {
       return JSON.parse(fs.readFileSync(file, 'utf-8'));
     }
-  } catch {}
+  } catch (e) { console.error('[lib:agent-task]', e); }
   return [];
 }
 

@@ -25,7 +25,7 @@ export async function GET() {
     if (models.length > 0) {
       return NextResponse.json({ models, source: 'api' });
     }
-  } catch {}
+  } catch (e) { console.error('[app:api:system:models:route]', e); }
 
   // API query failed — use the configured model from settings
   const configuredModel = agency.system.settings.model || '';

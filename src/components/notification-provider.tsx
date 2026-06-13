@@ -83,7 +83,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             } else if (data.type === 'sidebar_refresh') {
               // Handled by sidebar context directly
             }
-          } catch {}
+          } catch (e) { console.error('[components:notification-provider]', e); }
         };
         ws.onclose = () => { if (!stopped) reconnectTimer = setTimeout(connect, 3000); };
         ws.onerror = () => { ws?.close(); };
