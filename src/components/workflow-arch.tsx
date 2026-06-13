@@ -693,49 +693,55 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
             });
           })}
 
-          {/* Route arrows (conditional jumps, dashed) */}
-          {steps.flatMap(step => {
-            if (!step.routes?.length) return [];
-            const from = positions.get(step.id);
-            if (!from) return [];
-            return step.routes.map(route => {
-              const to = positions.get(route.step);
-              if (!to) return null;
-              // Route: from right edge → right → loop back to target's right edge
-              const x1 = from.x + from.w;
-              const y1 = from.y + from.h / 2;
-              const x2 = to.x + to.w;
-              const y2 = to.y + to.h / 2;
-              const midX = Math.max(x1, x2) + 35;
-              const r = 10;
-              const goingUp = y1 > y2;
-              const vOff = goingUp ? r : -r;
-              // U-shape: right → down/up → left
-              const path = `M ${x1} ${y1} L ${midX - r} ${y1} Q ${midX} ${y1} ${midX} ${y1 + vOff} L ${midX} ${y2 - vOff} Q ${midX} ${y2} ${midX - r} ${y2} L ${x2} ${y2}`;
-              return (
-                <g key={`route-${step.id}-${route.step}`}>
-                  <path
-                    d={path}
-                    fill="none"
-                    stroke="#f59e0b"
-                    strokeWidth={1.5}
-                    strokeDasharray="6,3"
-                    markerEnd="url(#route-arrow)"
-                  />
-                  <text
-                    x={midX + 4}
-                    y={(y1 + y2) / 2}
-                    fontSize={8}
-                    fill="#f59e0b"
-                    fontFamily={STYLE.monoFont}
-                    dominantBaseline="middle"
-                  >
-                    {route.when}
-                  </text>
-                </g>
-              );
+          {/* Route arrows (conditional jumps, dashed) — always route OUTSIDE */}
+          {(() => {
+            // Find rightmost block edge for outside routing
+            let maxRight = 0;
+            positions.forEach(p => { maxRight = Math.max(maxRight, p.x + p.w); });
+            const outsideX = maxRight + 40; // always go past all blocks
+
+            return steps.flatMap(step => {
+              if (!step.routes?.length) return [];
+              const from = positions.get(step.id);
+              if (!from) return [];
+              return step.routes.map(route => {
+                const to = positions.get(route.step);
+                if (!to) return null;
+                // Route: from right edge → outside all blocks → back to target's right edge
+                const x1 = from.x + from.w;
+                const y1 = from.y + from.h / 2;
+                const x2 = to.x + to.w;
+                const y2 = to.y + to.h / 2;
+                const r = 10;
+                const goingUp = y1 > y2;
+                const vOff = goingUp ? r : -r;
+                // U-shape: right (past all blocks) → down/up → left back to target
+                const path = `M ${x1} ${y1} L ${outsideX - r} ${y1} Q ${outsideX} ${y1} ${outsideX} ${y1 + vOff} L ${outsideX} ${y2 - vOff} Q ${outsideX} ${y2} ${outsideX - r} ${y2} L ${x2} ${y2}`;
+                return (
+                  <g key={`route-${step.id}-${route.step}`}>
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth={1.5}
+                      strokeDasharray="6,3"
+                      markerEnd="url(#route-arrow)"
+                    />
+                    <text
+                      x={outsideX + 6}
+                      y={(y1 + y2) / 2}
+                      fontSize={8}
+                      fill="#f59e0b"
+                      fontFamily={STYLE.monoFont}
+                      dominantBaseline="middle"
+                    >
+                      {route.when}
+                    </text>
+                  </g>
+                );
+              });
             });
-          })}
+          })()}
 
           {/* Step blocks */}
           {[...positions.entries()].map(([sid, p]) => {
