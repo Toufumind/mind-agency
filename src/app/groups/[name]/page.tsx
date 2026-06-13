@@ -526,7 +526,7 @@ export default function GroupPage() {
                     run={currentRun ? { ...currentRun, startedAt: Date.now() } : null}
                     onTrigger={runWorkflow}
                     running={wfRunning}
-                    onStepClick={(step) => openWfEditor({ id: step.id, agent: step.agent || '', action: step.action || 'execute', prompt: step.prompt || '', dependsOn: step.dependsOn || [], reviewer: step.reviewer || '', priority: '' })}
+                    onStepClick={(step) => openWfEditor({ id: step.id, agent: step.agent || '', action: step.action || 'execute', prompt: step.prompt || '', dependsOn: step.dependsOn || [], priority: '' })}
                     onStepAdd={(afterId) => addStep(afterId)}
                     onStepDelete={(stepId) => deleteStep(stepId)}
                     onEdgeClick={(from, to) => editEdge(from, to)}
