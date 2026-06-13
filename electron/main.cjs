@@ -319,7 +319,8 @@ ipcMain.handle('update:restart', restartForUpdate);
 ipcMain.handle('update:version', () => CURRENT_VERSION);
 
 app.whenReady().then(async () => {
-  console.log(`[mind] v0.3 — ${isDev ? 'DEV' : 'PROD'}`);
+  const pkg = require('./package.json');
+  console.log(`[mind] v${pkg.version} — ${isDev ? 'DEV' : 'PROD'}`);
   console.log(`[mind] App:  ${APP_ROOT}`);
   console.log(`[mind] Data: ${DATA_DIR}`);
 

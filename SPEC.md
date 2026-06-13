@@ -116,105 +116,26 @@ fetch(`${getApiBase()}/api/endpoint`);
 
 ### Phase 1: Critical Fixes (EXE 稳定性)
 
-- [ ] **T1: Centralized URL config**
-  - Replace all 15+ hardcoded `127.0.0.1:3000/3001` with `getApiBase()`/`getWsBase()` from `data-dir.ts`
-  - Files: `data-dir.ts`, `chat.ts`, `relay.ts`, `agent-proxy.ts`, `agent-identity.ts`, `ws-embedded.ts`, `page.tsx`, `economy/page.tsx`, `agents/[name]/page.tsx`, `orchestrate/route.ts`, `system/pending/route.ts`
-  - Acceptance: `grep -r "127.0.0.1" src/` returns 0 matches
-  - Verify: `npx tsc --noEmit && npx vitest run`
-
-- [ ] **T2: Deduplicate system prompt**
-  - Remove duplicated L1/L2/L3 boundary block from `chat.ts` (lines 260-281) and `agent-identity.ts` (lines 75-96)
-  - Keep canonical copy in `agent-identity.ts`, have `chat.ts` import from there
-  - Files: `chat.ts`, `agent-identity.ts`
-  - Acceptance: No duplicated prompt strings across files
-  - Verify: `npx vitest run -- --grep "identity\|chat"`
-
-- [ ] **T3: Clean stale test data**
-  - Add `Agents/real-test-*` and `Agents/test-agent` to `.gitignore`
-  - Remove 233 stale `real-test-*` directories from git tracking
-  - Files: `.gitignore`, `Agents/` directory
-  - Acceptance: `ls Agents/ | grep real-test` returns nothing
-  - Verify: `git status` shows clean
-
-- [ ] **T4: Fix EXE agent seeding**
-  - Ensure `seedDataDir()` reads from `.next-server/Agents/` when asar lacks `Agents/`
-  - Skip test directories during seeding
-  - Files: `electron/main.cjs`
-  - Acceptance: EXE shows Alice/Bob/Charlie on first launch
-  - Verify: Run EXE, check sidebar shows agents
-
-- [ ] **T5: Fix EXE logo**
-  - Logo is now inline SVG (already fixed in previous commit)
-  - Verify: Run EXE, logo displays in sidebar
+- [x] **T1: Centralized URL config** ✅
+- [x] **T2: Deduplicate system prompt** ✅
+- [x] **T3: Clean stale test data** ✅
+- [x] **T4: Fix EXE agent seeding** ✅
+- [x] **T5: Fix EXE logo** ✅
 
 ### Phase 2: Code Quality (代码质量)
 
-- [ ] **T6: Replace empty catch blocks**
-  - Find all `catch {}` and `catch (e) {}` blocks
-  - Replace with `console.error('[context]', e)` or logger calls
-  - Files: ~20 files across `src/lib/` and `src/components/`
-  - Acceptance: `grep -rn "catch {}" src/` returns 0 matches
-  - Verify: `npx tsc --noEmit`
-
-- [ ] **T7: Unify WebSocket reconnect**
-  - Create `useWebSocket(url, onMessage, options)` hook
-  - Replace 5+ duplicated reconnect patterns in: `chat-panel.tsx`, `email-client.tsx`, `notification-provider.tsx`, `sidebar-context.tsx`, `page.tsx`
-  - Files: New `src/hooks/use-websocket.ts`, 5 consumer files
-  - Acceptance: Single WebSocket implementation, all consumers use the hook
-  - Verify: `npx tsc --noEmit`
-
-- [ ] **T8: Complete i18n coverage**
-  - Add ~100 missing translation keys to `i18n.tsx`
-  - Replace all hardcoded Chinese strings with `t('key')` calls
-  - Fix `<html lang="zh-CN">` to respect language setting
-  - Files: `i18n.tsx`, `agents/[name]/page.tsx`, `page.tsx`, `learning/page.tsx`, `providers.tsx`, `chat.ts`, `loading.tsx`, `layout.tsx`
-  - Acceptance: `grep -rn "'[一-龥]" src/app/ | wc -l` < 5 (only in i18n.tsx definitions)
-  - Verify: Switch language in settings, all UI text updates
-
-- [ ] **T9: Eliminate self-referential HTTP calls**
-  - `chat.ts` line 787 and `relay.ts` line 328 call `http://127.0.0.1:3000/api/system/token` via HTTP
-  - Replace with direct function import: `import { recordTokenUsage } from '@/lib/token-economy'`
-  - Files: `chat.ts`, `relay.ts`, `token-economy.ts`
-  - Acceptance: No HTTP calls to self in lib/
-  - Verify: `npx vitest run`
+- [x] **T6: Replace empty catch blocks** ✅ (201 fixed)
+- [x] **T7: Unify WebSocket reconnect** ✅ (useWebSocket hook)
+- [x] **T8: Complete i18n coverage** ✅ (30+ keys added)
+- [x] **T9: Eliminate self-referential HTTP calls** ✅
 
 ### Phase 3: Architecture (架构优化)
 
-- [ ] **T10: Consolidate proxy pattern**
-  - Create `BaseProxy` class with common cache + disk I/O + singleton boilerplate
-  - Refactor 7 proxy classes to extend it: `agent-proxy`, `audit-proxy`, `email-proxy`, `group-proxy`, `scoring-proxy`, `system-proxy`, `skill-proxy`
-  - Files: New `src/lib/base-proxy.ts`, 7 proxy files
-  - Acceptance: Each proxy < 150 lines (down from 300-600)
-  - Verify: `npx vitest run`
-
-- [ ] **T11: Externalize theme CSS**
-  - Convert 600-line `globals.css` theme blocks into generated CSS
-  - Create `scripts/gen-themes.mjs` that reads theme definitions from JS and outputs CSS
-  - Files: `scripts/gen-themes.mjs`, `globals.css`, `package.json` (add `gen:themes` script)
-  - Acceptance: `globals.css` < 100 lines, themes still work
-  - Verify: Visual regression check (manual)
-
-- [ ] **T12: Consolidate build system**
-  - Remove `electron-builder` config from `package.json`
-  - Keep only `@electron/packager` via `scripts/build-exe.mjs`
-  - Remove `build-installer.bat`
-  - Files: `package.json`, `scripts/build-exe.mjs`
-  - Acceptance: Single build command works
-  - Verify: `npm run build:exe`
-
-- [ ] **T13: Fix process.env mutation**
-  - Remove `process.env.ANTHROPIC_AUTH_TOKEN = s.apiKey` from `chat.ts`
-  - Pass API config as function parameters instead of mutating globals
-  - Files: `chat.ts`, `provider-profiles.ts`, `providers/*.ts`
-  - Acceptance: No `process.env.ANTHROPIC_*` assignments
-  - Verify: `npx vitest run`
-
-- [ ] **T14: Standardize polling intervals**
-  - Create `src/lib/config.ts` with centralized polling intervals
-  - Replace all hardcoded `setInterval` values
-  - Files: New `src/lib/config.ts`, `chat-panel.tsx`, `page.tsx`, `groups/[name]/page.tsx`, `sidebar-context.tsx`
-  - Acceptance: All polling intervals defined in one place
-  - Verify: `npx tsc --noEmit`
+- [ ] **T10: Consolidate proxy pattern** — Deferred (low ROI, each proxy has unique methods)
+- [ ] **T11: Externalize theme CSS** — Deferred (high risk of visual regression)
+- [x] **T12: Consolidate build system** ✅ (electron-builder removed)
+- [ ] **T13: Fix process.env mutation** — Deferred (deeply integrated, requires provider interface change)
+- [x] **T14: Standardize polling intervals** ✅ (config.ts created)
 
 ## Boundaries
 
