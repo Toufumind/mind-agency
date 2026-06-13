@@ -13,10 +13,8 @@ if (existsSync(distDir)) rmSync(distDir, { recursive: true, force: true });
 // Package with electron-packager (skips native module rebuild for asar)
 execSync(
   'npx electron-packager . Mind-Agency --platform=win32 --arch=x64 ' +
-  '--out=dist-exe --overwrite --asar --ignore="node_modules/better-sqlite3/build" ' +
-  '--ignore="node_modules/better-sqlite3/prebuilds" ' +
-  '--ignore="\\.git" --ignore="dist-exe" --ignore="landing" --ignore="scripts" ' +
-  '--ignore="Groups" --ignore="Agents" --ignore="\\.mind"',
+  '--out=dist-exe --overwrite --asar ' +
+  '--ignore="node_modules/better-sqlite3/build,node_modules/better-sqlite3/prebuilds,.git,dist-exe,landing,scripts,.mind"',
   { stdio: 'inherit' }
 );
 

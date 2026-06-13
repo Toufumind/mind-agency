@@ -138,6 +138,7 @@ export class Agency {
   async getPendingTasks(agentName: string): Promise<import('./agent-proxy').AgentTask[]> {
     const proxy = this.getAgent(agentName);
     const tasks = await proxy.loadTasks();
+    if (!Array.isArray(tasks)) return [];
     return tasks.filter(t => t.status === 'pending' || t.status === 'in_progress');
   }
 
