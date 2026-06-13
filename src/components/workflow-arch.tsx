@@ -27,16 +27,31 @@ function getColor(action: string) { const k = action?.toLowerCase() || ''; for (
 function buildLayers(steps: Step[]): Step[][] { const map = new Map(steps.map(s => [s.id, s])); const memo = new Map<string, number>(); const d = (id: string): number => { if (memo.has(id)) return memo.get(id)!; const s = map.get(id); if (!s?.dependsOn?.length) { memo.set(id, 0); return 0; } memo.set(id, Math.max(...s.dependsOn.map(d)) + 1); return memo.get(id)!; }; steps.forEach(s => d(s.id)); const layers = new Map<number, Step[]>(); for (const s of steps) { const k = memo.get(s.id) || 0; if (!layers.has(k)) layers.set(k, []); layers.get(k)!.push(s); } return [...layers.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v); }
 
 // ═══════ ARROW PATH ═══════
-// Smooth S-curve bezier from (x1,y1) to (x2,y2)
-function sCurve(x1: number, y1: number, x2: number, y2: number): string {
-  const midY = (y1 + y2) / 2;
-  return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
-}
+// Rounded-corner L-shape from (x1,y1) to (x2,y2) via bendX
+// bendX is the X position where the vertical segment runs
+function arrowPath(x1: number, y1: number, x2: number, y2: number, bendX: number, r: number = 14): string {
+  // Direction
+  const vDir = y2 > y1 ? 1 : -1;  // +1 down, -1 up
+  const hDir = bendX > x1 ? 1 : -1;
 
-// U-shape path for route arrows (goes to the right of all blocks)
-function uShape(x1: number, y1: number, x2: number, y2: number, outsideX: number, r: number): string {
-  const vOff = y2 > y1 ? r : -r;
-  return `M ${x1} ${y1} L ${outsideX - r} ${y1} Q ${outsideX} ${y1} ${outsideX} ${y1 + vOff} L ${outsideX} ${y2 - vOff} Q ${outsideX} ${y2} ${outsideX - r} ${y2} L ${x2} ${y2}`;
+  // Clamp radius to available space
+  const vMid = Math.abs(y2 - y1) / 2;
+  const hMid = Math.abs(bendX - x1) / 2;
+  const rc = Math.min(r, vMid * 0.9, hMid * 0.9);
+
+  if (rc < 1) {
+    return `M ${x1} ${y1} L ${bendX} ${y1} L ${bendX} ${y2} L ${x2} ${y2}`;
+  }
+
+  // First corner: horizontal → vertical
+  const cx1 = x1 + hDir * rc;
+  const cy1 = y1 + vDir * rc;
+
+  // Second corner: vertical → horizontal
+  const cx2 = bendX;
+  const cy2 = y2 - vDir * rc;
+
+  return `M ${x1} ${y1} L ${cx1} ${y1} Q ${x1} ${y1} ${x1} ${cy1} L ${bendX} ${cy1} L ${bendX} ${cy2} Q ${bendX} ${y2} ${cx2 + (x2 > bendX ? -rc : rc)} ${y2} L ${x2} ${y2}`;
 }
 
 // ═══════ CSS ═══════
@@ -192,12 +207,12 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
           <filter id="shadow"><feDropShadow dx="0" dy="4" stdDeviation="4" floodOpacity=".15" /></filter>
         </defs>
 
-        {/* DependsOn arrows — smooth S-curves */}
-        {layers.flatMap((layer, li) => { if (li >= n - 1) return []; return layer.flatMap(step => { const f = gp(step.id); if (!f) return []; return layers[li + 1].filter(t => t.dependsOn?.includes(step.id)).map(t => { const to = gp(t.id); if (!to) return null; return <path key={`${step.id}-${t.id}`} d={sCurve(f.x + f.w / 2, f.y, to.x + to.w / 2, to.y + to.h)} fill="none" stroke="#52525b" strokeWidth={1.5} markerEnd="url(#arrow)" style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onEdgeClick?.(step.id, t.id); }} onMouseEnter={e => { e.currentTarget.setAttribute('stroke', '#3b82f6'); e.currentTarget.setAttribute('stroke-width', '2.5'); }} onMouseLeave={e => { e.currentTarget.setAttribute('stroke', '#52525b'); e.currentTarget.setAttribute('stroke-width', '1.5'); }} />; }); }); })}
+        {/* DependsOn arrows — rounded-corner L-shape */}
+        {layers.flatMap((layer, li) => { if (li >= n - 1) return []; return layer.flatMap(step => { const f = gp(step.id); if (!f) return []; return layers[li + 1].filter(t => t.dependsOn?.includes(step.id)).map(t => { const to = gp(t.id); if (!to) return null; const bendX = (f.x + f.w / 2 + to.x + to.w / 2) / 2; return <path key={`${step.id}-${t.id}`} d={arrowPath(f.x + f.w / 2, f.y, to.x + to.w / 2, to.y + to.h, bendX)} fill="none" stroke="#52525b" strokeWidth={1.5} markerEnd="url(#arrow)" style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onEdgeClick?.(step.id, t.id); }} onMouseEnter={e => { e.currentTarget.setAttribute('stroke', '#3b82f6'); e.currentTarget.setAttribute('stroke-width', '2.5'); }} onMouseLeave={e => { e.currentTarget.setAttribute('stroke', '#52525b'); e.currentTarget.setAttribute('stroke-width', '1.5'); }} />; }); }); })}
 
-        {/* Route arrows — U-shape with animated dashes */}
+        {/* Route arrows — same rounded-corner L-shape, bendX = right of all blocks */}
         {(() => { let mx = 0; positions.forEach(p => { mx = Math.max(mx, p.x + p.w); }); const ox = mx + 50;
-          return steps.flatMap(step => { if (!step.routes?.length) return []; const fr = gp(step.id); if (!fr) return []; return step.routes.map(rt => { const to = gp(rt.step); if (!to) return null; const x1 = fr.x + fr.w, y1 = fr.y + fr.h / 2, x2 = to.x + to.w, y2 = to.y + to.h / 2; return <g key={`r-${step.id}-${rt.step}`} style={{ pointerEvents: 'none' }}><path d={uShape(x1, y1, x2, y2, ox, 16)} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="6,3" style={{ animation: 'wf-dash 1s linear infinite' }} markerEnd="url(#route-arrow)" /><text x={ox + 8} y={(y1 + y2) / 2} fontSize={9} fill="#f59e0b" fontFamily='"JetBrains Mono",monospace' dominantBaseline="middle">{rt.when}</text></g>; }); }); })()}
+          return steps.flatMap(step => { if (!step.routes?.length) return []; const fr = gp(step.id); if (!fr) return []; return step.routes.map(rt => { const to = gp(rt.step); if (!to) return null; const x1 = fr.x + fr.w, y1 = fr.y + fr.h / 2, x2 = to.x + to.w, y2 = to.y + to.h / 2; return <g key={`r-${step.id}-${rt.step}`} style={{ pointerEvents: 'none' }}><path d={arrowPath(x1, y1, x2, y2, ox)} fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="6,3" style={{ animation: 'wf-dash 1s linear infinite' }} markerEnd="url(#route-arrow)" /><text x={ox + 8} y={(y1 + y2) / 2} fontSize={9} fill="#f59e0b" fontFamily='"JetBrains Mono",monospace' dominantBaseline="middle">{rt.when}</text></g>; }); }); })()}
 
         {/* Blocks */}
         {[...positions.entries()].map(([sid, p]) => { const step = steps.find(s => s.id === sid); if (!step) return null; return <Block key={sid} step={step} x={p.x} y={p.y} w={p.w} h={p.h} run={run} sel={sel === sid} onClick={() => { setSel(sid); setSb({ mode: 'edit', step }); }} onCtx={e => { const c = cRef.current; if (c) { const r = c.getBoundingClientRect(); setCtx({ x: e.clientX - r.left, y: e.clientY - r.top, step }); } }} />; })}
