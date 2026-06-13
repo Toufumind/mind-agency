@@ -32,14 +32,7 @@
     ],
     "win": {
       "forceCodeSigning": false,
-      "target": [
-        {
-          "target": "dir",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
+      "target": "nsis",
       "icon": "electron/icon.png"
     },
     "nsis": {

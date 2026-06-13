@@ -71,9 +71,38 @@
       "priority": "normal",
       "status": "pending",
       "createdAt": 1781290053821
+    },
+    {
+      "runId": "c8cbbb72-7df4-4832-a180-8b6c720c801f",
+      "stepId": "write",
+      "workflow": "test-basic",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781335246318
+    },
+    {
+      "runId": "4d0864f4-c090-4216-b6ca-c5af0b96d293",
+      "stepId": "write",
+      "workflow": "loop-test",
+      "prompt": "写一个简单的 Python 函数：判断一个数是否为质数。\n要求：包含类型注解和 docstring。\n",
+      "priority": "normal",
+      "status": "pending",
+      "createdAt": 1781344633828
     }
   ],
   "completed": [
+    {
+      "runId": "c8cbbb72-7df4-4832-a180-8b6c720c801f",
+      "stepId": "write",
+      "workflow": "test-basic",
+      "prompt": "写一个简单的 Python 函数：计算斐波那契数列第 n 项。\n要求：\n1. 支持递归和迭代两种方式\n2. 包含类型注解\n3. 包含 docstring\n\n直接输出完整代码，不需要解释。\n",
+      "priority": "normal",
+      "status": "completed",
+      "createdAt": 1781335053778,
+      "completedAt": 1781335246312,
+      "result": "Agent acknowledged task"
+    },
     {
       "runId": "a6003c25-52f8-4d3f-b08c-a11781b54e65",
       "stepId": "write",
@@ -611,17 +640,6 @@
       "status": "failed",
       "createdAt": 1781013602616,
       "completedAt": 1781013874256,
-      "result": "FAILED: 文件系统工具不可用，无法完成小说大纲创作任务\nrequire is not defined 错误，持续性系统问题"
-    },
-    {
-      "runId": "9767f621-b7f1-4744-a641-71dad183c1d2",
-      "stepId": "outline",
-      "workflow": "novel-writing",
-      "prompt": "创作一个短篇小说大纲：主题是AI与人类的友谊，字数500字以内，包含3个角色和5个情节转折",
-      "priority": "normal",
-      "status": "failed",
-      "createdAt": 1781013602610,
-      "completedAt": 1781013874244,
       "result": "FAILED: 文件系统工具不可用，无法完成小说大纲创作任务\nrequire is not defined 错误，持续性系统问题"
     }
   ]

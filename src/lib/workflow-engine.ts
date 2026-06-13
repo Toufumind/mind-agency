@@ -636,9 +636,10 @@ export class WorkflowEngine {
     if (!run) return;
     const sid = node.step.id;
 
-    // Route evaluation
+    // Route evaluation — pass step status for status functions
+    const stepStatus = StepStatus.COMPLETED;
     if (node.routes && node.routes.length > 0) {
-      const matchedRoute = node.routes.find(r => this.evalRouteCondition(r.when, output));
+      const matchedRoute = node.routes.find(r => this.evalRouteCondition(r.when, output, stepStatus));
       if (matchedRoute && nodes.has(matchedRoute.step)) {
         console.log(`[wf] ${sid} routed to ${matchedRoute.step} (when: ${matchedRoute.when})`);
         for (const depId of node.dependents) {
@@ -1147,24 +1148,38 @@ export class WorkflowEngine {
     }
   }
 
-  /** v0.5: Route condition evaluator — matches against step output */
-  private evalRouteCondition(when: string, output: string): boolean {
+  /** v0.8: Route condition evaluator — GitHub Actions-style expressions */
+  private evalRouteCondition(when: string, output: string, stepStatus?: string): boolean {
     if (!when) return false;
     const out = output.toLowerCase().trim();
 
-    // v1.1: AND/OR compound conditions
-    // "condition1 AND condition2" or "condition1 OR condition2"
-    const andParts = when.split(/\s+AND\s+/i);
-    if (andParts.length > 1) return andParts.every(p => this.evalRouteCondition(p.trim(), output));
-    const orParts = when.split(/\s+OR\s+/i);
-    if (orParts.length > 1) return orParts.some(p => this.evalRouteCondition(p.trim(), output));
+    // 1. Status functions: success(), failure(), always()
+    if (/^success\(\)$/i.test(when)) return stepStatus === 'completed' || stepStatus === undefined;
+    if (/^failure\(\)$/i.test(when)) return stepStatus === 'failed';
+    if (/^always\(\)$/i.test(when)) return true;
 
-    // v1.1: Score threshold — "score > 30", "score <= 20", "total >= 28"
+    // 2. NOT: !condition
+    if (when.startsWith('!')) return !this.evalRouteCondition(when.slice(1).trim(), output, stepStatus);
+
+    // 3. AND/OR compound conditions
+    const andParts = when.split(/\s+AND\s+/i);
+    if (andParts.length > 1) return andParts.every(p => this.evalRouteCondition(p.trim(), output, stepStatus));
+    const orParts = when.split(/\s+OR\s+/i);
+    if (orParts.length > 1) return orParts.some(p => this.evalRouteCondition(p.trim(), output, stepStatus));
+
+    // 4. String functions: contains(), startsWith(), endsWith()
+    const containsMatch = when.match(/^contains\(\s*['"](.+?)['"]\s*,\s*['"](.+?)['"]\s*\)$/i);
+    if (containsMatch) return out.includes(containsMatch[2].toLowerCase());
+    const startsMatch = when.match(/^startsWith\(\s*['"](.+?)['"]\s*,\s*['"](.+?)['"]\s*\)$/i);
+    if (startsMatch) return out.startsWith(startsMatch[2].toLowerCase());
+    const endsMatch = when.match(/^endsWith\(\s*['"](.+?)['"]\s*,\s*['"](.+?)['"]\s*\)$/i);
+    if (endsMatch) return out.endsWith(endsMatch[2].toLowerCase());
+
+    // 5. Score threshold: "score > 30", "total >= 28"
     const scoreMatch = when.match(/^(score|total)\s*([><=!]+)\s*(\d+)$/i);
     if (scoreMatch) {
       const op = scoreMatch[2];
       const threshold = parseInt(scoreMatch[3]);
-      // Extract score from output — look for patterns like "total=28/40" or "28/40" or just a number
       let score = 0;
       const totalMatch = output.match(/(?:total[=:]\s*)?(\d+)\s*\/\s*40/i);
       if (totalMatch) score = parseInt(totalMatch[1]);
@@ -1181,7 +1196,7 @@ export class WorkflowEngine {
       return false;
     }
 
-    // v1.1: Regex match — "regex:pattern"
+    // 6. Regex: "regex:pattern"
     const regexMatch = when.match(/^regex:(.+)$/i);
     if (regexMatch) {
       try { return new RegExp(regexMatch[1], 'i').test(output); } catch { return false; }

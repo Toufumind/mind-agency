@@ -1,71 +1,30 @@
-name: code-review-pipeline
-description: 代码审查工作流 — Alice 写代码，Bob 审查，Charlie 测试
+name: loop-test
+description: 循环测试 — Alice 写，Bob 审查，不通过就回到 Alice 重写
 
 steps:
   - id: write
     agent: Alice
     action: create
     prompt: |
-      写一个简单的 Python 函数：计算斐波那契数列第 n 项。
-      要求：
-      1. 支持递归和迭代两种方式
-      2. 包含类型注解
-      3. 包含 docstring
-      4. 包含 3 个单元测试
-
-      直接输出完整代码，不需要解释。
+      写一个简单的 Python 函数：判断一个数是否为质数。
+      要求：包含类型注解和 docstring。
     timeout: 120000
 
   - id: review
     agent: Bob
     action: review
     dependsOn: [write]
-    reviewer: Bob
     prompt: |
-      审查 Alice 写的斐波那契函数代码。
-
-      审查要点：
-      1. 代码质量（命名、结构、可读性）
-      2. 性能（递归 vs 迭代）
-      3. 边界情况处理
-      4. 测试覆盖率
-
-      输出格式：
-      VERDICT: APPROVED 或 NEEDS_REVISION
-      SCORE: 1-10
-      FINDINGS: 问题列表
-      SUGGESTIONS: 改进建议
+      审查代码质量。输出 VERDICT: APPROVED 或 NEEDS_REVISION
     timeout: 120000
 
-  - id: test
-    agent: Charlie
-    action: verify
-    dependsOn: [review]
-    prompt: |
-      测试 Alice 写的斐波那契函数。
-
-      测试内容：
-      1. 基本功能测试（n=0,1,5,10）
-      2. 边界测试（n=负数, n=很大）
-      3. 性能测试（n=50 的执行时间）
-
-      输出格式：
-      TEST_RESULT: PASS 或 FAIL
-      DETAILS: 测试详情
-      PERFORMANCE: 执行时间
-    timeout: 120000
-
-  - id: final-report
+  - id: rewrite
     agent: Alice
     action: create
-    dependsOn: [test]
+    dependsOn: [review]
     prompt: |
-      根据 Bob 的审查和 Charlie 的测试结果，生成最终报告。
-
-      报告格式：
-      ## 代码审查报告
-      - 代码质量评分
-      - 测试结果
-      - 改进建议
-      - 最终结论
+      根据 Bob 的审查意见修改代码。
     timeout: 120000
+    routes:
+      - step: review
+        when: "NEEDS_REVISION"
