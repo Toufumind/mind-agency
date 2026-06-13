@@ -43,31 +43,29 @@ function seedDataDir() {
 
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  // Always overwrite Agents/ and Groups/ with clean bundled copy.
-  // Preserve .audit/ and .mind/ (user settings, tokens, memories).
+  // Seed Agents/ and Groups/ — only copy missing files (don't overwrite user data)
   for (const m of ['Agents', 'Groups']) {
     const src = path.join(APP_ROOT, m);
     const dest = path.join(DATA_DIR, m);
 
-    // Clean old data
-    if (fs.existsSync(dest)) {
-      try { fs.rmSync(dest, { recursive: true, force: true }); } catch (e) {
-        console.log(`[mind]   ⚠ Failed to clean ${m}/: ${e.message}`);
-      }
+    if (!fs.existsSync(dest)) {
+      fs.mkdirSync(dest, { recursive: true });
     }
 
-    // Copy fresh data from bundled app (asar)
+    // Copy only missing subdirectories (preserves user-created agents/groups)
     if (fs.existsSync(src)) {
-      try {
-        copyDir(src, dest);
-        console.log(`[mind]   ✓ ${m}/ seeded (clean)`);
-      } catch (e) {
-        console.log(`[mind]   ⚠ Failed to copy ${m}/: ${e.message}`);
+      for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const destSub = path.join(dest, entry.name);
+        if (!fs.existsSync(destSub)) {
+          try {
+            copyDir(path.join(src, entry.name), destSub);
+            console.log(`[mind]   ✓ ${m}/${entry.name} seeded`);
+          } catch (e) {
+            console.log(`[mind]   ⚠ Failed to copy ${m}/${entry.name}: ${e.message}`);
+          }
+        }
       }
-    } else {
-      // Create empty directory if source doesn't exist
-      fs.mkdirSync(dest, { recursive: true });
-      console.log(`[mind]   ✓ ${m}/ created (empty)`);
     }
   }
   // Create .audit/.mind if absent (preserve agent memories between runs)

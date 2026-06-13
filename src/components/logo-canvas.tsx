@@ -24,10 +24,10 @@ const THEME_FILTERS: Record<string, string> = {
 export default function LogoCanvas({ size = 28 }: { size?: number }) {
   const { theme } = useTheme();
   const filter = THEME_FILTERS[theme] || 'none';
-  // In standalone build, public/ files are served from /_next/static/public/
-  // In dev mode, they're served from root
-  const isStandalone = typeof window !== 'undefined' && !window.location.port;
-  const prefix = isStandalone ? '/_next/static/public' : '';
+  // In standalone/packaged build, public/ files are served from /_next/static/public/
+  // In dev mode (next dev), they're served from root (/logo.svg)
+  const isPackaged = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
+  const prefix = isPackaged ? '/_next/static/public' : '';
   const src = DARK_THEMES.has(theme) ? `${prefix}/shaders/frames_dark/logo_sprite_48f_512x512.png` : `${prefix}/logo.svg`;
 
   // Use first frame of sprite sheet (index 0,0) or static SVG
