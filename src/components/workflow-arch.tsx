@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 
 /**
  * Workflow Architecture Diagram — Transformer Paper Style
@@ -261,6 +261,102 @@ export default function WorkflowArch({ steps, run }: Props) {
     return pos;
   }, [layers, n, W, BH, GY, GX, BW]);
 
+  // ── Pan & Zoom state ──
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragging = useRef(false);
+  const lastMouse = useRef({ x: 0, y: 0 });
+
+  // Mouse down → start dragging
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only start drag on middle-click or shift+left-click (avoid text selection)
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+      dragging.current = true;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+    } else if (e.button === 0) {
+      // Left click also starts drag for SVG canvas
+      dragging.current = true;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+    }
+  }, []);
+
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!dragging.current) return;
+    const dx = e.clientX - lastMouse.current.x;
+    const dy = e.clientY - lastMouse.current.y;
+    lastMouse.current = { x: e.clientX, y: e.clientY };
+    setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+  }, []);
+
+  const onMouseUp = useCallback(() => {
+    dragging.current = false;
+  }, []);
+
+  // Wheel → zoom
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setZoom(prev => Math.min(3, Math.max(0.3, prev + delta)));
+  }, []);
+
+  // Double-click → reset
+  const onDoubleClick = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Touch support for mobile
+  const touchRef = useRef<{ dist: number; mid: { x: number; y: number } } | null>(null);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      dragging.current = true;
+      lastMouse.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchRef.current = {
+        dist: Math.sqrt(dx * dx + dy * dy),
+        mid: {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        },
+      };
+    }
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1 && dragging.current) {
+      const dx = e.touches[0].clientX - lastMouse.current.x;
+      const dy = e.touches[0].clientY - lastMouse.current.y;
+      lastMouse.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    } else if (e.touches.length === 2 && touchRef.current) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const scale = dist / touchRef.current.dist;
+      setZoom(prev => Math.min(3, Math.max(0.3, prev * scale)));
+      touchRef.current.dist = dist;
+    }
+  }, []);
+
+  const onTouchEnd = useCallback(() => {
+    dragging.current = false;
+    touchRef.current = null;
+  }, []);
+
+  // Reset controls
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  const zoomIn = useCallback(() => setZoom(prev => Math.min(3, prev + 0.2)), []);
+  const zoomOut = useCallback(() => setZoom(prev => Math.max(0.3, prev - 0.2)), []);
+
   return (
     <div style={{
       fontFamily: STYLE.bodyFont,
@@ -282,127 +378,168 @@ export default function WorkflowArch({ steps, run }: Props) {
         Figure 1. Workflow Architecture
       </div>
 
-      <svg
-        width="100%"
-        viewBox={`0 0 ${W} ${svgH}`}
-        style={{ display: 'block', overflow: 'visible' }}
+      {/* Zoom controls */}
+      <div style={{
+        display: 'flex', justifyContent: 'flex-end', gap: 4,
+        marginBottom: 6, marginRight: 4,
+      }}>
+        <button onClick={zoomIn}
+          style={{ width: 26, height: 26, fontSize: 14, border: '1px solid #d4d4d8', borderRadius: 4, background: '#fafafa', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Zoom in">+</button>
+        <button onClick={zoomOut}
+          style={{ width: 26, height: 26, fontSize: 14, border: '1px solid #d4d4d8', borderRadius: 4, background: '#fafafa', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Zoom out">−</button>
+        <button onClick={resetView}
+          style={{ height: 26, fontSize: 10, border: '1px solid #d4d4d8', borderRadius: 4, background: '#fafafa', cursor: 'pointer', padding: '0 6px', fontFamily: STYLE.monoFont }}
+          title="Reset view (double-click canvas)">Reset</button>
+        <span style={{ fontSize: 10, color: '#a1a1aa', alignSelf: 'center', marginLeft: 4, fontFamily: STYLE.monoFont }}>
+          {Math.round(zoom * 100)}%
+        </span>
+      </div>
+
+      {/* Canvas */}
+      <div
+        style={{
+          overflow: 'hidden',
+          border: '1px solid #e4e4e7',
+          borderRadius: 8,
+          background: '#fafafa',
+          cursor: dragging.current ? 'grabbing' : 'grab',
+          touchAction: 'none',
+          userSelect: 'none',
+        }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onWheel={onWheel}
+        onDoubleClick={onDoubleClick}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
-        <defs>
-          {/* Arrow marker */}
-          <marker
-            id="arrow"
-            markerWidth={STYLE.arrowHead.w}
-            markerHeight={STYLE.arrowHead.h}
-            refX={STYLE.arrowHead.w}
-            refY={STYLE.arrowHead.h / 2}
-            orient="auto"
-          >
-            <polygon
-              points={`0 0, ${STYLE.arrowHead.w} ${STYLE.arrowHead.h / 2}, 0 ${STYLE.arrowHead.h}`}
-              fill={STYLE.arrowColor}
-            />
-          </marker>
+        <svg
+          ref={svgRef}
+          width="100%"
+          viewBox={`0 0 ${W} ${svgH}`}
+          style={{
+            display: 'block',
+            overflow: 'visible',
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: 'center center',
+          }}
+        >
+          <defs>
+            {/* Arrow marker */}
+            <marker
+              id="arrow"
+              markerWidth={STYLE.arrowHead.w}
+              markerHeight={STYLE.arrowHead.h}
+              refX={STYLE.arrowHead.w}
+              refY={STYLE.arrowHead.h / 2}
+              orient="auto"
+            >
+              <polygon
+                points={`0 0, ${STYLE.arrowHead.w} ${STYLE.arrowHead.h / 2}, 0 ${STYLE.arrowHead.h}`}
+                fill={STYLE.arrowColor}
+              />
+            </marker>
 
-          {/* Gradient for background */}
-          <linearGradient id="bg-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fafafa" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#f5f5f5" stopOpacity="0.3" />
-          </linearGradient>
-        </defs>
+            {/* Gradient for background */}
+            <linearGradient id="bg-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#fafafa" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#f5f5f5" stopOpacity="0.3" />
+            </linearGradient>
+          </defs>
 
-        {/* Subtle background */}
-        <rect
-          x={PAD / 2} y={PAD / 2}
-          width={W - PAD} height={svgH - PAD}
-          fill="url(#bg-grad)"
-          rx={8}
-          stroke="#e4e4e7"
-          strokeWidth={0.5}
-        />
+          {/* Subtle background */}
+          <rect
+            x={PAD / 2} y={PAD / 2}
+            width={W - PAD} height={svgH - PAD}
+            fill="url(#bg-grad)"
+            rx={8}
+            stroke="#e4e4e7"
+            strokeWidth={0.5}
+          />
 
-        {/* Arrows between adjacent layers */}
-        {layers.flatMap((layer, li) => {
-          if (li >= n - 1) return [];
-          const next = layers[li + 1];
-          return layer.flatMap(step => {
-            const f = positions.get(step.id);
-            if (!f) return [];
-            return next
-              .filter(t => t.dependsOn?.includes(step.id))
-              .map(t => {
-                const to = positions.get(t.id);
-                if (!to) return null;
-                return (
-                  <Arrow
-                    key={`${step.id}-${t.id}`}
-                    fx={f.x} fy={f.y} fw={f.w} fh={f.h}
-                    tx={to.x} ty={to.y} tw={to.w} th={to.h}
-                    id={`${step.id}-${t.id}`}
-                  />
-                );
-              });
-          });
-        })}
+          {/* Arrows between adjacent layers */}
+          {layers.flatMap((layer, li) => {
+            if (li >= n - 1) return [];
+            const next = layers[li + 1];
+            return layer.flatMap(step => {
+              const f = positions.get(step.id);
+              if (!f) return [];
+              return next
+                .filter(t => t.dependsOn?.includes(step.id))
+                .map(t => {
+                  const to = positions.get(t.id);
+                  if (!to) return null;
+                  return (
+                    <Arrow
+                      key={`${step.id}-${t.id}`}
+                      fx={f.x} fy={f.y} fw={f.w} fh={f.h}
+                      tx={to.x} ty={to.y} tw={to.w} th={to.h}
+                      id={`${step.id}-${t.id}`}
+                    />
+                  );
+                });
+            });
+          })}
 
-        {/* Skip connections (dashed, for long-range dependencies) */}
-        {layers.flatMap((layer, li) => {
-          if (li < n - 2) return []; // only first-to-last or non-adjacent
-          return [];
-        })}
+          {/* Step blocks */}
+          {[...positions.entries()].map(([sid, p]) => {
+            const step = steps.find(s => s.id === sid);
+            if (!step) return null;
+            return (
+              <Block
+                key={sid}
+                step={step}
+                x={p.x} y={p.y} w={p.w} h={p.h}
+                status={run?.steps[sid]}
+                colors={getColor(step.action || 'execute')}
+              />
+            );
+          })}
 
-        {/* Step blocks */}
-        {[...positions.entries()].map(([sid, p]) => {
-          const step = steps.find(s => s.id === sid);
-          if (!step) return null;
-          return (
-            <Block
-              key={sid}
-              step={step}
-              x={p.x} y={p.y} w={p.w} h={p.h}
-              status={run?.steps[sid]}
-              colors={getColor(step.action || 'execute')}
-            />
-          );
-        })}
+          {/* ×N notation */}
+          {n > 1 && (
+            <text
+              x={W - PAD / 2 + 12}
+              y={svgH / 2}
+              fontSize={16} fontWeight={600}
+              fill="#71717a"
+              fontFamily={STYLE.titleFont}
+              fontStyle="italic"
+              textAnchor="middle"
+              dominantBaseline="middle"
+            >
+              ×{n}
+            </text>
+          )}
 
-        {/* ×N notation */}
-        {n > 1 && (
+          {/* Inputs / Output labels */}
           <text
-            x={W - PAD / 2 + 12}
-            y={svgH / 2}
-            fontSize={16} fontWeight={600}
-            fill="#71717a"
+            x={W / 2} y={svgH - PAD / 2 + 16}
+            fontSize={12} fontWeight={500}
+            fill="#52525b"
+            textAnchor="middle"
             fontFamily={STYLE.titleFont}
             fontStyle="italic"
-            textAnchor="middle"
-            dominantBaseline="middle"
           >
-            ×{n}
+            Inputs
           </text>
-        )}
-
-        {/* Inputs / Output labels */}
-        <text
-          x={W / 2} y={svgH - PAD / 2 + 16}
-          fontSize={12} fontWeight={500}
-          fill="#52525b"
-          textAnchor="middle"
-          fontFamily={STYLE.titleFont}
-          fontStyle="italic"
-        >
-          Inputs
-        </text>
-        <text
-          x={W / 2} y={PAD / 2 - 8}
-          fontSize={12} fontWeight={500}
-          fill="#52525b"
-          textAnchor="middle"
-          fontFamily={STYLE.titleFont}
-          fontStyle="italic"
-        >
-          Output
-        </text>
-      </svg>
+          <text
+            x={W / 2} y={PAD / 2 - 8}
+            fontSize={12} fontWeight={500}
+            fill="#52525b"
+            textAnchor="middle"
+            fontFamily={STYLE.titleFont}
+            fontStyle="italic"
+          >
+            Output
+          </text>
+        </svg>
+      </div>
 
       {/* Figure caption */}
       <div style={{
@@ -415,11 +552,7 @@ export default function WorkflowArch({ steps, run }: Props) {
       }}>
         <strong>Fig. 1.</strong>{' '}
         {steps.length}-module workflow, {n} dependency layers.
-        {' '}Color = component type
-        {' '}(<span style={{ color: '#16a34a' }}>green</span>=production,
-        {' '}<span style={{ color: '#ea580c' }}>orange</span>=review,
-        {' '}<span style={{ color: '#2563eb' }}>blue</span>=revision,
-        {' '}<span style={{ color: '#9333ea' }}>purple</span>=verification).
+        {' '}Drag to pan · Scroll to zoom · Double-click to reset.
         {run && (
           <>
             {' '}Status:{' '}
