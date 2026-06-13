@@ -1203,8 +1203,8 @@ export class WorkflowEngine {
     }
 
     // "output contains X" or just "X"
-    const containsMatch = when.match(/^output\s+contains\s+(.+)$/i);
-    if (containsMatch) return out.includes(containsMatch[1].toLowerCase().trim());
+    const outputContainsMatch = when.match(/^output\s+contains\s+(.+)$/i);
+    if (outputContainsMatch) return out.includes(outputContainsMatch[1].toLowerCase().trim());
     // "output == X"
     const eqMatch = when.match(/^output\s*==\s*(.+)$/i);
     if (eqMatch) return out === eqMatch[1].toLowerCase().trim();

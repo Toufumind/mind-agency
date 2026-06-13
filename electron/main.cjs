@@ -166,7 +166,8 @@ ipcMain.on('window:isMaximized', (event) => {
 
 // ── Start ────────────────────────────────────────────────
 
-/** WebSocket child process handle — hoisted for will-quit cleanup */
+/** Child process handles — hoisted for will-quit cleanup */
+let nextChild = null;
 let wsChild = null;
 
 // ── Auto-Update (v0.4) ──────────────────────────────────────────────
@@ -356,8 +357,8 @@ app.whenReady().then(async () => {
       if (!fs.existsSync(staticDest)) {
         copyDir(path.join(APP_ROOT, '.next', 'static'), staticDest);
       }
-      // Copy public files
-      const publicDest = path.join(serverDir, 'public');
+      // Copy public files into .next/static so standalone server serves them
+      const publicDest = path.join(serverDir, '.next', 'static', 'public');
       if (!fs.existsSync(publicDest) && fs.existsSync(path.join(APP_ROOT, 'public'))) {
         copyDir(path.join(APP_ROOT, 'public'), publicDest);
       }
@@ -373,13 +374,14 @@ app.whenReady().then(async () => {
     console.log('[mind] Node:', nodePath);
     const serverProc = spawn(nodePath, [serverJs], {
       cwd: serverDir,
-      env: { ...process.env, PORT: String(PORT), HOSTNAME: '127.0.0.1', NODE_ENV: 'production' },
+      env: { ...process.env, PORT: String(PORT), HOSTNAME: '127.0.0.1', NODE_ENV: 'production', MIND_DATA_DIR: DATA_DIR, MIND_APP_DIR: APP_ROOT },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     serverProc.stdout.on('data', (d) => process.stdout.write(`[next] ${d}`));
     serverProc.stderr.on('data', (d) => process.stderr.write(`[next] ${d}`));
     serverProc.on('error', (e) => console.error('[mind] Server error:', e.message));
-    wsChild = serverProc;
+    // Track both processes — don't overwrite wsChild
+    nextChild = serverProc;
   } catch (e) {
     console.error('[mind] Server start error:', e.message);
   }
@@ -438,6 +440,10 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => { app.quit(); });
 app.on('will-quit', () => {
+  // Kill Next.js child process
+  if (nextChild) {
+    try { nextChild.kill(); } catch {}
+  }
   // Kill WS child process
   if (wsChild) {
     try { wsChild.kill(); } catch {}

@@ -98,7 +98,7 @@ export default function Sidebar() {
       `}>
         {/* Header */}
         <div className={`flex items-center border-b border-border ${collapsed ? 'px-2 py-4 justify-center' : 'px-5 py-4 gap-3'}`}>
-          <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+          <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? t('expand_sidebar') : t('collapse_sidebar')}
             className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
             {collapsed ? <PanelLeftOpen size={14} className="text-foreground" /> : <LogoCanvas size={28} />}
           </button>
@@ -238,8 +238,8 @@ export default function Sidebar() {
           {!collapsed ? (
             <>
               <NavItem href="/me" icon={User} label={t('me')} badge={unreadEmails} />
-              <NavItem href="/economy" icon={DollarSign} label="用量" />
-              <NavItem href="/learning" icon={TrendingUp} label="学习" />
+              <NavItem href="/economy" icon={DollarSign} label={t('usage')} />
+              <NavItem href="/learning" icon={TrendingUp} label={t('learning')} />
               <NavItem href="/settings" icon={Settings} label={t('settings')} />
             </>
           ) : (
