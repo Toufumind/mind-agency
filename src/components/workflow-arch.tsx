@@ -296,14 +296,26 @@ function Block({
   );
 }
 
-/** Generate orthogonal path with rounded corners */
+/** Generate orthogonal path with rounded corners — direction-aware */
 function orthPath(x1: number, y1: number, x2: number, y2: number, r = 8): string {
-  // Simple L-shape with rounded corner: down then right (or right then down)
   const midY = (y1 + y2) / 2;
-  // Clamp radius
-  const rClamp = Math.min(r, Math.abs(midY - y1) / 2, Math.abs(x2 - x1) / 2, Math.abs(y2 - midY) / 2);
-  if (rClamp < 1) return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
-  return `M ${x1} ${y1} L ${x1} ${midY - rClamp} Q ${x1} ${midY} ${x1 + (x2 > x1 ? rClamp : -rClamp)} ${midY} L ${x2 - (x2 > x1 ? rClamp : -rClamp)} ${midY} Q ${x2} ${midY} ${x2} ${midY + rClamp} L ${x2} ${y2}`;
+  const goingUp = y1 > y2;
+  const goingRight = x2 > x1;
+
+  const vDist = Math.abs(midY - y1);
+  const hDist = Math.abs(x2 - x1);
+  const rClamp = Math.min(r, vDist * 0.9, hDist * 0.9);
+
+  if (rClamp < 1) {
+    return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+  }
+
+  // Vertical offset: up = positive, down = negative
+  const vOff = goingUp ? rClamp : -rClamp;
+  // Horizontal offset: right = positive, left = negative
+  const hOff = goingRight ? rClamp : -rClamp;
+
+  return `M ${x1} ${y1} L ${x1} ${midY + vOff} Q ${x1} ${midY} ${x1 + hOff} ${midY} L ${x2 - hOff} ${midY} Q ${x2} ${midY} ${x2} ${midY - vOff} L ${x2} ${y2}`;
 }
 
 /** Render an orthogonal arrow between two blocks — clickable */
@@ -689,15 +701,17 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
             return step.routes.map(route => {
               const to = positions.get(route.step);
               if (!to) return null;
-              // Route: from right edge, go right, curve back to target's right edge
+              // Route: from right edge → right → loop back to target's right edge
               const x1 = from.x + from.w;
               const y1 = from.y + from.h / 2;
               const x2 = to.x + to.w;
               const y2 = to.y + to.h / 2;
               const midX = Math.max(x1, x2) + 35;
               const r = 10;
-              // Orthogonal path: right → down → left (loop back)
-              const path = `M ${x1} ${y1} L ${midX - r} ${y1} Q ${midX} ${y1} ${midX} ${y1 + (y2 > y1 ? r : -r)} L ${midX} ${y2 - (y2 > y1 ? r : -r)} Q ${midX} ${y2} ${midX - r} ${y2} L ${x2} ${y2}`;
+              const goingUp = y1 > y2;
+              const vOff = goingUp ? r : -r;
+              // U-shape: right → down/up → left
+              const path = `M ${x1} ${y1} L ${midX - r} ${y1} Q ${midX} ${y1} ${midX} ${y1 + vOff} L ${midX} ${y2 - vOff} Q ${midX} ${y2} ${midX - r} ${y2} L ${x2} ${y2}`;
               return (
                 <g key={`route-${step.id}-${route.step}`}>
                   <path
@@ -808,15 +822,9 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
             const y1 = from.y + from.h;
             const x2 = dragMouse.x;
             const y2 = dragMouse.y;
-            const r = 8;
-            const midY = (y1 + y2) / 2;
-            const rC = Math.min(r, Math.abs(midY - y1) / 2, Math.abs(x2 - x1) / 2);
-            const path = rC < 1
-              ? `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`
-              : `M ${x1} ${y1} L ${x1} ${midY - rC} Q ${x1} ${midY} ${x1 + (x2 > x1 ? rC : -rC)} ${midY} L ${x2 - (x2 > x1 ? rC : -rC)} ${midY} Q ${x2} ${midY} ${x2} ${midY + rC} L ${x2} ${y2}`;
             return (
               <path
-                d={path}
+                d={orthPath(x1, y1, x2, y2)}
                 fill="none" stroke="#3b82f6" strokeWidth={2}
                 strokeDasharray="6,3" opacity={0.7}
                 style={{ pointerEvents: 'none' }}
