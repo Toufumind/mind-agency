@@ -129,7 +129,7 @@ function orthPath(x1: number, y1: number, x2: number, y2: number, r = 12): strin
   // Horizontal segment direction
   const hDir = bendRight ? 1 : -1;
 
-  return `M ${x1} ${y1} L ${x1} ${midY + vDir * rc} Q ${x1} ${midY} ${x1 + hDir * rc} ${midY} L ${x2 - hDir * rc} ${midY} Q ${x2} ${midY} ${x2} ${midY - vDir * rc} L ${x2} ${y2}`;
+  return `M ${x1} ${y1} L ${x1} ${midY + vDir * rc} Q ${x1} ${midY} ${x1 + hDir * rc} ${midY} L ${x2 - hDir * rc} ${midY} Q ${x2} ${midY} ${x2} ${midY + vDir * rc} L ${x2} ${y2}`;
 }
 
 // ═══════ CSS ANIMATIONS ═══════
