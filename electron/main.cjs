@@ -344,30 +344,58 @@ app.whenReady().then(async () => {
   // (3) Extract standalone to writable dir and start server
   console.log('[mind] Starting Next.js server...');
   try {
-    // In packaged mode, extract standalone to DATA_DIR (writable)
-    const serverDir = isDev ? APP_ROOT : path.join(DATA_DIR, '.next-server');
-    const serverJs = path.join(serverDir, 'server.js');
+    // In packaged mode, find standalone server:
+    // 1. DATA_DIR/.next-server (writable, for future updates)
+    // 2. EXE旁边的/.next-server (build-exe.mjs copies here)
+    // 3. APP_ROOT/.next/standalone (asar, fallback)
+    let serverDir = isDev ? APP_ROOT : path.join(DATA_DIR, '.next-server');
+    let serverJs = path.join(serverDir, 'server.js');
 
     if (!isDev) {
-      console.log('[mind] Extracting standalone server...');
-      // Copy standalone server
-      const srcStandalone = path.join(APP_ROOT, '.next', 'standalone');
+      // Try DATA_DIR first
       if (!fs.existsSync(serverJs)) {
-        copyDir(srcStandalone, serverDir);
+        // Try EXE旁边的/.next-server
+        const exeDir = path.dirname(app.getPath('exe'));
+        const exeNextServer = path.join(exeDir, '.next-server');
+        if (fs.existsSync(path.join(exeNextServer, 'server.js'))) {
+          serverDir = exeNextServer;
+          serverJs = path.join(serverDir, 'server.js');
+          console.log('[mind] Found standalone at EXE dir:', serverDir);
+        } else {
+          // Try asar
+          const srcStandalone = path.join(APP_ROOT, '.next', 'standalone');
+          if (fs.existsSync(path.join(srcStandalone, 'server.js'))) {
+            console.log('[mind] Extracting standalone server from asar...');
+            copyDir(srcStandalone, serverDir);
+            serverJs = path.join(serverDir, 'server.js');
+          } else {
+            console.error('[mind] No standalone server found!');
+          }
+        }
       }
-      // Copy static files
+
+      // Copy static files if needed
       const staticDest = path.join(serverDir, '.next', 'static');
       if (!fs.existsSync(staticDest)) {
-        copyDir(path.join(APP_ROOT, '.next', 'static'), staticDest);
+        const srcStatic = fs.existsSync(path.join(APP_ROOT, '.next', 'static'))
+          ? path.join(APP_ROOT, '.next', 'static')
+          : path.join(path.dirname(app.getPath('exe')), '.next-server', '.next', 'static');
+        if (fs.existsSync(srcStatic)) {
+          copyDir(srcStatic, staticDest);
+        }
       }
-      // Copy public files — Next.js standalone serves from .next-server/public/
+
+      // Copy public files if needed
       const publicDest = path.join(serverDir, 'public');
-      if (fs.existsSync(path.join(APP_ROOT, 'public'))) {
-        // Always sync public/ to ensure latest files
+      const srcPublic = fs.existsSync(path.join(APP_ROOT, 'public'))
+        ? path.join(APP_ROOT, 'public')
+        : path.join(path.dirname(app.getPath('exe')), '.next-server', 'public');
+      if (fs.existsSync(srcPublic)) {
         if (fs.existsSync(publicDest)) fs.rmSync(publicDest, { recursive: true, force: true });
-        copyDir(path.join(APP_ROOT, 'public'), publicDest);
+        copyDir(srcPublic, publicDest);
       }
-      console.log('[mind] Standalone extracted to', serverDir);
+
+      console.log('[mind] Server dir:', serverDir);
     }
 
     // Use system Node.js (Electron's bundled Node can't run ES modules)
