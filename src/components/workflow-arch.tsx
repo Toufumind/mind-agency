@@ -272,7 +272,7 @@ function StepBlock({
   return (
     <g
       className="wf-block"
-      style={{ filter: hovered ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' : 'none', transition: 'filter 0.15s ease' }}
+      style={{ filter: hovered ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' : 'none', transition: 'filter 0.15s ease', pointerEvents: 'all' }}
       onClick={e => { e.stopPropagation(); onClick?.(); }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e); }}
       onPointerEnter={() => setHovered(true)}
@@ -564,7 +564,7 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
   }, [positions, offsets]);
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', fontFamily: '"Inter", sans-serif', background: 'var(--color-surface, #fafafa)' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', fontFamily: '"Inter", sans-serif', background: 'var(--color-surface, #fafafa)' }}>
       {/* Canvas */}
       <div
         style={{
@@ -584,7 +584,7 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
           ref={svgRef}
           width="100%"
           viewBox={`0 0 ${SVG_W} ${svgH}`}
-          style={{ display: 'block', transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
+          style={{ display: 'block', overflow: 'visible', transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}
         >
           <defs>
             <marker id="arrow" markerWidth={10} markerHeight={7} refX={10} refY={3.5} orient="auto">
@@ -626,7 +626,7 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
           {(() => {
             let maxRight = 0;
             positions.forEach(p => { maxRight = Math.max(maxRight, p.x + p.w); });
-            const outsideX = maxRight + 40;
+            const outsideX = maxRight + 50;
             return steps.flatMap(step => {
               if (!step.routes?.length) return [];
               const from = getPos(step.id);
@@ -636,17 +636,17 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
                 if (!to) return null;
                 const x1 = from.x + from.w, y1 = from.y + from.h / 2;
                 const x2 = to.x + to.w, y2 = to.y + to.h / 2;
+                // U-shape: right → vertical → left
+                // Always go right first, then vertically to target y, then left to target
                 const r = 16;
-                const needDown = y2 > y1;
-                const vOff = needDown ? r : -r;
-                const path = `M ${x1} ${y1} L ${outsideX - r} ${y1} Q ${outsideX} ${y1} ${outsideX} ${y1 + vOff} L ${outsideX} ${y2 - vOff} Q ${outsideX} ${y2} ${outsideX - r} ${y2} L ${x2} ${y2}`;
+                const path = `M ${x1} ${y1} L ${outsideX - r} ${y1} Q ${outsideX} ${y1} ${outsideX} ${y1 + (y2 > y1 ? r : -r)} L ${outsideX} ${y2 - (y2 > y1 ? r : -r)} Q ${outsideX} ${y2} ${outsideX - r} ${y2} L ${x2} ${y2}`;
                 return (
-                  <g key={`route-${step.id}-${route.step}`}>
+                  <g key={`route-${step.id}-${route.step}`} style={{ pointerEvents: 'none' }}>
                     <path d={path} fill="none" stroke="#f59e0b" strokeWidth={1.5}
                       strokeDasharray="6,3"
                       style={{ animation: 'wf-dash 1s linear infinite' }}
                       markerEnd="url(#route-arrow)" />
-                    <text x={outsideX + 6} y={(y1 + y2) / 2} fontSize={9} fill="#f59e0b"
+                    <text x={outsideX + 8} y={(y1 + y2) / 2} fontSize={9} fill="#f59e0b"
                       fontFamily='"JetBrains Mono", monospace' dominantBaseline="middle">
                       {route.when}
                     </text>
