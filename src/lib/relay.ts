@@ -323,12 +323,16 @@ export async function relay(req: RelayRequest): Promise<RelayResponse> {
   // 8. Log request
   writeLog({ timestamp: Date.now(), agent, model, tokensIn, tokensOut, cost, latencyMs, status: 'success' });
 
-  // 9. Record for analytics
+  // 9. Record for analytics (direct function call, no HTTP)
   try {
-    await fetch(`${getApiBase()}/api/system/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent, tokensIn, tokensOut, cost, model }),
+    const { getAgency } = await import('./agency');
+    const agency = getAgency();
+    await agency.system.addTokenRecord({
+      timestamp: Date.now(),
+      agent, model,
+      inputTokens: tokensIn,
+      outputTokens: tokensOut,
+      cost,
     });
   } catch (e) { console.error('[lib:relay]', e); }
 
