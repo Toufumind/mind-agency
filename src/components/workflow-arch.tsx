@@ -476,11 +476,26 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
     dragging.current = false;
   }, []);
 
-  // Wheel → zoom
+  // Wheel → zoom centered on mouse position
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    const container = e.currentTarget as HTMLElement;
+    const rect = container.getBoundingClientRect();
+    // Mouse position relative to container center
+    const mx = e.clientX - rect.left - rect.width / 2;
+    const my = e.clientY - rect.top - rect.height / 2;
+
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setZoom(prev => Math.min(3, Math.max(0.3, prev + delta)));
+    setZoom(prev => {
+      const newZoom = Math.min(3, Math.max(0.3, prev + delta));
+      const scale = newZoom / prev;
+      // Adjust pan so the point under mouse stays fixed
+      setPan(p => ({
+        x: mx - (mx - p.x) * scale,
+        y: my - (my - p.y) * scale,
+      }));
+      return newZoom;
+    });
   }, []);
 
   // Double-click → reset
@@ -576,7 +591,7 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
             display: 'block',
             overflow: 'visible',
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: 'center center',
+            transformOrigin: '0 0',
           }}
         >
           <defs>
