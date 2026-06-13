@@ -1109,6 +1109,21 @@ export class WorkflowEngine {
     try {
       // v0.5: Callback model — notify agent, wait for callback
       this.notifyAgent(runId, node, nodes, ctx);
+
+      // Set timeout — if callback doesn't come, fail the step
+      const timeout = node.step.timeout || 300000; // 5 min default
+      const timeoutTimer = setTimeout(() => {
+        if (node.status === StepStatus.WAITING) {
+          node.status = StepStatus.FAILED;
+          node.error = `Timeout after ${timeout}ms — agent did not call workflow_callback`;
+          run.steps.set(sid, StepStatus.FAILED);
+          console.log(`[wf] Step ${sid} timed out after ${timeout}ms`);
+          this.schedule(runId);
+        }
+      }, timeout);
+      // Store timer for cleanup
+      (node as any)._timeoutTimer = timeoutTimer;
+
       return;  // DAG continues when agent calls workflow_callback
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
