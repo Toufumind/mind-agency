@@ -96,6 +96,25 @@ const messages: Record<Lang, Record<string, string>> = {
     'saving': '保存中...',
     'add_step': '添加', 'add_first_step': '添加第一个步骤',
     'steps_label': 'Steps ({n})',
+    // Agent page
+    'config': '配置', 'email': '邮箱', 'operations': '操作', 'tasks': '任务',
+    'no_records_yet': '暂无操作记录', 'waiting': '等待中', 'executing': '执行中',
+    'completed': '已完成', 'failed': '失败', 'skipped': '已跳过',
+    'no_tasks': '暂无分配的任务',
+    // Token economy
+    'token_account': 'Token 账户', 'total_income': '累计收入', 'total_expense': '累计支出',
+    'recent_transactions': '最近交易', 'deposit': '存入', 'reward': '奖励',
+    'quality_bonus': '优质', 'transfer_in': '转入', 'transfer_out': '转出',
+    'deduction': '扣费', 'penalty': '处罚',
+    // Dashboard
+    'pending_approval': '待审批', 'consensus': '共识',
+    'token_leaderboard': 'Token 排行榜', 'balance': '余额',
+    'open_tasks': '开放任务', 'offline': '离线', 'recent_activity': '最近活动',
+    // Provider
+    'ai_provider': 'AI Provider', 'heartbeat_minutes': 'Heartbeat (分钟, 0=关闭)',
+    'switch_provider_hint': '切换后新对话从头开始，旧记录保留',
+    // Misc
+    'no_group': '无群组', 'total_records': '总记录', 'avg_score': '平均分',
   },
   en: {
     // Nav / sidebar
@@ -189,6 +208,25 @@ const messages: Record<Lang, Record<string, string>> = {
     'saving': 'Saving...',
     'add_step': 'Add', 'add_first_step': 'Add First Step',
     'steps_label': 'Steps ({n})',
+    // Agent page
+    'config': 'Config', 'email': 'Email', 'operations': 'Operations', 'tasks': 'Tasks',
+    'no_records_yet': 'No operation records yet', 'waiting': 'Waiting', 'executing': 'Executing',
+    'completed': 'Completed', 'failed': 'Failed', 'skipped': 'Skipped',
+    'no_tasks': 'No tasks assigned',
+    // Token economy
+    'token_account': 'Token Account', 'total_income': 'Total Income', 'total_expense': 'Total Expense',
+    'recent_transactions': 'Recent Transactions', 'deposit': 'Deposit', 'reward': 'Reward',
+    'quality_bonus': 'Quality Bonus', 'transfer_in': 'Transfer In', 'transfer_out': 'Transfer Out',
+    'deduction': 'Deduction', 'penalty': 'Penalty',
+    // Dashboard
+    'pending_approval': 'Pending Approval', 'consensus': 'Consensus',
+    'token_leaderboard': 'Token Leaderboard', 'balance': 'Balance',
+    'open_tasks': 'Open Tasks', 'offline': 'Offline', 'recent_activity': 'Recent Activity',
+    // Provider
+    'ai_provider': 'AI Provider', 'heartbeat_minutes': 'Heartbeat (min, 0=off)',
+    'switch_provider_hint': 'New conversations start fresh after switch, old records preserved',
+    // Misc
+    'no_group': 'No group', 'total_records': 'Total Records', 'avg_score': 'Avg Score',
   },
 };
 

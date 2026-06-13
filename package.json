@@ -9,7 +9,6 @@
     "dev:all": "npm run build:mcp && concurrently \"next dev\" \"npx tsx server.ts\"",
     "build": "npm run build:mcp && next build",
     "build:exe": "npm run build:mcp && node scripts/build-exe.mjs",
-    "build:installer": "npm run build:exe && scripts\\build-installer.bat",
     "release": "node scripts/release.mjs",
     "start": "next start",
     "lint": "next lint",
@@ -18,31 +17,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "main": "./electron/main.cjs",
-  "build": {
-    "appId": "com.mindagency.app",
-    "productName": "Mind Agency",
-    "directories": {
-      "output": "dist-exe"
-    },
-    "files": [
-      "**/*",
-      "!node_modules/.cache",
-      "!src/**/*.ts",
-      "!**/*.map"
-    ],
-    "win": {
-      "forceCodeSigning": false,
-      "target": "nsis",
-      "icon": "electron/icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    }
-  },
   "keywords": [
     "agent",
     "agency",
@@ -93,7 +67,6 @@
     "caxa": "^3.0.1",
     "concurrently": "^10.0.0",
     "electron": "^42.3.0",
-    "electron-builder": "^26.8.1",
     "esbuild": "^0.28.0",
     "puppeteer": "^25.1.0",
     "tailwindcss": "^4.0.0",
