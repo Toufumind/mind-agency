@@ -521,7 +521,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
             {/* Model selector dropdown */}
             <button onClick={() => setShowModels(!showModels)}
               className="text-[11px] px-2 py-0.5 rounded-md flex items-center gap-1 text-muted-foreground hover:text-muted transition-colors border border-border">
-              <Cpu size={11} /> {models.find(m => m.id === model)?.label || model} <ChevronDown size={10} />
+              <Cpu size={11} /> {models.length === 0 ? '无模型' : (models.find(m => m.id === model)?.label || model)} <ChevronDown size={10} />
             </button>
             {showModels && (
               <>
