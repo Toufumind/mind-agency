@@ -712,10 +712,11 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
                 const y1 = from.y + from.h / 2;
                 const x2 = to.x + to.w;
                 const y2 = to.y + to.h / 2;
-                const r = 10;
-                const goingUp = y1 > y2;
-                const vOff = goingUp ? r : -r;
-                // U-shape: right (past all blocks) → down/up → left back to target
+                const r = 16;
+                // U-shape: right → down/up → left back to target
+                // When y1 < y2 (source above, target below), go DOWN first
+                const needDown = y2 > y1;
+                const vOff = needDown ? r : -r;
                 const path = `M ${x1} ${y1} L ${outsideX - r} ${y1} Q ${outsideX} ${y1} ${outsideX} ${y1 + vOff} L ${outsideX} ${y2 - vOff} Q ${outsideX} ${y2} ${outsideX - r} ${y2} L ${x2} ${y2}`;
                 return (
                   <g key={`route-${step.id}-${route.step}`}>
