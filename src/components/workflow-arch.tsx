@@ -66,9 +66,8 @@ function buildLayers(steps: Step[]): Step[][] {
 function arrowPath(x1: number, y1: number, x2: number, y2: number, bendX: number): string {
   const r = 12;
   const vDir = y2 > y1 ? 1 : -1;
-  const hDir = bendX > x1 ? 1 : -1;
 
-  // Clamp radius
+  // Clamp radius to available space
   const vSpace = Math.abs(y2 - y1) / 2;
   const hSpace = Math.abs(bendX - x1) / 2;
   const rc = Math.min(r, vSpace, hSpace);
@@ -78,24 +77,17 @@ function arrowPath(x1: number, y1: number, x2: number, y2: number, bendX: number
     return `M ${x1} ${y1} L ${bendX} ${y1} L ${bendX} ${y2} L ${x2} ${y2}`;
   }
 
-  // First corner: horizontal → vertical
-  // Start at (x1, y1), go horizontal to (x1 + hDir*rc, y1)
-  // Q curve: control at corner, end at (x1, y1 + vDir*rc)
-  // Then vertical to bendX
-
-  // Second corner: vertical → horizontal
-  // Start at (bendX, y2 - vDir*rc)
-  // Q curve: control at corner, end at (bendX - hDir*rc, y2)
-  // Then horizontal to (x2, y2)
+  // Direction toward target for second corner
+  const hDir2 = x2 > bendX ? 1 : -1;
 
   return [
     `M ${x1} ${y1}`,
-    `L ${x1 + hDir * rc} ${y1}`,
-    `Q ${x1} ${y1} ${x1} ${y1 + vDir * rc}`,
-    `L ${bendX} ${y1 + vDir * rc}`,
-    `L ${bendX} ${y2 - vDir * rc}`,
-    `Q ${bendX} ${y2} ${bendX + (x2 > bendX ? -1 : 1) * rc} ${y2}`,
-    `L ${x2} ${y2}`,
+    `L ${x1 + rc} ${y1}`,                           // horizontal to first corner
+    `Q ${x1} ${y1} ${x1} ${y1 + vDir * rc}`,        // rounded corner 1
+    `L ${bendX} ${y1 + vDir * rc}`,                  // vertical down/up
+    `L ${bendX} ${y2 - vDir * rc}`,                  // continue vertical
+    `Q ${bendX} ${y2} ${bendX + hDir2 * rc} ${y2}`,  // rounded corner 2 (toward target)
+    `L ${x2} ${y2}`,                                  // horizontal to end
   ].join(' ');
 }
 
