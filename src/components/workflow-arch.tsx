@@ -488,22 +488,25 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
     return () => obs.disconnect();
   }, []);
 
-  // Pan — only start if clicking on empty space (not on a block)
+  // Pan — track mouse on document for reliable drag
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only start pan if clicking directly on the SVG background or container
-    const target = e.target as HTMLElement;
-    const isBlock = target.closest('g[style*="cursor: pointer"]') || target.closest('rect[rx="6"]');
-    if (e.button === 0 && !isBlock) {
+    if (e.button === 0) {
       dragging.current = true;
       lastMouse.current = { x: e.clientX, y: e.clientY };
     }
   }, []);
-  const onMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragging.current) return;
-    setPan(p => ({ x: p.x + e.clientX - lastMouse.current.x, y: p.y + e.clientY - lastMouse.current.y }));
-    lastMouse.current = { x: e.clientX, y: e.clientY };
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      setPan(p => ({ x: p.x + e.clientX - lastMouse.current.x, y: p.y + e.clientY - lastMouse.current.y }));
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+    };
+    const onUp = () => { dragging.current = false; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, []);
-  const onMouseUp = useCallback(() => { dragging.current = false; }, []);
 
   // Zoom (viewport center)
   const onWheel = useCallback((e: React.WheelEvent) => {
@@ -573,9 +576,6 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
           touchAction: 'none', userSelect: 'none',
         }}
         onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
         onWheel={onWheel}
         onDoubleClick={resetView}
         onClick={() => { setCtxMenu(null); setSelected(null); }}
