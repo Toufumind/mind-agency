@@ -359,9 +359,11 @@ app.whenReady().then(async () => {
       if (!fs.existsSync(staticDest)) {
         copyDir(path.join(APP_ROOT, '.next', 'static'), staticDest);
       }
-      // Copy public files into .next/static so standalone server serves them
-      const publicDest = path.join(serverDir, '.next', 'static', 'public');
-      if (!fs.existsSync(publicDest) && fs.existsSync(path.join(APP_ROOT, 'public'))) {
+      // Copy public files — Next.js standalone serves from .next-server/public/
+      const publicDest = path.join(serverDir, 'public');
+      if (fs.existsSync(path.join(APP_ROOT, 'public'))) {
+        // Always sync public/ to ensure latest files
+        if (fs.existsSync(publicDest)) fs.rmSync(publicDest, { recursive: true, force: true });
         copyDir(path.join(APP_ROOT, 'public'), publicDest);
       }
       console.log('[mind] Standalone extracted to', serverDir);
