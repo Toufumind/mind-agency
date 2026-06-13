@@ -108,14 +108,28 @@ function buildLayers(steps: Step[]): Step[][] {
 }
 
 function orthPath(x1: number, y1: number, x2: number, y2: number, r = 12): string {
+  // L-shape: vertical from source, then horizontal, then vertical to target
+  // Always route DOWN from source first, then horizontally, then to target
   const midY = (y1 + y2) / 2;
+
+  // Determine bend direction based on relative positions
+  const bendDown = y2 > y1; // target is below source → bend down first
+  const bendRight = x2 > x1; // target is right → bend right
+
   const vDist = Math.abs(midY - y1);
   const hDist = Math.abs(x2 - x1);
   const rc = Math.min(r, vDist * 0.9, hDist * 0.9);
-  if (rc < 1) return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
-  const vOff = y1 > y2 ? -rc : rc;
-  const hOff = x2 > x1 ? rc : -rc;
-  return `M ${x1} ${y1} L ${x1} ${midY + vOff} Q ${x1} ${midY} ${x1 + hOff} ${midY} L ${x2 - hOff} ${midY} Q ${x2} ${midY} ${x2} ${midY - vOff} L ${x2} ${y2}`;
+
+  if (rc < 1) {
+    return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+  }
+
+  // Vertical segment direction
+  const vDir = bendDown ? 1 : -1;
+  // Horizontal segment direction
+  const hDir = bendRight ? 1 : -1;
+
+  return `M ${x1} ${y1} L ${x1} ${midY + vDir * rc} Q ${x1} ${midY} ${x1 + hDir * rc} ${midY} L ${x2 - hDir * rc} ${midY} Q ${x2} ${midY} ${x2} ${midY - vDir * rc} L ${x2} ${y2}`;
 }
 
 // ═══════ CSS ANIMATIONS ═══════
@@ -212,30 +226,29 @@ function ContextMenu({ x, y, onClose, onEdit, onAdd, onDelete, onMoveUp, onMoveD
   ];
 
   return (
-    <foreignObject x={x} y={y} width={160} height={200} style={{ overflow: 'visible' } as any}>
-      <div style={{
-        background: 'var(--color-canvas, #fff)', border: '1px solid var(--color-border, #e4e4e7)',
-        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px 0',
-        fontFamily: '"Inter", sans-serif', fontSize: 12, color: 'var(--color-foreground, #27272a)',
-        animation: 'wf-fade-in 0.15s ease-out',
-      }} onClick={e => e.stopPropagation()}>
-        {items.map(item => (
-          <div key={item.label}
-            style={{
-              padding: '7px 12px', cursor: 'pointer',
-              color: item.danger ? '#ef4444' : undefined,
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface, #f4f4f5)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            onClick={() => { item.action(); onClose(); }}
-          >
-            <span style={{ width: 16, textAlign: 'center' }}>{item.icon}</span>
-            {item.label}
-          </div>
-        ))}
-      </div>
-    </foreignObject>
+    <div style={{
+      background: 'var(--color-canvas, #fff)', border: '1px solid var(--color-border, #e4e4e7)',
+      borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px 0',
+      fontFamily: '"Inter", sans-serif', fontSize: 12, color: 'var(--color-foreground, #27272a)',
+      animation: 'wf-fade-in 0.15s ease-out',
+      minWidth: 140,
+    }} onClick={e => e.stopPropagation()}>
+      {items.map(item => (
+        <div key={item.label}
+          style={{
+            padding: '7px 12px', cursor: 'pointer',
+            color: item.danger ? '#ef4444' : undefined,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface, #f4f4f5)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          onClick={() => { item.action(); onClose(); }}
+        >
+          <span style={{ width: 16, textAlign: 'center' }}>{item.icon}</span>
+          {item.label}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -668,9 +681,10 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
                 isSelected={selected === sid}
                 onClick={() => { setSelected(sid); setSidebar({ mode: 'edit', step }); }}
                 onContextMenu={e => {
-                  const svg = (e.target as SVGElement).closest('svg');
-                  if (svg) {
-                    const rect = svg.getBoundingClientRect();
+                  // Use screen coordinates relative to container (not SVG, which is transformed)
+                  const container = containerRef.current;
+                  if (container) {
+                    const rect = container.getBoundingClientRect();
                     setCtxMenu({ x: e.clientX - rect.left, y: e.clientY - rect.top, step });
                   }
                 }}
@@ -679,10 +693,13 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
             );
           })}
 
-          {/* Context menu */}
-          {ctxMenu && (
+        </svg>
+
+        {/* Context menu — rendered outside SVG to avoid transform issues */}
+        {ctxMenu && (
+          <div style={{ position: 'absolute', left: ctxMenu.x, top: ctxMenu.y, zIndex: 30 }}>
             <ContextMenu
-              x={ctxMenu.x} y={ctxMenu.y}
+              x={0} y={0}
               onClose={() => setCtxMenu(null)}
               onEdit={() => { setSidebar({ mode: 'edit', step: ctxMenu.step }); setCtxMenu(null); }}
               onAdd={() => { setSidebar({ mode: 'add', step: ctxMenu.step }); setCtxMenu(null); }}
@@ -690,8 +707,8 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
               onMoveUp={() => setCtxMenu(null)}
               onMoveDown={() => setCtxMenu(null)}
             />
-          )}
-        </svg>
+          </div>
+        )}
       </div>
 
       {/* Mini map */}
