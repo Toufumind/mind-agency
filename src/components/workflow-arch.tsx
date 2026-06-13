@@ -107,33 +107,6 @@ function buildLayers(steps: Step[]): Step[][] {
   return [...layers.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
 }
 
-function orthPath(x1: number, y1: number, x2: number, y2: number, r = 14): string {
-  // L-shape with rounded corners
-  // 1. Horizontal segment from source toward target x
-  // 2. Rounded corner at the bend
-  // 3. Vertical segment to target y
-  const midX = (x1 + x2) / 2;
-  const vDist = Math.abs(y2 - y1);
-  const hDist = Math.abs(x2 - x1);
-  const rc = Math.min(r, vDist / 2, hDist / 2);
-
-  if (rc < 1) return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
-
-  // Direction
-  const hDir = x2 > x1 ? 1 : -1;
-  const vDir = y2 > y1 ? 1 : -1;
-
-  // Points
-  const p1 = { x: x1, y: y1 }; // start
-  const p2 = { x: x1 + hDir * rc, y: y1 }; // before first curve
-  const p3 = { x: midX, y: y1 + vDir * rc }; // after first curve
-  const p4 = { x: midX, y: y2 - vDir * rc }; // before second curve
-  const p5 = { x: x2 - hDir * rc, y: y2 }; // after second curve
-  const p6 = { x: x2, y: y2 }; // end
-
-  return `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} Q ${p1.x + hDir * rc} ${p1.y} ${p1.x + hDir * rc} ${p1.y + vDir * rc} L ${midX} ${p3.y} L ${midX} ${p4.y} Q ${midX} ${p2.y + vDir * rc} ${p5.x} ${p2.y + vDir * rc} L ${p5.x} ${p5.y} Q ${p5.x + hDir * rc} ${p5.y} ${p5.x + hDir * rc} ${p5.y + vDir * rc} L ${p6.x} ${p6.y}`;
-}
-
 // ═══════ CSS ANIMATIONS ═══════
 
 const ANIMATIONS = `
@@ -630,9 +603,15 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
                 if (!to) return null;
                 const x1 = f.x + f.w / 2, y1 = f.y;
                 const x2 = to.x + to.w / 2, y2 = to.y + to.h;
+                const r = 14;
+                // Simple L-shape with rounded corners — same as dashed arrows
+                const midX = (x1 + x2) / 2;
+                const needDown = y2 > y1;
+                const vOff = needDown ? r : -r;
+                const path = `M ${x1} ${y1} L ${midX - r} ${y1} Q ${midX} ${y1} ${midX} ${y1 + vOff} L ${midX} ${y2 - vOff} Q ${midX} ${y2} ${midX - r} ${y2} L ${x2} ${y2}`;
                 return (
                   <path key={`${step.id}-${t.id}`}
-                    d={orthPath(x1, y1, x2, y2)}
+                    d={path}
                     fill="none" stroke="#52525b" strokeWidth={1.5}
                     markerEnd="url(#arrow)"
                     style={{ cursor: 'pointer', transition: 'stroke 0.15s' }}
