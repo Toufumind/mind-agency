@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import ChatPanel from '@/components/chat-panel';
 import EmailClient from '@/components/email-client';
 import Sidebar from '@/components/sidebar';
-import { Mail, Hash, Settings, Shield, MessageCircle, FileText, GitBranch, RefreshCw } from 'lucide-react';
+import { Mail, Hash, Settings, Shield, MessageCircle, FileText, GitBranch, RefreshCw, DollarSign } from 'lucide-react';
 import { useT } from '@/components/i18n';
 
 interface AgentConfig {
@@ -117,6 +117,8 @@ export default function AgentPage() {
               <Hash size={10}/> {groups.length} 群
             </p>
           </div>
+          {/* Token balance — visible in header */}
+          <TokenBalance agent={name!} />
           <button onClick={() => setShowConfig(!showConfig)}
             className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded-lg transition-colors ${showConfig ? 'bg-surface-alt text-muted' : 'text-muted-foreground hover:text-muted'}`}>
             <Settings size={12}/> 配置
@@ -180,8 +182,8 @@ export default function AgentPage() {
                   <Toggle label="群@通知" desc="被@时弹窗提醒" checked={config.notifyOnGroupMention} onChange={() => toggleConfig('notifyOnGroupMention')} />
                 </div>
 
-                {/* v1.2: Token Balance */}
-                <TokenBalance agent={name!} />
+                {/* Token Balance — full view in config */}
+                <TokenBalanceFull agent={name!} />
 
                 <div className="border-t border-border pt-3 space-y-3">
                   <div>
@@ -362,8 +364,28 @@ function TasksPanel({ agentName, tasks, onRefresh }: { agentName: string; tasks:
   );
 }
 
-// ── v1.2: Token Balance Component ──────────────────────────────
+// ── v1.2: Token Balance Component (compact) ──────────────────
 function TokenBalance({ agent }: { agent: string }) {
+  const [account, setAccount] = useState<any>(null);
+
+  useEffect(() => {
+    fetch(`${getClientWsBase()}/api/economy/account?agent=${agent}`)
+      .then(r => r.json()).then(d => setAccount(d.account)).catch(() => {});
+  }, [agent]);
+
+  if (!account) return null;
+
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-1 bg-surface rounded-lg">
+      <DollarSign size={11} className="text-muted-foreground" />
+      <span className="text-[12px] font-bold text-foreground font-mono">{account.balance.toLocaleString()}</span>
+      <span className="text-[9px] text-muted-foreground">tokens</span>
+    </div>
+  );
+}
+
+// ── v1.2: Token Balance Full (in config panel) ───────────────
+function TokenBalanceFull({ agent }: { agent: string }) {
   const [account, setAccount] = useState<any>(null);
   const [showHistory, setShowHistory] = useState(false);
 
