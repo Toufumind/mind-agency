@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useWebSocket } from '@/hooks/use-websocket';
 
 interface AgentInfo { name: string; emailCount: number; }
 interface GroupInfo { name: string; }
@@ -79,30 +80,11 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, [loaded, agents.length, refresh]);
 
-  // Single WebSocket — taste: one connection, not four
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let stopped = false;
-    let reconnectTimer: ReturnType<typeof setTimeout>;
-
-    const connect = () => {
-      if (stopped) return;
-      try {
-        ws = new WebSocket(`ws://${window.location.hostname}:3001`);
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'sidebar_refresh') refresh();
-          } catch (e) { console.error('[components:sidebar-context]', e); }
-        };
-        ws.onclose = () => { if (!stopped) reconnectTimer = setTimeout(connect, 5000); };
-        ws.onerror = () => { ws?.close(); };
-      } catch { if (!stopped) reconnectTimer = setTimeout(connect, 5000); }
-    };
-    connect();
-
-    return () => { stopped = true; clearTimeout(reconnectTimer); ws?.close(); };
-  }, [refresh]);
+  // Single WebSocket — unified hook
+  const wsUrl = typeof window !== 'undefined' ? `ws://${window.location.hostname}:3001` : null;
+  useWebSocket(wsUrl, (data) => {
+    if (data.type === 'sidebar_refresh') refresh();
+  });
 
   return (
     <SidebarContext.Provider value={{ agents, groups, activity, loading, refresh, collapsed, setCollapsed }}>

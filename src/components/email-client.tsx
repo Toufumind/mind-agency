@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useWebSocket } from '@/hooks/use-websocket';
 import { Mail, Send, Loader2, X, Check, FileText } from 'lucide-react';
 import { useT } from './i18n';
 import Markdown from './markdown';
@@ -49,20 +50,11 @@ export default function EmailClient({ agentName, displayName }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── WS real-time ──
-  useEffect(() => {
-    let ws: WebSocket | null = null; let stopped = false; let rt: ReturnType<typeof setTimeout>;
-    const connect = () => {
-      if (stopped) return;
-      try {
-        ws = new WebSocket(`ws://${window.location.hostname}:3001`);
-        ws.onmessage = (e) => { try { const d = JSON.parse(e.data); if (d.type === 'email' && (d.to === agentName || d.from === agentName)) load(); } catch (e) { console.error('[components:email-client]', e); } };
-        ws.onclose = () => { if (!stopped) rt = setTimeout(connect, 3000); };
-      } catch { if (!stopped) rt = setTimeout(connect, 3000); }
-    };
-    connect();
-    return () => { stopped = true; clearTimeout(rt); ws?.close(); };
-  }, [load]);
+  // ── WS real-time via unified hook ──
+  const wsUrl = typeof window !== 'undefined' ? `ws://${window.location.hostname}:3001` : null;
+  useWebSocket(wsUrl, (d) => {
+    if (d.type === 'email' && (d.to === agentName || d.from === agentName)) load();
+  }, { reconnectDelay: 3000 });
 
   const markRead = (fn: string) => {
     const next = new Set(readSet); next.add(fn);

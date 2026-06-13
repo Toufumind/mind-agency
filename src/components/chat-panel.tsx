@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useWebSocket } from '@/hooks/use-websocket';
 import { useRouter } from 'next/navigation';
 import Markdown from '@/components/markdown';
 import { ChevronDown, ChevronRight, Brain, Wrench, FileText, ArrowUp, Mail, Users as UsersIcon, Cpu } from 'lucide-react';
@@ -304,53 +305,15 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
     },
   }), [msgs]);
 
-  // ── WebSocket connection for real-time notifications ──────────────
-  useEffect(() => {
-    const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '3001';
-    const wsUrl = `ws://${window.location.hostname}:${wsPort}`;
-    let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let stopped = false;
-
-    function connect() {
-      if (stopped) return;
-      ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        console.log('[ws] connected to notification server');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'group_message' && data.from && data.message) {
-            toastRef.current(`[${data.group}] ${data.from}: ${data.message.slice(0, 80)}`);
-          } else if (data.type === 'new_email' && data.from && data.subject) {
-            toastRef.current(`New email from ${data.from}: ${data.subject}`);
-          }
-        } catch { /* ignore malformed messages */ }
-      };
-
-      ws.onclose = () => {
-        if (!stopped) {
-          // Reconnect after 3 seconds
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-
-      ws.onerror = () => {
-        ws?.close();
-      };
+  // ── WebSocket via unified hook ──
+  const wsUrl = typeof window !== 'undefined' ? `ws://${window.location.hostname}:3001` : null;
+  useWebSocket(wsUrl, (data) => {
+    if (data.type === 'group_message' && data.from && data.message) {
+      toastRef.current(`[${data.group}] ${data.from}: ${data.message.slice(0, 80)}`);
+    } else if (data.type === 'new_email' && data.from && data.subject) {
+      toastRef.current(`New email from ${data.from}: ${data.subject}`);
     }
-
-    connect();
-
-    return () => {
-      stopped = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      ws?.close();
-    };
-  }, []); // stable ref, no re-connect on re-render
+  }, { reconnectDelay: 3000 });
 
   const selectCmd = (cmd: string) => { const v = cmd + ' '; setInput(v); inputValueRef.current = v; setShowCmds(false); inputRef.current?.focus(); };
 

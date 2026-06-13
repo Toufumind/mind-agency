@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getClientWsBase } from '@/lib/data-dir';
+import { useWebSocket } from '@/hooks/use-websocket';
 import Sidebar from '@/components/sidebar';
 import { useSidebarData } from '@/components/sidebar-context';
 import { useNotifications } from '@/components/notification-provider';
@@ -242,18 +243,22 @@ function AgentCard({ agent, activity }: { agent: AgentInfo; activity: any }) {
 function LiveActivity() {
   const { t } = useT();
   const [events, setEvents] = useState<any[]>([]);
+  const loadRef = useRef(() => {});
+
   useEffect(() => {
-    const load = () => fetch('/api/system/analytics').then(r => r.json()).then(d => {
-      // Filter out idle events — only show meaningful actions
+    loadRef.current = () => fetch('/api/system/analytics').then(r => r.json()).then(d => {
       setEvents((d.activity || []).filter((e: any) => e.type !== 'agent_idle').slice(0, 8));
     }).catch(() => {});
-    load();
-    const timer = setInterval(load, 15000);
-    let ws: WebSocket|null=null, stopped=false, rt:any;
-    const connect = () => { if(stopped)return; try{ws=new WebSocket(`ws://${window.location.hostname}:3001`); ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==='dashboard_refresh')load()}catch (e) { console.error('[app:page]', e); }}; ws.onclose=()=>{if(!stopped)rt=setTimeout(connect,3000)}; }catch{ if(!stopped)rt=setTimeout(connect,3000); } };
-    connect();
-    return () => { stopped=true; clearInterval(timer); clearTimeout(rt); ws?.close(); };
+    loadRef.current();
+    const timer = setInterval(() => loadRef.current(), 15000);
+    return () => clearInterval(timer);
   }, []);
+
+  // WebSocket via unified hook
+  const wsUrl = typeof window !== 'undefined' ? `ws://${window.location.hostname}:3001` : null;
+  useWebSocket(wsUrl, (d) => {
+    if (d.type === 'dashboard_refresh') loadRef.current();
+  }, { reconnectDelay: 3000 });
 
   if (events.length === 0) return null;
 
