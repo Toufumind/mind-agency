@@ -606,6 +606,18 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
               />
             </marker>
 
+            {/* Route arrow marker (amber, for conditional jumps) */}
+            <marker
+              id="route-arrow"
+              markerWidth={10}
+              markerHeight={7}
+              refX={10}
+              refY={3.5}
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
+            </marker>
+
             {/* Gradient for background */}
             <linearGradient id="bg-grad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#fafafa" stopOpacity="0.5" />
@@ -657,6 +669,47 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
                     />
                   );
                 });
+            });
+          })}
+
+          {/* Route arrows (conditional jumps, dashed) */}
+          {steps.flatMap(step => {
+            if (!step.routes?.length) return [];
+            const from = positions.get(step.id);
+            if (!from) return [];
+            return step.routes.map(route => {
+              const to = positions.get(route.step);
+              if (!to) return null;
+              // Curved dashed arrow for route
+              const x1 = from.x + from.w;
+              const y1 = from.y + from.h / 2;
+              const x2 = to.x;
+              const y2 = to.y + to.h / 2;
+              // Route goes right then curves back (loop)
+              const midX = Math.max(x1, x2) + 40;
+              const path = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+              return (
+                <g key={`route-${step.id}-${route.step}`}>
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke="#f59e0b"
+                    strokeWidth={1.5}
+                    strokeDasharray="6,3"
+                    markerEnd="url(#route-arrow)"
+                  />
+                  <text
+                    x={midX + 4}
+                    y={(y1 + y2) / 2}
+                    fontSize={8}
+                    fill="#f59e0b"
+                    fontFamily={STYLE.monoFont}
+                    dominantBaseline="middle"
+                  >
+                    {route.when}
+                  </text>
+                </g>
+              );
             });
           })}
 
