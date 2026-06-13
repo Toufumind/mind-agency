@@ -3,15 +3,15 @@
 import { useMemo } from 'react';
 
 /**
- * Workflow Architecture Diagram — Transformer Paper Style
+ * Workflow Architecture Diagram — NLP Paper Style
  *
- * Matches "Attention is All You Need" (Vaswani et al., 2017):
- * - Vertical layout (inputs bottom, outputs top)
- * - Large colored blocks filling available width
- * - Semantic colors for different component types
- * - Thick arrows between blocks
- * - Nx notation for repeated layers
- * - Clean academic styling
+ * Like "Attention is All You Need" (Vaswani et al., 2017):
+ * - Vertical layout, inputs bottom → outputs top
+ * - Colored blocks for each module
+ * - Curved arrows + skip connections
+ * - Status indicators (colored dots)
+ * - ×N notation for repeated layers
+ * - Easy to edit: change CONFIG, ACTION_COLORS, or STATUS_COLORS below
  */
 
 interface Step {
@@ -20,8 +20,6 @@ interface Step {
   action?: string;
   prompt?: string;
   dependsOn?: string[];
-  reviewer?: string;
-  evaluate?: boolean;
   routes?: { step: string; when: string }[];
   status?: string;
 }
@@ -41,198 +39,175 @@ interface Props {
   running?: boolean;
 }
 
-// Semantic colors — matching Transformer diagram palette
-const ACTION_COLORS: Record<string, { fill: string; stroke: string }> = {
-  create:  { fill: '#e8f5e9', stroke: '#388e3c' },  // Green — production
-  review:  { fill: '#fff3e0', stroke: '#f57c00' },  // Orange — review/audit
-  fix:     { fill: '#e3f2fd', stroke: '#1976d2' },  // Blue — revision
-  verify:  { fill: '#f3e5f5', stroke: '#7b1fa2' },  // Purple — verification
-  deploy:  { fill: '#fce4ec', stroke: '#c2185b' },  // Pink — deployment
-  research:{ fill: '#e0f2f1', stroke: '#00796b' },  // Teal — research
-  execute: { fill: '#f5f5f5', stroke: '#757575' },  // Gray — default
+/* ═══════════════════════════════════════════════════
+ * EDIT THESE to change appearance
+ * ═══════════════════════════════════════════════════ */
+
+// Action type → block colors
+const ACTION_COLORS: Record<string, { fill: string; stroke: string; text: string }> = {
+  create:   { fill: '#e8f5e9', stroke: '#388e3c', text: '#1b5e20' },
+  review:   { fill: '#fff3e0', stroke: '#f57c00', text: '#e65100' },
+  fix:      { fill: '#e3f2fd', stroke: '#1976d2', text: '#0d47a1' },
+  verify:   { fill: '#f3e5f5', stroke: '#7b1fa2', text: '#4a148c' },
+  deploy:   { fill: '#fce4ec', stroke: '#c2185b', text: '#880e4f' },
+  research: { fill: '#e0f2f1', stroke: '#00796b', text: '#004d40' },
+  execute:  { fill: '#f5f5f5', stroke: '#757575', text: '#212121' },
 };
 
-function getActionColor(action: string): { fill: string; stroke: string } {
-  for (const [key, colors] of Object.entries(ACTION_COLORS)) {
-    if (action.toLowerCase().includes(key)) return colors;
+// Step status → indicator dot color
+const STATUS_COLORS: Record<string, string> = {
+  pending:   '#9e9e9e',
+  waiting:   '#ff9800',
+  running:   '#2196f3',
+  completed: '#4caf50',
+  failed:    '#f44336',
+};
+
+// Layout constants
+const W = 420;            // SVG width
+const BLOCK_W = 180;      // Block width
+const BLOCK_H = 44;       // Block height
+const GAP_X = 10;         // Gap between blocks in same layer
+const GAP_Y = 70;         // Gap between layers
+const PAD = 30;           // Padding
+const ARROW_COLOR = '#333';
+
+function getColor(action: string) {
+  const key = action?.toLowerCase() || '';
+  for (const [k, c] of Object.entries(ACTION_COLORS)) {
+    if (key.includes(k)) return c;
   }
   return ACTION_COLORS.execute;
 }
 
-// Build layers from dependency graph (topological sort by depth)
 function buildLayers(steps: Step[]): Step[][] {
-  const stepMap = new Map(steps.map(s => [s.id, s]));
+  const map = new Map(steps.map(s => [s.id, s]));
   const depth = new Map<string, number>();
-
-  function getDepth(id: string): number {
-    if (depth.has(id)) depth.get(id)!;
-    const step = stepMap.get(id);
-    if (!step || !step.dependsOn || step.dependsOn.length === 0) {
-      depth.set(id, 0);
-      return 0;
-    }
-    const maxDep = Math.max(...step.dependsOn.map(d => getDepth(d)));
-    depth.set(id, maxDep + 1);
-    return maxDep + 1;
-  }
-
-  steps.forEach(s => getDepth(s.id));
-
-  const layers: Map<number, Step[]> = new Map();
+  const d = (id: string): number => {
+    if (depth.has(id)) return depth.get(id)!;
+    const s = map.get(id);
+    if (!s?.dependsOn?.length) { depth.set(id, 0); return 0; }
+    const mx = Math.max(...s.dependsOn.map(d));
+    depth.set(id, mx + 1);
+    return mx + 1;
+  };
+  steps.forEach(s => d(s.id));
+  const layers = new Map<number, Step[]>();
   for (const s of steps) {
-    const d = depth.get(s.id) || 0;
-    if (!layers.has(d)) layers.set(d, []);
-    layers.get(d)!.push(s);
+    const k = depth.get(s.id) || 0;
+    if (!layers.has(k)) layers.set(k, []);
+    layers.get(k)!.push(s);
   }
-
-  return Array.from(layers.entries()).sort((a, b) => a[0] - b[0]).map(([, steps]) => steps);
+  return [...layers.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
 }
 
 export default function WorkflowArch({ steps, run }: Props) {
   const layers = useMemo(() => buildLayers(steps), [steps]);
+  const n = layers.length;
+  const svgH = n * (BLOCK_H + GAP_Y) + PAD * 2;
 
-  // Fixed SVG dimensions — elegant proportions
-  const svgW = 420;
-  const svgH = layers.length * 85 + 60;
-
-  // Calculate block positions — elegant, compact
   const positions = useMemo(() => {
     const pos = new Map<string, { x: number; y: number; w: number; h: number }>();
-    const blockW = 200; // Elegant width
-    const blockH = 45;  // Elegant height
-    const gapY = 40;
-    const startX = (svgW - blockW) / 2;
-    const startY = 25;
-
-    for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
-      const layer = layers[layerIdx];
-      const y = startY + (layers.length - 1 - layerIdx) * (blockH + gapY);
-
+    for (let i = 0; i < n; i++) {
+      const layer = layers[i];
+      const y = PAD + (n - 1 - i) * (BLOCK_H + GAP_Y);
       if (layer.length === 1) {
-        pos.set(layer[0].id, { x: startX, y, w: blockW, h: blockH });
+        pos.set(layer[0].id, { x: (W - BLOCK_W) / 2, y, w: BLOCK_W, h: BLOCK_H });
       } else {
-        const gap = 10;
-        const singleW = (blockW - gap * (layer.length - 1)) / layer.length;
-        for (let i = 0; i < layer.length; i++) {
-          pos.set(layer[i].id, { x: startX + i * (singleW + gap), y, w: singleW, h: blockH });
-        }
+        const tw = layer.length * BLOCK_W + (layer.length - 1) * GAP_X;
+        const ox = (W - tw) / 2;
+        layer.forEach((s, j) => {
+          pos.set(s.id, { x: ox + j * (BLOCK_W + GAP_X), y, w: BLOCK_W, h: BLOCK_H });
+        });
       }
     }
     return pos;
-  }, [layers]);
+  }, [layers, n]);
 
   return (
     <div style={{ fontFamily: '"Times New Roman", Times, serif', color: '#000' }}>
-      {/* Paper-style caption */}
-      <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', textAlign: 'center' }}>
+      <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: 10, textAlign: 'center' }}>
         Figure 1. Workflow Architecture
       </div>
 
-      {/* SVG Diagram — fills container */}
-      <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: 'block' }}>
+      <svg width="100%" viewBox={`0 0 ${W} ${svgH}`} style={{ display: 'block' }}>
         <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+          <marker id="ah" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill={ARROW_COLOR} />
           </marker>
         </defs>
 
-        {/* Arrows between blocks */}
-        {layers.map((layer, layerIdx) => {
-          if (layerIdx >= layers.length - 1) return null;
-          const nextLayer = layers[layerIdx + 1];
-
-          return layer.map(step => {
-            const from = positions.get(step.id);
-            if (!from) return null;
-
-            const targets = nextLayer.filter(s => s.dependsOn?.includes(step.id));
-            return targets.map(target => {
-              const to = positions.get(target.id);
+        {/* Arrows */}
+        {layers.flatMap((layer, li) => {
+          if (li >= n - 1) return [];
+          const next = layers[li + 1];
+          return layer.flatMap(step => {
+            const f = positions.get(step.id);
+            if (!f) return [];
+            return next.filter(t => t.dependsOn?.includes(step.id)).map(t => {
+              const to = positions.get(t.id);
               if (!to) return null;
-
-              const x1 = from.x + from.w / 2;
-              const y1 = from.y;
-              const x2 = to.x + to.w / 2;
-              const y2 = to.y + to.h;
-
-              // Curved arrow like Transformer diagram
-              const midY = (y1 + y2) / 2;
-              const path = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
-
+              const x1 = f.x + f.w / 2, y1 = f.y;
+              const x2 = to.x + to.w / 2, y2 = to.y + to.h;
+              const my = (y1 + y2) / 2;
               return (
-                <path key={`${step.id}-${target.id}`}
-                  d={path}
-                  fill="none" stroke="#333" strokeWidth="1.5" markerEnd="url(#arrowhead)" />
+                <path key={`${step.id}-${t.id}`}
+                  d={`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`}
+                  fill="none" stroke={ARROW_COLOR} strokeWidth="1.5" markerEnd="url(#ah)" />
               );
             });
           });
         })}
 
-        {/* Step blocks — large, filling width */}
-        {Array.from(positions.entries()).map(([stepId, pos]) => {
-          const step = steps.find(s => s.id === stepId);
+        {/* Blocks */}
+        {[...positions.entries()].map(([sid, p]) => {
+          const step = steps.find(s => s.id === sid);
           if (!step) return null;
-          const colors = getActionColor(step.action || 'execute');
-
+          const c = getColor(step.action || 'execute');
+          const sc = run?.steps[sid] ? STATUS_COLORS[run.steps[sid]] : undefined;
           return (
-            <g key={stepId}>
-              <rect x={pos.x} y={pos.y} width={pos.w} height={pos.h}
-                fill={colors.fill} stroke={colors.stroke} strokeWidth="1" rx="2" />
-              <text x={pos.x + pos.w / 2} y={pos.y + 18} fontSize="11" fontWeight="bold" fill="#333" textAnchor="middle" fontFamily="monospace">
+            <g key={sid}>
+              <rect x={p.x} y={p.y} width={p.w} height={p.h}
+                fill={c.fill} stroke={c.stroke} strokeWidth="1.5" rx="3" />
+              {sc && (
+                <circle cx={p.x + p.w - 10} cy={p.y + 10} r="5"
+                  fill={sc} stroke="#fff" strokeWidth="1" />
+              )}
+              <text x={p.x + p.w / 2} y={p.y + p.h / 2 - 5}
+                fontSize="11" fontWeight="bold" fill={c.text}
+                textAnchor="middle" fontFamily="monospace">
                 {step.id}
               </text>
-              <text x={pos.x + pos.w / 2} y={pos.y + 30} fontSize="9" fill="#555" textAnchor="middle" fontFamily="monospace">
+              <text x={p.x + p.w / 2} y={p.y + p.h / 2 + 9}
+                fontSize="9" fill={c.text} opacity="0.75"
+                textAnchor="middle" fontFamily="monospace">
                 {step.agent || '?'} · {step.action || 'execute'}
               </text>
             </g>
           );
         })}
 
-        {/* Nx notation */}
-        {layers.length > 1 && (
-          <text x={svgW - 20} y={svgH / 2} fontSize="16" fill="#666" fontFamily="serif">
-            ×{layers.length}
+        {/* ×N */}
+        {n > 1 && (
+          <text x={W - 15} y={svgH / 2} fontSize="14" fill="#666"
+            fontFamily="serif" textAnchor="middle" dominantBaseline="middle">
+            ×{n}
           </text>
         )}
 
-        {/* Skip connections — curved like Transformer diagram */}
-        {layers.length > 1 && layers[0].map(step => {
-          const from = positions.get(step.id);
-          if (!from) return null;
-          const lastLayer = layers[layers.length - 1];
-          const targets = lastLayer.filter(s => s.dependsOn?.includes(step.id));
-          return targets.map(target => {
-            const to = positions.get(target.id);
-            if (!to) return null;
-            const skipX = from.x - 15;
-            const y1 = from.y + from.h / 2;
-            const y2 = to.y + to.h / 2;
-            const midY = (y1 + y2) / 2;
-            // Curved skip connection
-            const path = `M ${from.x + from.w / 2} ${from.y} C ${skipX} ${y1}, ${skipX} ${y2}, ${to.x + to.w / 2} ${to.y + to.h}`;
-            return (
-              <g key={`skip-${step.id}-${target.id}`}>
-                <path d={path} fill="none" stroke="#333" strokeWidth="1" strokeDasharray="4,2" />
-              </g>
-            );
-          });
-        })}
-
-        {/* Inputs label */}
-        <text x={svgW / 2} y={svgH - 10} fontSize="12" fill="#333" textAnchor="middle" fontFamily="serif">
+        {/* Inputs / Output */}
+        <text x={W / 2} y={svgH - 8} fontSize="11" fill="#333" textAnchor="middle" fontFamily="serif">
           Inputs
         </text>
-
-        {/* Output label */}
-        <text x={svgW / 2} y={20} fontSize="12" fill="#333" textAnchor="middle" fontFamily="serif">
+        <text x={W / 2} y={18} fontSize="11" fill="#333" textAnchor="middle" fontFamily="serif">
           Output
         </text>
       </svg>
 
-      {/* Caption */}
-      <div style={{ fontSize: '10px', color: '#555', textAlign: 'center', marginTop: '8px', fontFamily: '"Times New Roman", serif' }}>
-        <strong>Fig. 1.</strong> {steps.length}-module workflow with {layers.length} dependency layers.
-        {' '}Color indicates component type (green=production, orange=review, blue=revision).
+      <div style={{ fontSize: '10px', color: '#555', textAlign: 'center', marginTop: 8, lineHeight: 1.5 }}>
+        <strong>Fig. 1.</strong> {steps.length}-module workflow, {n} dependency layers.
+        Color = component type (green=production, orange=review, blue=revision, purple=verification).
+        {run && <> Status: <span style={{ color: STATUS_COLORS[run.status] || '#333', fontWeight: 600 }}>{run.status}</span>.</>}
       </div>
     </div>
   );

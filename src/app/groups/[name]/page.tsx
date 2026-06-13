@@ -45,6 +45,7 @@ export default function GroupPage() {
   const [workflow, setWorkflow] = useState<WorkflowDef | null>(null);
   const [wfRunning, setWfRunning] = useState(false);
   const [wfResults, setWfResults] = useState<WorkflowResult[]>([]);
+  const [currentRun, setCurrentRun] = useState<{ runId: string; status: string; steps: Record<string, string> } | null>(null);
   const [groupConfig, setGroupConfig] = useState<GroupConfig | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,13 +135,28 @@ export default function GroupPage() {
 
   const runWorkflow = async () => {
     if (!workflow || wfRunning) return;
-    setWfRunning(true); setWfResults([]);
+    setWfRunning(true); setWfResults([]); setCurrentRun(null);
     try {
+      // Build initial run state from steps
+      const stepStatuses: Record<string, string> = {};
+      (workflow.stepsList || []).forEach((s: any) => { stepStatuses[s.id] = 'pending'; });
+      setCurrentRun({ runId: `wf-${Date.now()}`, status: 'running', steps: stepStatuses });
+
       const r = await fetch(`/api/groups/${name}/workflow`, { method: 'POST' });
       const d = await r.json();
-      if (d.results) setWfResults(d.results);
+      if (d.results) {
+        setWfResults(d.results);
+        // Update run with actual results
+        const stepSt: Record<string, string> = {};
+        (d.results as any[]).forEach((r: any) => {
+          stepSt[r.stepId] = r.status === 'completed' ? 'completed' : r.status === 'failed' ? 'failed' : 'completed';
+        });
+        setCurrentRun(prev => prev ? { ...prev, status: 'completed', steps: { ...prev.steps, ...stepSt } } : null);
+      }
       setTimeout(fetchGroup, 3000);
-    } catch {}
+    } catch {
+      setCurrentRun(prev => prev ? { ...prev, status: 'failed' } : null);
+    }
     setWfRunning(false);
   };
 
@@ -415,7 +431,7 @@ export default function GroupPage() {
                   {/* Architecture diagram */}
                   <WorkflowArch
                     steps={(workflow.stepsList || []) as any[]}
-                    run={wfResults.length > 0 ? { runId: 'current', status: 'running', steps: {}, startedAt: Date.now() } : null}
+                    run={currentRun ? { ...currentRun, startedAt: Date.now() } : null}
                     onTrigger={runWorkflow}
                     running={wfRunning}
                   />
