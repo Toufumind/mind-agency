@@ -29,6 +29,8 @@ interface Step {
   dependsOn?: string[];
   routes?: { step: string; when: string }[];
   status?: string;
+  reviewer?: string;
+  priority?: string;
 }
 
 interface Run {
@@ -44,6 +46,9 @@ interface Props {
   run: Run | null;
   onTrigger?: () => void;
   running?: boolean;
+  onStepClick?: (step: Step) => void;     // Click a block to edit
+  onStepAdd?: (afterStepId?: string) => void;  // Click + to add
+  onStepDelete?: (stepId: string) => void;     // Right-click to delete
 }
 
 // ── Block Colors (action type → fill/stroke/text) ──
@@ -139,17 +144,71 @@ function buildLayers(steps: Step[]): Step[][] {
  * §3. RENDERERS — Customize individual visual elements
  * ═══════════════════════════════════════════════════════════════ */
 
+/** Context menu for right-click on a block */
+function BlockContextMenu({
+  x, y, stepId, onClose, onEdit, onDelete, onAddAfter,
+}: {
+  x: number; y: number; stepId: string; onClose: () => void;
+  onEdit: () => void; onDelete: () => void; onAddAfter: () => void;
+}) {
+  const menuStyle: React.CSSProperties = {
+    background: '#fff', border: '1px solid #e4e4e7', borderRadius: 8,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: '4px 0',
+    fontFamily: STYLE.bodyFont, fontSize: 12, color: '#27272a',
+    position: 'relative', zIndex: 100,
+  };
+
+  return (
+    <foreignObject x={x} y={y} width={160} height={120} style={{ overflow: 'visible' } as any}>
+      <div style={menuStyle} onClick={e => e.stopPropagation()}>
+
+        <div
+          style={{ padding: '6px 12px', cursor: 'pointer' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#f4f4f5')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          onClick={() => { onEdit(); onClose(); }}
+        >
+          ✏️ 编辑
+        </div>
+        <div
+          style={{ padding: '6px 12px', cursor: 'pointer' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#f4f4f5')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          onClick={() => { onAddAfter(); onClose(); }}
+        >
+          ➕ 添加步骤
+        </div>
+        <div
+          style={{ padding: '6px 12px', cursor: 'pointer', color: '#ef4444' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#fef2f2')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          onClick={() => { onDelete(); onClose(); }}
+        >
+          🗑️ 删除
+        </div>
+      </div>
+    </foreignObject>
+  );
+}
+
 /** Render a single block — the main visual element */
 function Block({
   step, x, y, w, h, status, colors,
+  onContextMenu, onClick, onAddClick,
 }: {
   step: Step; x: number; y: number; w: number; h: number;
   status?: string; colors: { fill: string; stroke: string; text: string };
+  onContextMenu?: (e: React.MouseEvent, stepId: string) => void;
+  onClick?: (step: Step) => void;
+  onAddClick?: (afterStepId: string) => void;
 }) {
   const sc = status ? STATUS_COLORS[status] : undefined;
 
   return (
-    <g>
+    <g style={{ cursor: 'pointer' }}
+      onClick={e => { e.stopPropagation(); onClick?.(step); }}
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e, step.id); }}
+    >
       {/* Shadow */}
       <rect
         x={x + 2} y={y + 3} width={w} height={h}
@@ -200,6 +259,18 @@ function Block({
           <circle cx={x + w - 12} cy={y + 12} r={STYLE.dotRadius} fill={sc} />
         </g>
       )}
+
+      {/* Add button — bottom-right corner */}
+      {onAddClick && (
+        <g
+          onClick={e => { e.stopPropagation(); onAddClick(step.id); }}
+          style={{ cursor: 'pointer' }}
+        >
+          <circle cx={x + w + 2} cy={y + h / 2} r={8} fill="#fafafa" stroke="#d4d4d8" strokeWidth={1} />
+          <text x={x + w + 2} y={y + h / 2} fontSize={11} fill="#71717a"
+            textAnchor="middle" dominantBaseline="middle" fontWeight={500}>+</text>
+        </g>
+      )}
     </g>
   );
 }
@@ -234,9 +305,20 @@ function Arrow({
  * §4. MAIN COMPONENT
  * ═══════════════════════════════════════════════════════════════ */
 
-export default function WorkflowArch({ steps, run }: Props) {
+export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onStepDelete }: Props) {
   const layers = useMemo(() => buildLayers(steps), [steps]);
   const n = layers.length;
+
+  // Context menu state
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; stepId: string } | null>(null);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [ctxMenu]);
 
   const W = STYLE.svgWidth;
   const { blockWidth: BW, blockHeight: BH, gapX: GX, gapY: GY, padding: PAD } = STYLE;
@@ -497,9 +579,37 @@ export default function WorkflowArch({ steps, run }: Props) {
                 x={p.x} y={p.y} w={p.w} h={p.h}
                 status={run?.steps[sid]}
                 colors={getColor(step.action || 'execute')}
+                onClick={onStepClick ? (s) => onStepClick(s) : undefined}
+                onAddClick={onStepAdd ? (afterId) => onStepAdd(afterId) : undefined}
+                onContextMenu={(e, stepId) => {
+                  const svg = (e.target as SVGElement).closest('svg');
+                  if (svg) {
+                    const rect = svg.getBoundingClientRect();
+                    setCtxMenu({
+                      x: e.clientX - rect.left,
+                      y: e.clientY - rect.top,
+                      stepId,
+                    });
+                  }
+                }}
               />
             );
           })}
+
+          {/* Context menu */}
+          {ctxMenu && (
+            <BlockContextMenu
+              x={ctxMenu.x} y={ctxMenu.y}
+              stepId={ctxMenu.stepId}
+              onClose={() => setCtxMenu(null)}
+              onEdit={() => {
+                const step = steps.find(s => s.id === ctxMenu.stepId);
+                if (step) onStepClick?.(step);
+              }}
+              onDelete={() => onStepDelete?.(ctxMenu.stepId)}
+              onAddAfter={() => onStepAdd?.(ctxMenu.stepId)}
+            />
+          )}
 
           {/* ×N notation */}
           {n > 1 && (

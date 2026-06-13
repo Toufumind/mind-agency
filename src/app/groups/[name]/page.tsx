@@ -160,6 +160,63 @@ export default function GroupPage() {
     setWfRunning(false);
   };
 
+  // ── Step editing from architecture diagram ──
+  const openWfEditor = (initialStep?: any) => {
+    const steps = (workflow?.stepsList || []).map((s: any) => ({
+      id: s.id, agent: s.agent || '', action: s.action || 'execute',
+      prompt: s.prompt || '', dependsOn: s.dependsOn || [],
+      reviewer: s.reviewer || '', priority: s.priority || '',
+    }));
+    if (initialStep) {
+      // Pre-fill with clicked step
+      setEditSteps([initialStep]);
+    } else {
+      setEditSteps(steps);
+    }
+    setShowWfEditor(true);
+  };
+
+  const addStep = async (afterStepId?: string) => {
+    const currentSteps = (workflow?.stepsList || []).map((s: any) => ({
+      id: s.id, agent: s.agent || '', action: s.action || 'execute',
+      prompt: s.prompt || '', dependsOn: s.dependsOn || [],
+      reviewer: s.reviewer || '', priority: s.priority || '',
+    }));
+    const newStep = {
+      id: `step_${currentSteps.length + 1}`,
+      agent: '', action: 'execute', prompt: '',
+      dependsOn: afterStepId ? [afterStepId] : [],
+    };
+    const updated = [...currentSteps, newStep];
+    setEditSteps(updated);
+    setShowWfEditor(true);
+  };
+
+  const deleteStep = async (stepId: string) => {
+    if (!confirm(`删除步骤 ${stepId}？`)) return;
+    const currentSteps = (workflow?.stepsList || [])
+      .filter((s: any) => s.id !== stepId)
+      .map((s: any) => ({
+        id: s.id, agent: s.agent || '', action: s.action || 'execute',
+        prompt: s.prompt || '', dependsOn: (s.dependsOn || []).filter((d: string) => d !== stepId),
+        reviewer: s.reviewer || '', priority: s.priority || '',
+      }));
+    await fetch(`/api/groups/${name}/workflow`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps: currentSteps }),
+    });
+    fetchWorkflow();
+  };
+
+  const saveWfSteps = async () => {
+    await fetch(`/api/groups/${name}/workflow`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps: editSteps }),
+    });
+    setShowWfEditor(false);
+    fetchWorkflow();
+  };
+
   const isOwner = groupConfig?.owner === currentUser;
   const isAdmin = isOwner || groupConfig?.admins?.includes(currentUser);
 
@@ -434,6 +491,9 @@ export default function GroupPage() {
                     run={currentRun ? { ...currentRun, startedAt: Date.now() } : null}
                     onTrigger={runWorkflow}
                     running={wfRunning}
+                    onStepClick={(step) => openWfEditor({ id: step.id, agent: step.agent || '', action: step.action || 'execute', prompt: step.prompt || '', dependsOn: step.dependsOn || [], reviewer: step.reviewer || '', priority: '' })}
+                    onStepAdd={(afterId) => addStep(afterId)}
+                    onStepDelete={(stepId) => deleteStep(stepId)}
                   />
 
                   {/* Results */}
@@ -767,14 +827,7 @@ export default function GroupPage() {
               </div>
               <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2 shrink-0">
                 <button onClick={() => setShowWfEditor(false)} className="px-3 py-1.5 text-[11px] text-muted hover:bg-surface rounded-lg">取消</button>
-                <button onClick={async () => {
-                  await fetch(`/api/groups/${name}/workflow`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ steps: editSteps }),
-                  });
-                  setShowWfEditor(false);
-                  fetchWorkflow();
-                }} className="px-4 py-1.5 text-[11px] font-medium text-canvas bg-foreground rounded-lg hover:opacity-90">保存</button>
+                <button onClick={saveWfSteps} className="px-4 py-1.5 text-[11px] font-medium text-canvas bg-foreground rounded-lg hover:opacity-90">保存</button>
               </div>
             </div>
           </div>
