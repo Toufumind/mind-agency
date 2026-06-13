@@ -108,12 +108,7 @@ function buildLayers(steps: Step[]): Step[][] {
 }
 
 function orthPath(x1: number, y1: number, x2: number, y2: number, r = 12): string {
-  // L-shape routing for bottom-to-top workflow:
-  // 1. From source TOP edge, go DOWN first
-  // 2. Turn horizontal
-  // 3. Go to target x position
-  // 4. Turn UP
-  // 5. Go to target BOTTOM edge
+  // L-shape routing: go HORIZONTALLY first toward target, then VERTICALLY to target
   const midY = (y1 + y2) / 2;
   const vDist = Math.abs(midY - y1);
   const hDist = Math.abs(x2 - x1);
@@ -121,10 +116,9 @@ function orthPath(x1: number, y1: number, x2: number, y2: number, r = 12): strin
 
   if (rc < 1) return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
 
-  // Always go DOWN from source first (positive Y direction)
-  // Then horizontally to target x
-  // Then UP to target (negative Y direction)
-  return `M ${x1} ${y1} L ${x1} ${midY - rc} Q ${x1} ${midY} ${x1 + (x2 > x1 ? rc : -rc)} ${midY} L ${x2 - (x2 > x1 ? rc : -rc)} ${midY} Q ${x2} ${midY} ${x2} ${midY + rc} L ${x2} ${y2}`;
+  // Go horizontally toward target first, then vertically
+  const hDir = x2 > x1 ? 1 : -1;
+  return `M ${x1} ${y1} L ${x1 + hDir * rc} ${y1} Q ${x1} ${y1} ${x1} ${y1 + (y2 > y1 ? -rc : rc)} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${midY + (y2 > y1 ? rc : -rc)} Q ${x2} ${y2} ${x2 - hDir * rc} ${y2} L ${x2} ${y2}`;
 }
 
 // ═══════ CSS ANIMATIONS ═══════
@@ -139,7 +133,7 @@ const ANIMATIONS = `
   @keyframes wf-fade-in { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
 
   .wf-block { cursor: pointer; }
-  .wf-block-rect { transition: filter 0.15s ease; pointer-events: all; }
+  .wf-block-rect { transition: filter 0.15s ease; }
 
   .wf-sidebar { background: var(--color-canvas, #fff); color: var(--color-foreground, #18181b); border-color: var(--color-border, #e4e4e7); }
   .wf-sidebar-input { background: var(--color-canvas, #fff); border-color: var(--color-border, #e4e4e7); color: var(--color-foreground, #18181b); }
@@ -275,26 +269,37 @@ function StepBlock({
 
   const sc = STATUS_COLORS[stepStatus] || colors.stroke;
 
-  const [hovered, setHovered] = useState(false);
-
   return (
     <g
       className="wf-block"
-      style={{ filter: hovered ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' : 'none', transition: 'filter 0.15s ease', pointerEvents: 'all' }}
       onClick={e => { e.stopPropagation(); onClick?.(); }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e); }}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
+      onMouseEnter={e => {
+        const rect = e.currentTarget.querySelector('rect');
+        if (rect) {
+          rect.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))';
+          rect.setAttribute('stroke', '#3b82f6');
+          rect.setAttribute('stroke-width', '2');
+        }
+      }}
+      onMouseLeave={e => {
+        const rect = e.currentTarget.querySelector('rect');
+        if (rect) {
+          rect.style.filter = 'none';
+          rect.setAttribute('stroke', isSelected ? '#3b82f6' : colors.stroke);
+          rect.setAttribute('stroke-width', isSelected ? '2.5' : '1.5');
+        }
+      }}
     >
       {/* Main block */}
       <rect
         className="wf-block-rect"
         x={x} y={y} width={w} height={h}
         fill={isCompleted ? '#f0fdf4' : isFailed ? '#fef2f2' : colors.fill}
-        stroke={isSelected ? '#3b82f6' : hovered ? '#3b82f6' : sc}
-        strokeWidth={isSelected ? 2.5 : hovered ? 2 : 1.5}
+        stroke={isSelected ? '#3b82f6' : sc}
+        strokeWidth={isSelected ? 2.5 : 1.5}
         rx={6}
-        style={{ animation, filter: isDragSource ? 'drop-shadow(0 8px 16px rgba(0,0,0,0.2))' : hovered ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' : 'none' }}
+        style={{ animation: animation || 'none' }}
       />
 
       {/* Step ID */}
