@@ -24,11 +24,9 @@ const THEME_FILTERS: Record<string, string> = {
 export default function LogoCanvas({ size = 28 }: { size?: number }) {
   const { theme } = useTheme();
   const filter = THEME_FILTERS[theme] || 'none';
-  // In standalone/packaged build, public/ files are served from /_next/static/public/
-  // In dev mode (next dev), they're served from root (/logo.svg)
-  const isPackaged = typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron');
-  const prefix = isPackaged ? '/_next/static/public' : '';
-  const src = DARK_THEMES.has(theme) ? `${prefix}/shaders/frames_dark/logo_sprite_48f_512x512.png` : `${prefix}/logo.svg`;
+  // Logo is served from public/ directory — same path in dev and production
+  // Next.js standalone serves public/ files at root path (/logo.svg)
+  const src = DARK_THEMES.has(theme) ? '/shaders/frames_dark/logo_sprite_48f_512x512.png' : '/logo.svg';
 
   // Use first frame of sprite sheet (index 0,0) or static SVG
   return (

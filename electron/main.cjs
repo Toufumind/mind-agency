@@ -43,19 +43,23 @@ function seedDataDir() {
 
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  // Seed Agents/ and Groups/ — only copy missing files (don't overwrite user data)
+  // Source: try asar first, then .next-server (where standalone puts them)
+  const srcRoot = fs.existsSync(path.join(APP_ROOT, 'Agents')) ? APP_ROOT
+    : fs.existsSync(path.join(DATA_DIR, '.next-server', 'Agents')) ? path.join(DATA_DIR, '.next-server')
+    : APP_ROOT;
+
+  // Seed Agents/ and Groups/ — only copy missing subdirectories
   for (const m of ['Agents', 'Groups']) {
-    const src = path.join(APP_ROOT, m);
+    const src = path.join(srcRoot, m);
     const dest = path.join(DATA_DIR, m);
 
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(dest, { recursive: true });
-    }
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
 
-    // Copy only missing subdirectories (preserves user-created agents/groups)
     if (fs.existsSync(src)) {
       for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
+        // Skip test/real-test directories
+        if (entry.name.startsWith('real-test') || entry.name === 'test-agent') continue;
         const destSub = path.join(dest, entry.name);
         if (!fs.existsSync(destSub)) {
           try {

@@ -16,7 +16,7 @@ export async function GET() {
   const apiKey = agency.system.settings.apiKey || '';
 
   if (!baseUrl || !apiKey) {
-    return NextResponse.json({ models: getDefaultModels(), source: 'default' });
+    return NextResponse.json({ models: [], source: 'none' });
   }
 
   // v0.4: Query API, but if it fails, use the configured model as the only option
