@@ -100,6 +100,24 @@ export default function GroupPage() {
 
   useEffect(() => { fetchGroup(); fetchWorkflow(); fetchConfig(); fetchAgents(); }, [fetchGroup, fetchWorkflow, fetchConfig, fetchAgents]);
 
+  // Real-time workflow polling
+  useEffect(() => {
+    if (!wfRunning) return;
+    const t = setInterval(() => {
+      fetchWorkflow();
+      // Also check if workflow completed
+      fetch(`/api/workflows/run`).then(r => r.json()).then(d => {
+        const runs = d.runs || [];
+        const current = runs.find((r: any) => r.workflowName === workflow?.name);
+        if (current && (current.status === 'completed' || current.status === 'failed')) {
+          setWfRunning(false);
+          fetchWorkflow();
+        }
+      }).catch(() => {});
+    }, 3000);
+    return () => clearInterval(t);
+  }, [wfRunning, workflow?.name, fetchWorkflow]);
+
   const send = async () => {
     const t = input.trim();
     if (!t || sending || !pickAgent) return;
