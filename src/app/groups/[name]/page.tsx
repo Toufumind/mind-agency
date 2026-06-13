@@ -217,6 +217,57 @@ export default function GroupPage() {
     fetchWorkflow();
   };
 
+  // ── Edge (line) editing ──
+  const editEdge = (fromId: string, toId: string) => {
+    // Open editor with the target step's dependsOn highlighted
+    const targetStep = (workflow?.stepsList || []).find((s: any) => s.id === toId);
+    if (targetStep) {
+      openWfEditor({
+        id: targetStep.id, agent: targetStep.agent || '', action: targetStep.action || 'execute',
+        prompt: targetStep.prompt || '', dependsOn: targetStep.dependsOn || [],
+        reviewer: targetStep.reviewer || '', priority: targetStep.priority || '',
+      });
+    }
+  };
+
+  const deleteEdge = async (fromId: string, toId: string) => {
+    if (!confirm(`删除依赖 ${fromId} → ${toId}？`)) return;
+    const currentSteps = (workflow?.stepsList || []).map((s: any) => {
+      if (s.id === toId) {
+        return { ...s, dependsOn: (s.dependsOn || []).filter((d: string) => d !== fromId) };
+      }
+      return s;
+    }).map((s: any) => ({
+      id: s.id, agent: s.agent || '', action: s.action || 'execute',
+      prompt: s.prompt || '', dependsOn: s.dependsOn || [],
+      reviewer: s.reviewer || '', priority: s.priority || '',
+    }));
+    await fetch(`/api/groups/${name}/workflow`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps: currentSteps }),
+    });
+    fetchWorkflow();
+  };
+
+  const addEdge = async (fromId: string, toId: string) => {
+    // Add fromId as a dependency of toId
+    const currentSteps = (workflow?.stepsList || []).map((s: any) => {
+      if (s.id === toId && !(s.dependsOn || []).includes(fromId)) {
+        return { ...s, dependsOn: [...(s.dependsOn || []), fromId] };
+      }
+      return s;
+    }).map((s: any) => ({
+      id: s.id, agent: s.agent || '', action: s.action || 'execute',
+      prompt: s.prompt || '', dependsOn: s.dependsOn || [],
+      reviewer: s.reviewer || '', priority: s.priority || '',
+    }));
+    await fetch(`/api/groups/${name}/workflow`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps: currentSteps }),
+    });
+    fetchWorkflow();
+  };
+
   const isOwner = groupConfig?.owner === currentUser;
   const isAdmin = isOwner || groupConfig?.admins?.includes(currentUser);
 
@@ -494,6 +545,9 @@ export default function GroupPage() {
                     onStepClick={(step) => openWfEditor({ id: step.id, agent: step.agent || '', action: step.action || 'execute', prompt: step.prompt || '', dependsOn: step.dependsOn || [], reviewer: step.reviewer || '', priority: '' })}
                     onStepAdd={(afterId) => addStep(afterId)}
                     onStepDelete={(stepId) => deleteStep(stepId)}
+                    onEdgeClick={(from, to) => editEdge(from, to)}
+                    onEdgeDelete={(from, to) => deleteEdge(from, to)}
+                    onEdgeAdd={(from, to) => addEdge(from, to)}
                   />
 
                   {/* Results */}

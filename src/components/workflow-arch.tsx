@@ -46,9 +46,12 @@ interface Props {
   run: Run | null;
   onTrigger?: () => void;
   running?: boolean;
-  onStepClick?: (step: Step) => void;     // Click a block to edit
-  onStepAdd?: (afterStepId?: string) => void;  // Click + to add
-  onStepDelete?: (stepId: string) => void;     // Right-click to delete
+  onStepClick?: (step: Step) => void;
+  onStepAdd?: (afterStepId?: string) => void;
+  onStepDelete?: (stepId: string) => void;
+  onEdgeClick?: (fromId: string, toId: string) => void;      // Click arrow to edit dependency
+  onEdgeDelete?: (fromId: string, toId: string) => void;     // Delete dependency
+  onEdgeAdd?: (fromId: string, toId: string) => void;        // Drag to create dependency
 }
 
 // ── Block Colors (action type → fill/stroke/text) ──
@@ -194,13 +197,16 @@ function BlockContextMenu({
 /** Render a single block — the main visual element */
 function Block({
   step, x, y, w, h, status, colors,
-  onContextMenu, onClick, onAddClick,
+  onContextMenu, onClick, onAddClick, onDragStart, onDragEnd, isDragSource,
 }: {
   step: Step; x: number; y: number; w: number; h: number;
   status?: string; colors: { fill: string; stroke: string; text: string };
   onContextMenu?: (e: React.MouseEvent, stepId: string) => void;
   onClick?: (step: Step) => void;
   onAddClick?: (afterStepId: string) => void;
+  onDragStart?: (e: React.MouseEvent, stepId: string) => void;
+  onDragEnd?: (e: React.MouseEvent, stepId: string) => void;
+  isDragSource?: boolean;
 }) {
   const sc = status ? STATUS_COLORS[status] : undefined;
 
@@ -271,33 +277,68 @@ function Block({
             textAnchor="middle" dominantBaseline="middle" fontWeight={500}>+</text>
         </g>
       )}
+
+      {/* Drag handle — bottom edge, for creating new dependencies */}
+      {onDragStart && (
+        <g
+          onMouseDown={e => { e.stopPropagation(); onDragStart(e, step.id); }}
+          style={{ cursor: 'grab' }}
+        >
+          <circle cx={x + w / 2} cy={y + h + 2} r={6}
+            fill={isDragSource ? '#3b82f6' : '#fafafa'}
+            stroke={isDragSource ? '#3b82f6' : '#d4d4d8'}
+            strokeWidth={1.5} />
+          <text x={x + w / 2} y={y + h + 2} fontSize={8} fill={isDragSource ? '#fff' : '#71717a'}
+            textAnchor="middle" dominantBaseline="middle">⋮</text>
+        </g>
+      )}
     </g>
   );
 }
 
-/** Render a curved arrow between two blocks */
+/** Render a curved arrow between two blocks — clickable */
 function Arrow({
-  fx, fy, fw, fh, tx, ty, tw, th, id,
+  fx, fy, fw, fh, tx, ty, tw, th, id, fromId, toId,
+  onClick, onContextMenu, hovered, dragSource,
 }: {
   fx: number; fy: number; fw: number; fh: number;
   tx: number; ty: number; tw: number; th: number;
-  id: string;
+  id: string; fromId: string; toId: string;
+  onClick?: (fromId: string, toId: string) => void;
+  onContextMenu?: (e: React.MouseEvent, fromId: string, toId: string) => void;
+  hovered?: boolean;
+  dragSource?: string;
 }) {
   const x1 = fx + fw / 2;
   const y1 = fy;
   const x2 = tx + tw / 2;
   const y2 = ty + th;
   const my = (y1 + y2) / 2;
+  const path = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
 
+  // Thicker invisible hit area for easier clicking
   return (
-    <path
-      key={`arrow-${id}`}
-      d={`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`}
-      fill="none"
-      stroke={STYLE.arrowColor}
-      strokeWidth={STYLE.arrowWidth}
-      markerEnd="url(#arrow)"
-    />
+    <g key={`arrow-${id}`}>
+      {/* Hit area (invisible, wider) */}
+      <path
+        d={path}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={16}
+        style={{ cursor: 'pointer' }}
+        onClick={e => { e.stopPropagation(); onClick?.(fromId, toId); }}
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e, fromId, toId); }}
+      />
+      {/* Visible arrow */}
+      <path
+        d={path}
+        fill="none"
+        stroke={hovered ? '#3b82f6' : dragSource === fromId ? '#22c55e' : STYLE.arrowColor}
+        strokeWidth={hovered ? 2.5 : STYLE.arrowWidth}
+        markerEnd="url(#arrow)"
+        style={{ pointerEvents: 'none', transition: 'stroke 0.15s, stroke-width 0.15s' }}
+      />
+    </g>
   );
 }
 
@@ -305,20 +346,59 @@ function Arrow({
  * §4. MAIN COMPONENT
  * ═══════════════════════════════════════════════════════════════ */
 
-export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onStepDelete }: Props) {
+export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onStepDelete, onEdgeClick, onEdgeDelete, onEdgeAdd }: Props) {
   const layers = useMemo(() => buildLayers(steps), [steps]);
   const n = layers.length;
 
   // Context menu state
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; stepId: string } | null>(null);
 
-  // Close context menu on outside click
+  // Edge context menu
+  const [edgeCtx, setEdgeCtx] = useState<{ x: number; y: number; fromId: string; toId: string } | null>(null);
+
+  // Drag-to-connect state
+  const [dragSource, setDragSource] = useState<string | null>(null);
+  const [dragMouse, setDragMouse] = useState<{ x: number; y: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Close menus on outside click
   useEffect(() => {
-    if (!ctxMenu) return;
-    const close = () => setCtxMenu(null);
+    if (!ctxMenu && !edgeCtx) return;
+    const close = () => { setCtxMenu(null); setEdgeCtx(null); };
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
-  }, [ctxMenu]);
+  }, [ctxMenu, edgeCtx]);
+
+  // Get SVG-local mouse coords
+  const getSvgCoords = (e: React.MouseEvent | MouseEvent) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const rect = svg.getBoundingClientRect();
+    // Account for pan/zoom transform
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  // Start drag from block's right edge
+  const onBlockDragStart = (e: React.MouseEvent, stepId: string) => {
+    e.stopPropagation();
+    setDragSource(stepId);
+    setDragMouse(getSvgCoords(e));
+  };
+
+  const onBlockDragMove = (e: React.MouseEvent) => {
+    if (!dragSource) return;
+    setDragMouse(getSvgCoords(e));
+  };
+
+  const onBlockDragEnd = (e: React.MouseEvent, targetId: string) => {
+    if (dragSource && dragSource !== targetId) {
+      onEdgeAdd?.(dragSource, targetId);
+    }
+    setDragSource(null);
+    setDragMouse(null);
+  };
+
+  const cancelDrag = () => { setDragSource(null); setDragMouse(null); };
 
   const W = STYLE.svgWidth;
   const { blockWidth: BW, blockHeight: BH, gapX: GX, gapY: GY, padding: PAD } = STYLE;
@@ -344,7 +424,6 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
   }, [layers, n, W, BH, GY, GX, BW]);
 
   // ── Pan & Zoom state ──
-  const svgRef = useRef<SVGSVGElement>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragging = useRef(false);
@@ -562,6 +641,19 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
                       fx={f.x} fy={f.y} fw={f.w} fh={f.h}
                       tx={to.x} ty={to.y} tw={to.w} th={to.h}
                       id={`${step.id}-${t.id}`}
+                      fromId={step.id} toId={t.id}
+                      onClick={(from, to) => onEdgeClick?.(from, to)}
+                      onContextMenu={(e, from, to) => {
+                        const svg = (e.target as SVGElement).closest('svg');
+                        if (svg) {
+                          const rect = svg.getBoundingClientRect();
+                          setEdgeCtx({
+                            x: e.clientX - rect.left,
+                            y: e.clientY - rect.top,
+                            fromId: from, toId: to,
+                          });
+                        }
+                      }}
                     />
                   );
                 });
@@ -581,6 +673,9 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
                 colors={getColor(step.action || 'execute')}
                 onClick={onStepClick ? (s) => onStepClick(s) : undefined}
                 onAddClick={onStepAdd ? (afterId) => onStepAdd(afterId) : undefined}
+                onDragStart={onEdgeAdd ? onBlockDragStart : undefined}
+                onDragEnd={onBlockDragEnd}
+                isDragSource={dragSource === sid}
                 onContextMenu={(e, stepId) => {
                   const svg = (e.target as SVGElement).closest('svg');
                   if (svg) {
@@ -610,6 +705,56 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
               onAddAfter={() => onStepAdd?.(ctxMenu.stepId)}
             />
           )}
+
+          {/* Edge context menu */}
+          {edgeCtx && (
+            <foreignObject x={edgeCtx.x} y={edgeCtx.y} width={160} height={80} style={{ overflow: 'visible' } as any}>
+              <div style={{
+                background: '#fff', border: '1px solid #e4e4e7', borderRadius: 8,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.12)', padding: '4px 0',
+                fontFamily: STYLE.bodyFont, fontSize: 12, color: '#27272a',
+              }} onClick={e => e.stopPropagation()}>
+                <div style={{ padding: '6px 12px', color: '#71717a', fontSize: 10, fontFamily: STYLE.monoFont }}>
+                  {edgeCtx.fromId} → {edgeCtx.toId}
+                </div>
+                <div
+                  style={{ padding: '6px 12px', cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f4f4f5')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  onClick={() => { onEdgeClick?.(edgeCtx.fromId, edgeCtx.toId); setEdgeCtx(null); }}
+                >
+                  ✏️ 编辑依赖
+                </div>
+                <div
+                  style={{ padding: '6px 12px', cursor: 'pointer', color: '#ef4444' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#fef2f2')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  onClick={() => { onEdgeDelete?.(edgeCtx.fromId, edgeCtx.toId); setEdgeCtx(null); }}
+                >
+                  🗑️ 删除连线
+                </div>
+              </div>
+            </foreignObject>
+          )}
+
+          {/* Drag line preview */}
+          {dragSource && dragMouse && (() => {
+            const from = positions.get(dragSource);
+            if (!from) return null;
+            const x1 = from.x + from.w / 2;
+            const y1 = from.y + from.h;
+            const x2 = dragMouse.x;
+            const y2 = dragMouse.y;
+            const my = (y1 + y2) / 2;
+            return (
+              <path
+                d={`M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`}
+                fill="none" stroke="#3b82f6" strokeWidth={2}
+                strokeDasharray="6,3" opacity={0.7}
+                style={{ pointerEvents: 'none' }}
+              />
+            );
+          })()}
 
           {/* ×N notation */}
           {n > 1 && (
