@@ -544,48 +544,16 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
       fontFamily: STYLE.bodyFont,
       color: '#18181b',
       width: '100%',
-      maxWidth: W,
-      margin: '0 auto',
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
     }}>
-      {/* Title */}
-      <div style={{
-        fontFamily: STYLE.titleFont,
-        fontSize: 15,
-        fontWeight: 600,
-        marginBottom: 14,
-        textAlign: 'center',
-        letterSpacing: '0.3px',
-        color: '#27272a',
-      }}>
-        Figure 1. Workflow Architecture
-      </div>
 
-      {/* Zoom controls */}
-      <div style={{
-        display: 'flex', justifyContent: 'flex-end', gap: 4,
-        marginBottom: 6, marginRight: 4,
-      }}>
-        <button onClick={zoomIn}
-          style={{ width: 26, height: 26, fontSize: 14, border: '1px solid #d4d4d8', borderRadius: 4, background: '#fafafa', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Zoom in">+</button>
-        <button onClick={zoomOut}
-          style={{ width: 26, height: 26, fontSize: 14, border: '1px solid #d4d4d8', borderRadius: 4, background: '#fafafa', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          title="Zoom out">−</button>
-        <button onClick={resetView}
-          style={{ height: 26, fontSize: 10, border: '1px solid #d4d4d8', borderRadius: 4, background: '#fafafa', cursor: 'pointer', padding: '0 6px', fontFamily: STYLE.monoFont }}
-          title="Reset view (double-click canvas)">Reset</button>
-        <span style={{ fontSize: 10, color: '#a1a1aa', alignSelf: 'center', marginLeft: 4, fontFamily: STYLE.monoFont }}>
-          {Math.round(zoom * 100)}%
-        </span>
-      </div>
-
-      {/* Canvas */}
+      {/* Canvas — fills available space */}
       <div
         style={{
+          flex: 1,
           overflow: 'hidden',
-          border: '1px solid #e4e4e7',
-          borderRadius: 8,
-          background: '#fafafa',
           cursor: dragging.current ? 'grabbing' : 'grab',
           touchAction: 'none',
           userSelect: 'none',
@@ -877,31 +845,6 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
             Output
           </text>
         </svg>
-      </div>
-
-      {/* Figure caption */}
-      <div style={{
-        fontSize: 11,
-        color: '#71717a',
-        textAlign: 'center',
-        marginTop: 12,
-        lineHeight: 1.6,
-        fontFamily: STYLE.titleFont,
-      }}>
-        <strong>Fig. 1.</strong>{' '}
-        {steps.length}-module workflow, {n} dependency layers.
-        {' '}Drag to pan · Scroll to zoom · Double-click to reset.
-        {run && (
-          <>
-            {' '}Status:{' '}
-            <span style={{
-              color: STATUS_COLORS[run.status] || '#333',
-              fontWeight: 600,
-            }}>
-              {run.status}
-            </span>.
-          </>
-        )}
       </div>
     </div>
   );

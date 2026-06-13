@@ -516,27 +516,11 @@ export default function GroupPage() {
           )}
 
           {tab === 'workflow' && (
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-hidden">
               {!workflow ? (
                 <p className="text-[13px] text-muted-foreground text-center py-16">暂无 workflow</p>
               ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-[14px] font-medium text-foreground" style={{ fontFamily: 'Georgia, serif' }}>{workflow.name}</h3>
-                      {workflow.description && <p className="text-[12px] text-muted-foreground mt-0.5">{workflow.description}</p>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={runWorkflow} disabled={wfRunning}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-foreground text-canvas hover:opacity-90 disabled:opacity-50 transition-colors">
-                        {wfRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                        {wfRunning ? '运行中...' : '运行'}
-                      </button>
-                      <OrchestrateButton group={name!} onDone={()=>fetchWorkflow()} />
-                    </div>
-                  </div>
-
-                  {/* Architecture diagram */}
+                <div className="h-full">
                   <WorkflowArch
                     steps={(workflow.stepsList || []) as any[]}
                     run={currentRun ? { ...currentRun, startedAt: Date.now() } : null}
@@ -549,19 +533,6 @@ export default function GroupPage() {
                     onEdgeDelete={(from, to) => deleteEdge(from, to)}
                     onEdgeAdd={(from, to) => addEdge(from, to)}
                   />
-
-                  {/* Results */}
-                  {wfResults.length > 0 && (
-                    <div className="space-y-1.5 mt-4 border-t border-border pt-4">
-                      <h4 className="text-[11px] font-medium text-muted uppercase tracking-wider">Results</h4>
-                      {wfResults.map((r, i) => (
-                        <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg text-[11px] bg-surface border border-border">
-                          <span className="font-medium text-foreground w-16 font-mono">{r.agent}</span>
-                          <span className="text-muted-foreground flex-1">{r.reply.slice(0, 120)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
