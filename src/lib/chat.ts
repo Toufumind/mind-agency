@@ -34,32 +34,8 @@ import { setActivity, clearActivity } from './agent-activity';
 import { writeAudit } from './audit';
 
 // ── Load API settings from frontend-configurable settings.json ──
-// This syncs /settings page edits with what the SDK actually uses.
-// Fallback: process.env (from .env.local or Electron env)
-
-let settingsLoaded = false;
-
-function loadApiSettings(): void {
-  if (settingsLoaded) return;
-  try {
-    const settingsFile = path.join(MIND_DIR, 'settings.json');
-    if (fs.existsSync(settingsFile)) {
-      const s = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
-      // settings.json takes precedence over env vars (user explicitly configured via UI)
-      if (s.apiKey) {
-        process.env.ANTHROPIC_AUTH_TOKEN = s.apiKey;
-        process.env.ANTHROPIC_API_KEY = s.apiKey;
-      }
-      if (s.baseUrl) process.env.ANTHROPIC_BASE_URL = s.baseUrl;
-      if (s.model) process.env.ANTHROPIC_MODEL = s.model;
-      console.log('[chat] API settings loaded from settings.json');
-    }
-  } catch (e) { console.error('[lib:chat]', e); }
-  settingsLoaded = true;
-}
-
-// Load on module init
-loadApiSettings();
+// Uses api-settings.ts module (no process.env mutation).
+import { getApiSettings, invalidateApiSettings } from './api-settings';
 
 // Watch settings.json for runtime changes (user edits via /settings page)
 // Also invalidates all agent caches so config changes propagate immediately.
@@ -68,11 +44,11 @@ try {
   const settingsFile = path.join(MIND_DIR, 'settings.json');
   if (fs.existsSync(settingsFile)) {
     settingsWatcher = fs.watch(settingsFile, () => {
-      const prevModel = process.env.ANTHROPIC_MODEL;
-      settingsLoaded = false;
-      loadApiSettings();
-      if (process.env.ANTHROPIC_MODEL !== prevModel) {
-        console.log(`[chat] model changed: ${prevModel || '(none)'} → ${process.env.ANTHROPIC_MODEL || '(none)'}`);
+      const prev = getApiSettings().model;
+      invalidateApiSettings();
+      const curr = getApiSettings().model;
+      if (curr !== prev) {
+        console.log(`[chat] model changed: ${prev || '(none)'} → ${curr || '(none)'}`);
       }
       // Invalidate all agent caches — API key/URL/model change affects everyone
       agentCache.invalidateRegion('config');

@@ -10,6 +10,7 @@ import path from 'path';
 import type { AgentProvider, SpawnOptions } from './index';
 import { registerProvider } from './index';
 import type { ChatEvent } from '../chat';
+import { getModel } from '../api-settings';
 
 const sdkBinPaths = [
   'node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe',
@@ -27,15 +28,7 @@ class ClaudeProvider implements AgentProvider {
   }
 
   getDefaultModel(): string {
-    // Read from settings.json instead of hardcoded default
-    try {
-      const settingsPath = path.join(process.env.MIND_DATA_DIR || process.cwd(), '.mind', 'settings.json');
-      if (fs.existsSync(settingsPath)) {
-        const s = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-        if (s.model) return s.model;
-      }
-    } catch (e) { console.error('[lib:providers:claude]', e); }
-    return process.env.ANTHROPIC_MODEL || 'mimo-v2.5';
+    return getModel();
   }
 
   async *execute(spawnOpts: SpawnOptions): AsyncGenerator<ChatEvent> {

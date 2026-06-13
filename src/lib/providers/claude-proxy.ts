@@ -11,6 +11,7 @@ import type { AgentProvider, SpawnOptions } from './index';
 import { registerProvider } from './index';
 import type { ChatEvent } from '../chat';
 import { loadSkillsContext } from '../skills';
+import { getApiKey, getBaseUrl, getModel } from '../api-settings';
 import fs from 'fs';
 import path from 'path';
 
@@ -328,23 +329,16 @@ class ClaudeProxyProvider implements AgentProvider {
   displayName = 'Claude Proxy (RAG-enabled)';
 
   isAvailable(): boolean {
-    return !!(process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY);
+    return !!(getApiKey() || process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY);
   }
 
   getDefaultModel(): string {
-    try {
-      const settingsPath = path.join(process.env.MIND_DATA_DIR || process.cwd(), '.mind', 'settings.json');
-      if (fs.existsSync(settingsPath)) {
-        const s = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-        if (s.model) return s.model;
-      }
-    } catch (e) { console.error('[lib:providers:claude-proxy]', e); }
-    return process.env.ANTHROPIC_MODEL || 'mimo-v2.5';
+    return getModel();
   }
 
   async *execute(spawnOpts: SpawnOptions): AsyncGenerator<ChatEvent> {
-    const apiKey = spawnOpts.config?.apiKey || process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || '';
-    const baseUrl = spawnOpts.config?.baseUrl || process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+    const apiKey = getApiKey(spawnOpts.config);
+    const baseUrl = getBaseUrl(spawnOpts.config);
     const model = spawnOpts.config?.model || this.getDefaultModel();
     const system = spawnOpts.systemPrompt || '';
     const workingDir: string = (spawnOpts.config?.cwd as string) || process.cwd();

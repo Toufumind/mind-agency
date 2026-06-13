@@ -11,6 +11,7 @@
 
 import path from 'path';
 import { MIND_DIR } from './data-dir';
+import { invalidateApiSettings } from './api-settings';
 import { randomUUID } from 'crypto';
 import { getSystemProxy } from './system-proxy';
 
@@ -173,15 +174,8 @@ async function syncToSettings(profile: ProviderProfile): Promise<void> {
   settings.provider = profile.provider;
   await saveSettings(settings);
 
-  // Update process.env for immediate effect
-  if (profile.provider === 'claude') {
-    process.env.ANTHROPIC_AUTH_TOKEN = profile.apiKey;
-    process.env.ANTHROPIC_BASE_URL = profile.baseUrl;
-    process.env.ANTHROPIC_MODEL = profile.model;
-  } else if (profile.provider === 'codex') {
-    process.env.OPENAI_API_KEY = profile.apiKey;
-    process.env.CODEX_MODEL = profile.model;
-  }
+  // Invalidate api-settings cache so next getApiSettings() picks up new values
+  invalidateApiSettings();
 }
 
 export async function getActiveProfile(): Promise<ProviderProfile | null> {
