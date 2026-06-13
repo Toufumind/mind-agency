@@ -18,12 +18,14 @@ execSync(
   { stdio: 'inherit' }
 );
 
-// Copy standalone Next.js build to app
+// Copy standalone Next.js build to app — use shell cp for reliability
 const standaloneDir = path.join(appDir, '.next-server');
-if (!existsSync(standaloneDir)) mkdirSync(standaloneDir, { recursive: true });
-cpSync(path.resolve('.next/standalone'), standaloneDir, { recursive: true });
-cpSync(path.resolve('.next/static'), path.join(standaloneDir, '.next/static'), { recursive: true });
-cpSync(path.resolve('public'), path.join(standaloneDir, 'public'), { recursive: true });
+if (existsSync(standaloneDir)) rmSync(standaloneDir, { recursive: true, force: true });
+
+// Use shell cp -r which handles Windows correctly
+execSync(`cp -r "${path.resolve('.next/standalone')}" "${standaloneDir}"`, { stdio: 'inherit' });
+execSync(`cp -r "${path.resolve('.next/static')}" "${standaloneDir}/.next/static"`, { stdio: 'inherit' });
+execSync(`cp -r "${path.resolve('public')}" "${standaloneDir}/public"`, { stdio: 'inherit' });
 
 // Write a start script
 writeFileSync(path.join(appDir, 'start-server.bat'),
