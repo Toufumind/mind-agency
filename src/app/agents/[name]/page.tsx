@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getClientWsBase } from '@/lib/data-dir';
 import { useParams } from 'next/navigation';
 import ChatPanel from '@/components/chat-panel';
 import EmailClient from '@/components/email-client';
@@ -369,7 +368,7 @@ function TokenBalance({ agent }: { agent: string }) {
   const [account, setAccount] = useState<any>(null);
 
   useEffect(() => {
-    fetch(`${getClientWsBase()}/api/economy/account?agent=${agent}`)
+    fetch(`/api/economy/account?agent=${agent}`)
       .then(r => r.json()).then(d => setAccount(d.account)).catch(() => {});
   }, [agent]);
 
@@ -390,7 +389,7 @@ function TokenBalanceFull({ agent }: { agent: string }) {
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    fetch(`${getClientWsBase()}/api/economy/account?agent=${agent}`)
+    fetch(`/api/economy/account?agent=${agent}`)
       .then(r => r.json()).then(d => setAccount(d.account)).catch(() => {});
   }, [agent]);
 
