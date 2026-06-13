@@ -194,8 +194,8 @@ export default function AgentPage() {
                         className="px-2.5 py-1.5 text-[11px] font-medium bg-foreground text-canvas rounded-lg hover:opacity-90">{t('save')}</button>
                     </div>
                   </div>
-                  {/* v0.4: Provider selector */}
-                  <div>
+                  {/* v0.4: Provider selector — only show if API key is configured */}
+                  <div style={{ display: (config as any).apiKey ? 'block' : 'none' }}>
                     <label className="text-[10px] text-muted-foreground mb-1 block">AI Provider</label>
                     <select value={(config as any).provider || 'claude'}
                       onChange={async (e) => {

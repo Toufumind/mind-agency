@@ -190,10 +190,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
     return () => { if (saveRef.current) clearTimeout(saveRef.current); };
   }, [msgs]);
 
-  const [models, setModels] = useState<Array<{ id: string; label: string }>>([
-    { id: 'deepseek-v4-pro', label: 'V4 Pro' },
-    { id: 'deepseek-v4-flash', label: 'V4 Flash' },
-  ]);
+  const [models, setModels] = useState<Array<{ id: string; label: string }>>([]);
   const [model, setModel] = useState<string>(() => {
     if (typeof window === 'undefined') return 'deepseek-v4-pro';
     return localStorage.getItem(`chat-model-${agentName}`) || 'deepseek-v4-pro';
@@ -255,6 +252,7 @@ const ChatPanel = forwardRef<ChatPanelHandle, { agentName: string }>(function Ch
     // v0.4: Fetch available models from configured API
     fetch('/api/system/models').then(r => r.json()).then(d => {
       if (d.models && d.models.length > 0) setModels(d.models);
+      else setModels([]); // No provider configured → no models
     }).catch(() => {});
     fetch(`/api/emails?agent=${agentName}`).then(r => r.json())
       .then(d => { if (Array.isArray(d)) setEmailCount(d.length); }).catch(() => {});
