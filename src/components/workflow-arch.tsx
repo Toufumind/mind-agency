@@ -129,10 +129,8 @@ const ANIMATIONS = `
   @keyframes wf-slide-in { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
   @keyframes wf-fade-in { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
 
-  .wf-block { cursor: pointer; transition: filter 0.15s ease, transform 0.15s ease; }
-  .wf-block:hover { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15)); }
-  .wf-block:hover .wf-block-rect { transform: translateY(-2px); }
-  .wf-block-rect { transition: all 0.3s ease; }
+  .wf-block { cursor: pointer; }
+  .wf-block-rect { transition: filter 0.15s ease; }
 
   .wf-sidebar { background: var(--color-canvas, #fff); color: var(--color-foreground, #18181b); border-color: var(--color-border, #e4e4e7); }
   .wf-sidebar-input { background: var(--color-canvas, #fff); border-color: var(--color-border, #e4e4e7); color: var(--color-foreground, #18181b); }
@@ -269,11 +267,16 @@ function StepBlock({
 
   const sc = STATUS_COLORS[stepStatus] || colors.stroke;
 
+  const [hovered, setHovered] = useState(false);
+
   return (
     <g
       className="wf-block"
+      style={{ filter: hovered ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' : 'none', transition: 'filter 0.15s ease' }}
       onClick={e => { e.stopPropagation(); onClick?.(); }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e); }}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
     >
       {/* Main block */}
       <rect
@@ -474,8 +477,8 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [containerSize, setContainerSize] = useState({ w: 800, h: 600 });
-  const dragging = useRef(false);
-  const lastMouse = useRef({ x: 0, y: 0 });
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const el = containerRef.current;
@@ -488,25 +491,19 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
     return () => obs.disconnect();
   }, []);
 
-  // Pan — track mouse on document for reliable drag
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 0) {
-      dragging.current = true;
-      lastMouse.current = { x: e.clientX, y: e.clientY };
-    }
+  // Pan — use pointer events on container
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    isPanning.current = true;
+    panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [pan]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isPanning.current) return;
+    setPan({ x: e.clientX - panStart.current.x, y: e.clientY - panStart.current.y });
   }, []);
 
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!dragging.current) return;
-      setPan(p => ({ x: p.x + e.clientX - lastMouse.current.x, y: p.y + e.clientY - lastMouse.current.y }));
-      lastMouse.current = { x: e.clientX, y: e.clientY };
-    };
-    const onUp = () => { dragging.current = false; };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-  }, []);
+  const onPointerUp = useCallback(() => { isPanning.current = false; }, []);
 
   // Zoom (viewport center)
   const onWheel = useCallback((e: React.WheelEvent) => {
@@ -572,10 +569,13 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
       <div
         style={{
           width: '100%', height: '100%',
-          cursor: dragging.current ? 'grabbing' : 'grab',
+          cursor: isPanning.current ? 'grabbing' : 'grab',
           touchAction: 'none', userSelect: 'none',
         }}
-        onMouseDown={onMouseDown}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
         onWheel={onWheel}
         onDoubleClick={resetView}
         onClick={() => { setCtxMenu(null); setSelected(null); }}
