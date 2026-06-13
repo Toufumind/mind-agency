@@ -128,7 +128,18 @@ const ANIMATIONS = `
   @keyframes wf-dash { to { stroke-dashoffset: -20; } }
   @keyframes wf-slide-in { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
   @keyframes wf-fade-in { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
-  @keyframes wf-float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-2px); } }
+
+  .wf-block { cursor: pointer; transition: filter 0.15s ease, transform 0.15s ease; }
+  .wf-block:hover { filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15)); }
+  .wf-block:hover .wf-block-rect { transform: translateY(-2px); }
+  .wf-block-rect { transition: all 0.3s ease; }
+
+  .wf-sidebar { background: var(--color-canvas, #fff); color: var(--color-foreground, #18181b); border-color: var(--color-border, #e4e4e7); }
+  .wf-sidebar-input { background: var(--color-canvas, #fff); border-color: var(--color-border, #e4e4e7); color: var(--color-foreground, #18181b); }
+  .wf-sidebar-label { color: var(--color-muted, #71717a); }
+  .wf-sidebar-btn { background: var(--color-surface, #f4f4f5); color: var(--color-muted, #52525b); border-color: var(--color-border, #e4e4e7); }
+  .wf-sidebar-btn-primary { background: var(--color-foreground, #18181b); color: var(--color-canvas, #fff); }
+  .wf-sidebar-btn-danger { background: #fef2f2; color: #ef4444; border-color: #fecaca; }
 `;
 
 // ═══════ MINI MAP ═══════
@@ -167,7 +178,7 @@ function MiniMap({ steps, run, positions, zoom, pan, containerSize }: {
     <div style={{
       position: 'absolute', bottom: 12, right: 12,
       width: mapW, height: mapH,
-      background: 'rgba(255,255,255,0.9)', border: '1px solid #e4e4e7',
+      background: 'var(--color-canvas, rgba(255,255,255,0.9))', border: '1px solid var(--color-border, #e4e4e7)',
       borderRadius: 6, overflow: 'hidden', zIndex: 10,
     }}>
       <svg width={mapW} height={mapH}>
@@ -205,9 +216,9 @@ function ContextMenu({ x, y, onClose, onEdit, onAdd, onDelete, onMoveUp, onMoveD
   return (
     <foreignObject x={x} y={y} width={160} height={200} style={{ overflow: 'visible' } as any}>
       <div style={{
-        background: '#fff', border: '1px solid #e4e4e7', borderRadius: 8,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px 0',
-        fontFamily: '"Inter", sans-serif', fontSize: 12, color: '#27272a',
+        background: 'var(--color-canvas, #fff)', border: '1px solid var(--color-border, #e4e4e7)',
+        borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: '4px 0',
+        fontFamily: '"Inter", sans-serif', fontSize: 12, color: 'var(--color-foreground, #27272a)',
         animation: 'wf-fade-in 0.15s ease-out',
       }} onClick={e => e.stopPropagation()}>
         {items.map(item => (
@@ -217,7 +228,7 @@ function ContextMenu({ x, y, onClose, onEdit, onAdd, onDelete, onMoveUp, onMoveD
               color: item.danger ? '#ef4444' : undefined,
               display: 'flex', alignItems: 'center', gap: 8,
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#f4f4f5')}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-surface, #f4f4f5)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             onClick={() => { item.action(); onClose(); }}
           >
@@ -260,26 +271,19 @@ function StepBlock({
 
   return (
     <g
-      style={{ cursor: 'pointer', transition: 'transform 0.15s ease, filter 0.15s ease' }}
+      className="wf-block"
       onClick={e => { e.stopPropagation(); onClick?.(); }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); onContextMenu?.(e); }}
-      onMouseEnter={e => {
-        const rect = e.currentTarget.querySelector('rect');
-        if (rect) { rect.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))'; rect.style.transform = 'translateY(-2px)'; }
-      }}
-      onMouseLeave={e => {
-        const rect = e.currentTarget.querySelector('rect');
-        if (rect) { rect.style.filter = 'none'; rect.style.transform = 'translateY(0)'; }
-      }}
     >
       {/* Main block */}
       <rect
+        className="wf-block-rect"
         x={x} y={y} width={w} height={h}
         fill={isCompleted ? '#f0fdf4' : isFailed ? '#fef2f2' : colors.fill}
         stroke={isSelected ? '#3b82f6' : sc}
         strokeWidth={isSelected ? 2.5 : 1.5}
         rx={6}
-        style={{ transition: 'all 0.3s ease', animation, filter: isDragSource ? 'drop-shadow(0 8px 16px rgba(0,0,0,0.2))' : 'none' }}
+        style={{ animation, filter: isDragSource ? 'drop-shadow(0 8px 16px rgba(0,0,0,0.2))' : 'none' }}
       />
 
       {/* Step ID */}
@@ -354,19 +358,19 @@ function EditSidebar({ step, mode, onClose, onSave, onDelete }: {
   if (!step && mode === 'edit') return null;
 
   return (
-    <div style={{
+    <div className="wf-sidebar" style={{
       position: 'absolute', top: 0, right: 0, bottom: 0, width: 320,
-      background: '#fff', borderLeft: '1px solid #e4e4e7',
+      borderLeft: '1px solid var(--color-border, #e4e4e7)',
       boxShadow: '-4px 0 16px rgba(0,0,0,0.08)',
       display: 'flex', flexDirection: 'column', zIndex: 20,
       animation: 'wf-slide-in 0.2s ease-out',
     }}>
       {/* Header */}
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid #e4e4e7', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#18181b' }}>
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--color-border, #e4e4e7)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>
           {mode === 'edit' ? `编辑 · ${step?.id}` : '添加步骤'}
         </span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#71717a', padding: 4 }}>×</button>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--color-muted, #71717a)', padding: 4 }}>×</button>
       </div>
 
       {/* Form */}
@@ -383,7 +387,7 @@ function EditSidebar({ step, mode, onClose, onSave, onDelete }: {
         </div>
         <div>
           <label style={labelStyle}>Action</label>
-          <select value={action} onChange={e => setAction(e.target.value)} style={inputStyle}>
+          <select value={action} onChange={e => setAction(e.target.value)} className="wf-sidebar-input" style={inputStyle}>
             <option value="create">create</option>
             <option value="review">review</option>
             <option value="fix">fix</option>
@@ -407,17 +411,18 @@ function EditSidebar({ step, mode, onClose, onSave, onDelete }: {
       </div>
 
       {/* Footer */}
-      <div style={{ padding: '16px 20px', borderTop: '1px solid #e4e4e7', display: 'flex', gap: 8 }}>
+      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--color-border, #e4e4e7)', display: 'flex', gap: 8 }}>
         {mode === 'edit' && onDelete && (
           <button onClick={() => { onDelete(); onClose(); }}
-            style={{ ...btnStyle, background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca' }}>
+            className="wf-sidebar-btn-danger"
+            style={{ ...btnStyle }}>
             删除
           </button>
         )}
         <div style={{ flex: 1 }} />
-        <button onClick={onClose} style={{ ...btnStyle, background: '#f4f4f5', color: '#52525b' }}>取消</button>
+        <button onClick={onClose} className="wf-sidebar-btn" style={btnStyle}>取消</button>
         <button onClick={() => onSave({ id, agent, action, prompt, dependsOn: dependsOn.split(',').map(s => s.trim()).filter(Boolean) })}
-          style={{ ...btnStyle, background: '#18181b', color: '#fff' }}>
+          className="wf-sidebar-btn-primary" style={btnStyle}>
           {mode === 'edit' ? '保存' : '添加'}
         </button>
       </div>
@@ -425,9 +430,9 @@ function EditSidebar({ step, mode, onClose, onSave, onDelete }: {
   );
 }
 
-const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: '#71717a', marginBottom: 4, display: 'block' };
-const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', fontSize: 12, border: '1px solid #e4e4e7', borderRadius: 6, outline: 'none', fontFamily: '"Inter", sans-serif', boxSizing: 'border-box' };
-const btnStyle: React.CSSProperties = { padding: '8px 16px', fontSize: 12, fontWeight: 500, border: '1px solid #e4e4e7', borderRadius: 6, cursor: 'pointer', fontFamily: '"Inter", sans-serif' };
+const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--color-muted, #71717a)', marginBottom: 4, display: 'block' };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', fontSize: 12, border: '1px solid var(--color-border, #e4e4e7)', borderRadius: 6, outline: 'none', fontFamily: '"Inter", sans-serif', boxSizing: 'border-box', background: 'var(--color-canvas, #fff)', color: 'var(--color-foreground, #18181b)' };
+const btnStyle: React.CSSProperties = { padding: '8px 16px', fontSize: 12, fontWeight: 500, border: '1px solid var(--color-border, #e4e4e7)', borderRadius: 6, cursor: 'pointer', fontFamily: '"Inter", sans-serif' };
 
 // ═══════ MAIN COMPONENT ═══════
 
@@ -483,9 +488,15 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
     return () => obs.disconnect();
   }, []);
 
-  // Pan
+  // Pan — only start if clicking on empty space (not on a block)
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 0) { dragging.current = true; lastMouse.current = { x: e.clientX, y: e.clientY }; }
+    // Only start pan if clicking directly on the SVG background or container
+    const target = e.target as HTMLElement;
+    const isBlock = target.closest('g[style*="cursor: pointer"]') || target.closest('rect[rx="6"]');
+    if (e.button === 0 && !isBlock) {
+      dragging.current = true;
+      lastMouse.current = { x: e.clientX, y: e.clientY };
+    }
   }, []);
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging.current) return;
@@ -553,7 +564,7 @@ export default function WorkflowArch({ steps, run, onStepClick, onStepAdd, onSte
   }, [positions, offsets]);
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', fontFamily: '"Inter", sans-serif' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', fontFamily: '"Inter", sans-serif', background: 'var(--color-surface, #fafafa)' }}>
       {/* Canvas */}
       <div
         style={{
