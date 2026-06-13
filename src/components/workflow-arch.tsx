@@ -108,28 +108,23 @@ function buildLayers(steps: Step[]): Step[][] {
 }
 
 function orthPath(x1: number, y1: number, x2: number, y2: number, r = 12): string {
-  // L-shape: vertical from source, then horizontal, then vertical to target
-  // Always route DOWN from source first, then horizontally, then to target
+  // L-shape routing for bottom-to-top workflow:
+  // 1. From source TOP edge, go DOWN first
+  // 2. Turn horizontal
+  // 3. Go to target x position
+  // 4. Turn UP
+  // 5. Go to target BOTTOM edge
   const midY = (y1 + y2) / 2;
-
-  // Determine bend direction based on relative positions
-  const bendDown = y2 > y1; // target is below source → bend down first
-  const bendRight = x2 > x1; // target is right → bend right
-
   const vDist = Math.abs(midY - y1);
   const hDist = Math.abs(x2 - x1);
   const rc = Math.min(r, vDist * 0.9, hDist * 0.9);
 
-  if (rc < 1) {
-    return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
-  }
+  if (rc < 1) return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
 
-  // Vertical segment direction
-  const vDir = bendDown ? 1 : -1;
-  // Horizontal segment direction
-  const hDir = bendRight ? 1 : -1;
-
-  return `M ${x1} ${y1} L ${x1} ${midY + vDir * rc} Q ${x1} ${midY} ${x1 + hDir * rc} ${midY} L ${x2 - hDir * rc} ${midY} Q ${x2} ${midY} ${x2} ${midY + vDir * rc} L ${x2} ${y2}`;
+  // Always go DOWN from source first (positive Y direction)
+  // Then horizontally to target x
+  // Then UP to target (negative Y direction)
+  return `M ${x1} ${y1} L ${x1} ${midY - rc} Q ${x1} ${midY} ${x1 + (x2 > x1 ? rc : -rc)} ${midY} L ${x2 - (x2 > x1 ? rc : -rc)} ${midY} Q ${x2} ${midY} ${x2} ${midY + rc} L ${x2} ${y2}`;
 }
 
 // ═══════ CSS ANIMATIONS ═══════
@@ -144,7 +139,7 @@ const ANIMATIONS = `
   @keyframes wf-fade-in { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
 
   .wf-block { cursor: pointer; }
-  .wf-block-rect { transition: filter 0.15s ease; }
+  .wf-block-rect { transition: filter 0.15s ease; pointer-events: all; }
 
   .wf-sidebar { background: var(--color-canvas, #fff); color: var(--color-foreground, #18181b); border-color: var(--color-border, #e4e4e7); }
   .wf-sidebar-input { background: var(--color-canvas, #fff); border-color: var(--color-border, #e4e4e7); color: var(--color-foreground, #18181b); }
@@ -296,10 +291,10 @@ function StepBlock({
         className="wf-block-rect"
         x={x} y={y} width={w} height={h}
         fill={isCompleted ? '#f0fdf4' : isFailed ? '#fef2f2' : colors.fill}
-        stroke={isSelected ? '#3b82f6' : sc}
-        strokeWidth={isSelected ? 2.5 : 1.5}
+        stroke={isSelected ? '#3b82f6' : hovered ? '#3b82f6' : sc}
+        strokeWidth={isSelected ? 2.5 : hovered ? 2 : 1.5}
         rx={6}
-        style={{ animation, filter: isDragSource ? 'drop-shadow(0 8px 16px rgba(0,0,0,0.2))' : 'none' }}
+        style={{ animation, filter: isDragSource ? 'drop-shadow(0 8px 16px rgba(0,0,0,0.2))' : hovered ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' : 'none' }}
       />
 
       {/* Step ID */}
