@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Sidebar from '@/components/sidebar';
-import { Send, Loader2, Play, MessageCircle, GitBranch, Settings, X, RefreshCw, Plus, Crown, Star, Trash2, ArrowRightLeft, Pin, PinOff, Bell, Eye, EyeOff, ArrowRight, Search, Paperclip } from 'lucide-react';
+import { Send, Loader2, Play, MessageCircle, GitBranch, Settings, X, RefreshCw, Plus, Crown, Star, Trash2, ArrowRightLeft, Pin, PinOff, Bell, ArrowRight, Search, Paperclip } from 'lucide-react';
 import { useT } from '@/components/i18n';
 import WorkflowGantt from '@/components/workflow-gantt';
 import WorkflowArch from '@/components/workflow-arch';
+import { WorkflowEditor } from '@/components/workflow-editor';
 
 interface ChatMsg { from: string; date: string; body: string; file: string; }
 interface WorkflowStep { id: string; agent: string; action: string; prompt?: string; condition?: string; dependsOn?: string[]; status?: string; reviewer?: string; priority?: string; }
@@ -783,80 +784,17 @@ export default function GroupPage() {
         )}
 
         {/* ── Workflow Editor Modal ── */}
-        {showWfEditor && (
-          <div className="fixed inset-0 bg-black/20 z-50 flex items-center justify-center" onClick={() => setShowWfEditor(false)}>
-            <div className="bg-canvas rounded-2xl shadow-xl w-[700px] max-w-[95vw] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="px-5 py-3 border-b border-border flex items-center justify-between shrink-0">
-                <span className="text-[13px] font-semibold text-foreground">编辑 Workflow · {workflow?.name}</span>
-                <button onClick={() => setShowWfEditor(false)} className="text-muted-foreground hover:text-muted"><X size={16} /></button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                {/* Steps editor */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-medium text-muted">步骤 ({editSteps.length})</span>
-                    <button onClick={() => setEditSteps([...editSteps, { id: `step_${editSteps.length + 1}`, agent: '', action: 'execute', prompt: '' }])}
-                      className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-muted"><Plus size={10} /> 添加</button>
-                  </div>
-                  <div className="space-y-2">
-                    {editSteps.map((s, i) => (
-                      <div key={i} className="bg-surface rounded-lg p-3 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-mono text-muted-foreground">#{i + 1}</span>
-                          <input value={s.id} onChange={e => { const n = [...editSteps]; n[i] = { ...n[i], id: e.target.value }; setEditSteps(n); }}
-                            placeholder="step_id" className="flex-1 px-2 py-1 text-[11px] bg-canvas border border-border rounded-md outline-none focus:border-border-strong" />
-                          <input value={s.agent} onChange={e => { const n = [...editSteps]; n[i] = { ...n[i], agent: e.target.value }; setEditSteps(n); }}
-                            placeholder="agent" className="w-20 px-2 py-1 text-[11px] bg-canvas border border-border rounded-md outline-none focus:border-border-strong" />
-                          <input value={s.action} onChange={e => { const n = [...editSteps]; n[i] = { ...n[i], action: e.target.value }; setEditSteps(n); }}
-                            placeholder="action" className="w-20 px-2 py-1 text-[11px] bg-canvas border border-border rounded-md outline-none focus:border-border-strong" />
-                          <button onClick={() => setEditSteps(editSteps.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-destructive"><Trash2 size={12} /></button>
-                        </div>
-                        <textarea value={s.prompt} onChange={e => { const n = [...editSteps]; n[i] = { ...n[i], prompt: e.target.value }; setEditSteps(n); }}
-                          placeholder="任务描述..." rows={2} className="w-full px-2 py-1 text-[11px] bg-canvas border border-border rounded-md outline-none focus:border-border-strong resize-none" />
-                        <div className="flex items-center gap-2">
-                          <input value={s.dependsOn || ''} onChange={e => { const n = [...editSteps]; n[i] = { ...n[i], dependsOn: e.target.value.split(',').map((d: string) => d.trim()).filter(Boolean) }; setEditSteps(n); }}
-                            placeholder="依赖 (逗号分隔)" className="flex-1 px-2 py-1 text-[10px] bg-canvas border border-border rounded-md outline-none focus:border-border-strong" />
-                          <input value={s.reviewer || ''} onChange={e => { const n = [...editSteps]; n[i] = { ...n[i], reviewer: e.target.value }; setEditSteps(n); }}
-                            placeholder="审查者" className="w-24 px-2 py-1 text-[10px] bg-canvas border border-border rounded-md outline-none focus:border-border-strong" />
-                          <select value={s.priority || ''} onChange={e => { const n = [...editSteps]; n[i] = { ...n[i], priority: e.target.value }; setEditSteps(n); }}
-                            className="px-2 py-1 text-[10px] bg-canvas border border-border rounded-md outline-none">
-                            <option value="">正常</option><option value="low">低</option><option value="high">高</option><option value="critical">紧急</option>
-                          </select>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Run history */}
-                {wfRuns.length > 0 && (
-                  <div>
-                    <button onClick={() => setShowRunHistory(!showRunHistory)} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-muted mb-2">
-                      {showRunHistory ? <EyeOff size={11} /> : <Eye size={11} />}
-                      运行历史 ({wfRuns.length})
-                    </button>
-                    {showRunHistory && (
-                      <div className="space-y-1 opacity-50">
-                        {wfRuns.slice(0, 10).map((r: any, i: number) => (
-                          <div key={i} className="flex items-center gap-2 px-2 py-1 bg-surface rounded text-[10px]">
-                            <span className={`w-1.5 h-1.5 rounded-full ${r.status === 'completed' ? 'bg-success' : r.status === 'failed' ? 'bg-destructive' : 'bg-muted'}`} />
-                            <span className="text-muted-foreground">{new Date(r.completedAt || r.startedAt).toLocaleString()}</span>
-                            <span className="text-foreground">{r.stepsCompleted}/{r.stepsTotal} 步</span>
-                            <span className="text-muted-foreground">{r.status}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-2 shrink-0">
-                <button onClick={() => setShowWfEditor(false)} className="px-3 py-1.5 text-[11px] text-muted hover:bg-surface rounded-lg">取消</button>
-                <button onClick={saveWfSteps} className="px-4 py-1.5 text-[11px] font-medium text-canvas bg-foreground rounded-lg hover:opacity-90">保存</button>
-              </div>
-            </div>
-          </div>
-        )}
+        <WorkflowEditor
+          workflow={workflow}
+          editSteps={editSteps}
+          setEditSteps={setEditSteps}
+          show={showWfEditor}
+          onClose={() => setShowWfEditor(false)}
+          onSave={saveWfSteps}
+          wfRuns={wfRuns}
+          showRunHistory={showRunHistory}
+          setShowRunHistory={setShowRunHistory}
+        />
           </div>
       </div>
     </div>
