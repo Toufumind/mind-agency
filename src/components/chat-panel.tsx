@@ -14,76 +14,7 @@ interface AgentInfo { name: string; emailCount: number; }
 // Mind Agency slash commands — only commands relevant to this platform.
 // LOCAL commands are handled in-browser (no AI involved).
 // The rest are passed through to the AI as messages.
-const COMMANDS: { cmd: string; desc: string; handler?: (agentName: string) => Promise<string> | string }[] = [
-  // ── Session (LOCAL) ──
-  { cmd: '/clear', desc: 'Reset conversation', handler: () => '' },
-  { cmd: '/help', desc: 'Show available commands', handler: helpCmd },
-  { cmd: '/version', desc: 'Show version info', handler: () => '**Mind Agency** v0.8.0' },
-  { cmd: '/status', desc: 'Show session state', handler: statusCmd },
-  { cmd: '/context', desc: 'Show message/token stats', handler: contextCmd },
-  { cmd: '/memory', desc: 'Show loaded rules and session info', handler: memoryCmd },
-
-  // ── Workflow & Agent ──
-  { cmd: '/plan', desc: 'Enter plan mode' },
-  { cmd: '/tasks', desc: 'Monitor background tasks' },
-  { cmd: '/goal', desc: 'Set or review session goals' },
-  { cmd: '/agents', desc: 'List configured sub-agents' },
-  { cmd: '/deploy', desc: 'Trigger deployment pipeline' },
-  { cmd: '/hooks', desc: 'View active hook configs' },
-  { cmd: '/mcp', desc: 'Manage MCP server connections' },
-  { cmd: '/skills', desc: 'List installed skills', handler: skillsCmd },
-  { cmd: '/usage', desc: 'Show token usage and cost' },
-
-  // ── Tool-specific ──
-  { cmd: '/update-config', desc: 'Update Claude Code settings' },
-  { cmd: '/keybindings-help', desc: 'Show keyboard shortcuts' },
-  { cmd: '/fewer-permission-prompts', desc: 'Reduce permission dialogs' },
-  { cmd: '/security-check', desc: 'Quick environment security scan' },
-
-  // ── Claude skills ──
-  { cmd: '/deep-research', desc: 'Deep multi-source research' },
-  { cmd: '/claude-api', desc: 'Build/debug Claude API apps' },
-  { cmd: '/unity-mcp-skill', desc: 'Unity Editor MCP orchestration' },
-  { cmd: '/team-onboarding', desc: 'Team setup guide' },
-  { cmd: '/workflows', desc: 'View running workflows' },
-];
-
-async function statusCmd(agentName: string) {
-  const parts: string[] = ['## /status'];
-  try {
-    const [agentsRes, chatRes, groupsRes] = await Promise.all([
-      fetch('/api/agents'),
-      fetch(`/api/agents/${agentName}/chat`),
-      fetch(`/api/groups/scan?agent=${agentName}`),
-    ]);
-    const agents = await agentsRes.json();
-    const chat = await chatRes.json();
-    const groups = await groupsRes.json();
-    const agent = (agents.agents || []).find((a: any) => a.name === agentName);
-    if (agent) {
-      parts.push(`\n**Agent:** ${agent.name}`);
-      parts.push(`**Emails:** ${agent.emailCount}`);
-      parts.push(`**Messages:** ${chat.messages?.length || 0}`);
-      parts.push(`**Groups:** ${(groups.groups || []).join(', ') || 'none'}`);
-    }
-  } catch { parts.push('(unable to fetch)'); }
-  return parts.join('\n');
-}
-
-async function contextCmd(_agentName: string) {
-  const parts: string[] = ['## /context\n'];
-  try {
-    const r = await fetch('/api/agents');
-    const d = await r.json();
-    let total = 0;
-    for (const a of d.agents || []) total += a.emailCount;
-    parts.push(`**Agents:** ${d.agents?.length || 0}`);
-    parts.push(`**Total emails:** ${total}`);
-    parts.push(`**Model:** DeepSeek-V4-Pro`);
-    parts.push(`\n\`\`\`\nSystem prompt: ~1.5k tokens\nTools: ~17k tokens\nMessages: session-dependent\n\`\`\``);
-  } catch { parts.push('(unable to fetch)'); }
-  return parts.join('\n');
-}
+import { COMMANDS, getHelpText, getStatusText, getContextText, CommandPalette } from './chat-commands';
 
 async function skillsCmd(_agentName: string) {
   const parts: string[] = ['## /skills\n'];
@@ -105,38 +36,9 @@ async function skillsCmd(_agentName: string) {
   return parts.join('\n');
 }
 
-async function memoryCmd(agentName: string) {
-  const parts: string[] = ['## /memory'];
-  // Fetch agent info
-  try {
-    const r = await fetch('/api/agents');
-    const d = await r.json();
-    const agent = (d.agents || []).find((a: any) => a.name === agentName);
-    if (agent) {
-      parts.push(`\n**Agent:** ${agent.name}`);
-      parts.push(`Emails: ${agent.emailCount}`);
-    }
-  } catch (e) { console.error('[components:chat-panel]', e); }
-  // Fetch chat history length
-  try {
-    const r = await fetch(`/api/agents/${agentName}/chat`);
-    const d = await r.json();
-    const count = d.messages?.length || 0;
-    parts.push(`Messages: ${count}`);
-  } catch (e) { console.error('[components:chat-panel]', e); }
-  // Fetch groups
-  try {
-    const r = await fetch(`/api/groups/scan?agent=${agentName}`);
-    const d = await r.json();
-    parts.push(`Groups: ${(d.groups || []).join(', ') || 'none'}`);
-  } catch (e) { console.error('[components:chat-panel]', e); }
-  parts.push(`\n\`\`\`\nCLAUDE.md loaded from project root + Agents/${agentName}/\n\`\`\``);
-  return parts.join('\n');
-}
 
-function helpCmd() {
-  return COMMANDS.map(c => `- **${c.cmd}** — ${c.desc}`).join('\n');
-}
+
+
 
 export interface ChatPanelHandle {
   scrollToMessage: (index: number) => void;
