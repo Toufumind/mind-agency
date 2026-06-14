@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Hash, Users, Activity, Bot, Trash2, X, Shield, User, BarChart3, FileText, Settings, Plus, ChevronDown, PanelLeftClose, PanelLeftOpen, TrendingUp, DollarSign } from 'lucide-react';
+import { Hash, Users, Activity, Trash2, User, Settings, PanelLeftClose, PanelLeftOpen, TrendingUp, DollarSign, FileText, BarChart3, X } from 'lucide-react';
 import { useSidebarData } from './sidebar-context';
 import { useNotifications } from './notification-provider';
 import { useT } from './i18n';
 import LogoCanvas from './logo-canvas';
+import { SectionHeader, CreateForm, GroupItem, AgentItem } from './sidebar-section';
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -117,121 +118,67 @@ export default function Sidebar() {
           {/* Teams section */}
           {!collapsed ? (
             <section>
-              <div className="px-2 mb-1 flex items-center justify-between group/header cursor-pointer" onClick={() => ts('teams')}>
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                  <ChevronDown size={8} className={`transition-transform ${sectionsClosed.has('teams') ? '-rotate-90' : ''}`} />
-                  <Hash size={10} /> {t('teams')}
-                </span>
-                <button onClick={e => { e.stopPropagation(); setCreating('group'); setNewName(''); }}
-                  className="opacity-0 group-hover/header:opacity-100 transition-opacity text-disabled hover:text-muted">
-                  <Plus size={12} />
-                </button>
-              </div>
+              <SectionHeader title={t('teams')} icon={Hash}
+                isOpen={!sectionsClosed.has('teams')}
+                onToggle={() => ts('teams')}
+                onAdd={() => setCreating('group')} />
               {!sectionsClosed.has('teams') && (
-              <div className="space-y-0.5">
-                {groups.map(g => {
-                  const active = pathname === `/groups/${g.name}`;
-                  return (
-                    <div key={g.name} className="group relative">
-                      <Link href={`/groups/${g.name}`} prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
-                        <span className="w-5 h-5 rounded-md bg-surface-alt flex items-center justify-center text-[9px] font-bold text-muted shrink-0">#</span>
-                        <span className="truncate flex-1">{g.name}</span>
-                        {!active && (unreadGroups[g.name] || 0) > 0 && (
-                          <span className="text-[9px] bg-destructive text-canvas rounded-full w-4 h-4 flex items-center justify-center font-bold shrink-0">{unreadGroups[g.name]}</span>
-                        )}
-                      </Link>
-                      <button onClick={() => setConfirmDel(`group:${g.name}`)} className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-disabled hover:text-destructive hover:bg-destructive-muted transition-all"><Trash2 size={10} /></button>
-                    </div>
-                  );
-                })}
-                {creating === 'group' && (
-                  <div className="px-2 py-1.5">
-                    <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="group name" autoFocus
-                      className="w-full px-2.5 py-1.5 text-[12px] border border-border rounded-lg outline-none focus:border-border-strong"
-                      onKeyDown={e => { if (e.key === 'Enter') createItem(); if (e.key === 'Escape') { setCreating(null); setNewName(''); } }} />
-                    <div className="flex gap-1 mt-1">
-                      <button onClick={createItem} disabled={!newName.trim()} className="px-2.5 py-1 text-[10px] font-medium bg-foreground text-canvas rounded-md hover:opacity-90 disabled:opacity-40">{t('create')}</button>
-                      <button onClick={() => { setCreating(null); setNewName(''); }} className="px-2 py-1 text-[10px] text-muted-foreground hover:text-muted">{t('cancel')}</button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                <div className="space-y-0.5">
+                  {groups.map(g => (
+                    <GroupItem key={g.name} name={g.name}
+                      isActive={pathname === `/groups/${g.name}`}
+                      unread={unreadGroups[g.name]}
+                      collapsed={false}
+                      onDelete={() => setConfirmDel(`group:${g.name}`)} />
+                  ))}
+                  {creating === 'group' && (
+                    <CreateForm type="group" onSubmit={createItem} onCancel={() => setCreating(null)} />
+                  )}
+                </div>
               )}
             </section>
           ) : (
             <div className="space-y-0.5">
-              {groups.map(g => {
-                const active = pathname === `/groups/${g.name}`;
-                return (
-                  <Link key={g.name} href={`/groups/${g.name}`} prefetch title={g.name}
-                    className={`flex items-center justify-center px-1 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
-                    <span className="w-5 h-5 rounded-md bg-surface-alt flex items-center justify-center text-[9px] font-bold text-muted shrink-0">#</span>
-                  </Link>
-                );
-              })}
+              {groups.map(g => (
+                <GroupItem key={g.name} name={g.name}
+                  isActive={pathname === `/groups/${g.name}`}
+                  collapsed={true}
+                  onDelete={() => setConfirmDel(`group:${g.name}`)} />
+              ))}
             </div>
           )}
 
           {/* Members section */}
           {!collapsed ? (
             <section>
-              <div className="px-2 mb-1 flex items-center justify-between group/header cursor-pointer" onClick={() => ts('members')}>
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                  <ChevronDown size={8} className={`transition-transform ${sectionsClosed.has('members') ? '-rotate-90' : ''}`} />
-                  <Users size={10} /> {t('members')}
-                </span>
-                <button onClick={e => { e.stopPropagation(); setCreating('agent'); setNewName(''); }}
-                  className="opacity-0 group-hover/header:opacity-100 transition-opacity text-disabled hover:text-muted">
-                  <Plus size={12} />
-                </button>
-              </div>
+              <SectionHeader title={t('members')} icon={Users}
+                isOpen={!sectionsClosed.has('members')}
+                onToggle={() => ts('members')}
+                onAdd={() => setCreating('agent')} />
               {!sectionsClosed.has('members') && (
-              <div className="space-y-0.5">
-                {agents.filter(a => a.name !== 'me').map(a => {
-                  const active = pathname === `/agents/${a.name}`;
-                  const isAdmin = (a as any).config?.roles?.includes('admin');
-                  return (
-                    <div key={a.name} className="group relative">
-                      <Link href={`/agents/${a.name}`} prefetch className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
-                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium shrink-0 ${activity[a.name]?.status === 'chatting' || activity[a.name]?.status === 'processing' || activity[a.name]?.status === 'working' ? 'bg-success-muted text-success' : 'bg-surface-alt text-muted'}`}>{a.name[0]}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate text-[13px]">{a.name}</span>
-                            {isAdmin && <Shield size={9} className="text-muted-foreground shrink-0" />}
-                          </div>
-                        </div>
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activity[a.name]?.active ? 'bg-success' : 'bg-border'}`} title={activity[a.name]?.detail || (activity[a.name]?.active ? t('active') : t('idle'))} />
-                      </Link>
-                      <button onClick={() => setConfirmDel(`agent:${a.name}`)} className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md text-disabled hover:text-destructive hover:bg-destructive-muted transition-all"><Trash2 size={10} /></button>
-                    </div>
-                  );
-                })}
-                {creating === 'agent' && (
-                  <div className="px-2 py-1.5">
-                    <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="agent name" autoFocus
-                      className="w-full px-2.5 py-1.5 text-[12px] border border-border rounded-lg outline-none focus:border-border-strong"
-                      onKeyDown={e => { if (e.key === 'Enter') createItem(); if (e.key === 'Escape') { setCreating(null); setNewName(''); } }} />
-                    <div className="flex gap-1 mt-1">
-                      <button onClick={createItem} disabled={!newName.trim()} className="px-2.5 py-1 text-[10px] font-medium bg-foreground text-canvas rounded-md hover:opacity-90 disabled:opacity-40">{t('create')}</button>
-                      <button onClick={() => { setCreating(null); setNewName(''); }} className="px-2 py-1 text-[10px] text-muted-foreground hover:text-muted">{t('cancel')}</button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                <div className="space-y-0.5">
+                  {agents.filter(a => a.name !== 'me').map(a => (
+                    <AgentItem key={a.name} name={a.name}
+                      isActive={pathname === `/agents/${a.name}`}
+                      isAdmin={(a as any).config?.roles?.includes('admin')}
+                      status={activity[a.name]?.status}
+                      collapsed={false}
+                      onDelete={() => setConfirmDel(`agent:${a.name}`)} />
+                  ))}
+                  {creating === 'agent' && (
+                    <CreateForm type="agent" onSubmit={createItem} onCancel={() => setCreating(null)} />
+                  )}
+                </div>
               )}
             </section>
           ) : (
             <div className="space-y-0.5">
-              {agents.filter(a => a.name !== 'me').map(a => {
-                const active = pathname === `/agents/${a.name}`;
-                const isAdmin = (a as any).config?.roles?.includes('admin');
-                return (
-                  <Link key={a.name} href={`/agents/${a.name}`} prefetch title={a.name}
-                    className={`flex items-center justify-center px-1 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-canvas shadow-sm text-foreground font-medium border border-border' : 'text-muted hover:text-foreground hover:bg-canvas/50'}`}>
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-medium shrink-0 ${'bg-surface-alt text-muted'}`}>{a.name[0]}</span>
-                  </Link>
-                );
-              })}
+              {agents.filter(a => a.name !== 'me').map(a => (
+                <AgentItem key={a.name} name={a.name}
+                  isActive={pathname === `/agents/${a.name}`}
+                  collapsed={true}
+                  onDelete={() => setConfirmDel(`agent:${a.name}`)} />
+              ))}
             </div>
           )}
 
